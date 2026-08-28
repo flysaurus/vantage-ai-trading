@@ -15,6 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { calculateNextRun } from '@/lib/scheduler';
+import { placeSingleTrade, placeBasketTrade } from '@/lib/ai/order-service';
 import type { PendingAction } from '@/lib/ai/pending-actions';
 
 export interface ExecResult {
@@ -278,6 +279,59 @@ async function execDcaDelete(
   return { ok: true, message: '✅ DCA schedule cancelled.' };
 }
 
+// ── Real-order helpers (Tranche 2) ──────────────────────────────────────────
+
+async function execBuyStock(
+  supabase: any,
+  userId: string,
+  payload: Record<string, unknown>,
+): Promise<ExecResult> {
+  return placeSingleTrade({
+    supabase,
+    userId,
+    symbol: (payload.symbol as string) || '',
+    side: 'BUY',
+    shares: payload.shares != null ? Number(payload.shares) : null,
+    dollarAmount: payload.dollarAmount != null ? Number(payload.dollarAmount) : null,
+    orderType: (payload.orderType as any) || 'market',
+    limitPrice: payload.limitPrice != null ? Number(payload.limitPrice) : null,
+  });
+}
+
+async function execSellStock(
+  supabase: any,
+  userId: string,
+  payload: Record<string, unknown>,
+): Promise<ExecResult> {
+  return placeSingleTrade({
+    supabase,
+    userId,
+    symbol: (payload.symbol as string) || '',
+    side: 'SELL',
+    shares: payload.shares != null ? Number(payload.shares) : null,
+    dollarAmount: payload.dollarAmount != null ? Number(payload.dollarAmount) : null,
+    orderType: (payload.orderType as any) || 'market',
+    limitPrice: payload.limitPrice != null ? Number(payload.limitPrice) : null,
+  });
+}
+
+async function execBasketExecute(
+  supabase: any,
+  userId: string,
+  payload: Record<string, unknown>,
+): Promise<ExecResult> {
+  const stocks = (payload.stocks as any[]) || [];
+  return placeBasketTrade({
+    supabase,
+    userId,
+    basketName: (payload.basketName as string) || 'Basket',
+    stocks: stocks.map((s: any) => ({
+      symbol: String(s?.symbol || '').toUpperCase(),
+      dollarAmount: Number(s?.dollarAmount) || 0,
+    })),
+  });
+}
+
 // ── Dispatcher ───────────────────────────────────────────────────────────────
 
 export async function executePendingAction(
@@ -296,6 +350,9 @@ export async function executePendingAction(
       case 'dca_create': return execDcaCreate(supabase, userId, payload);
       case 'dca_update': return execDcaUpdate(supabase, userId, payload);
       case 'dca_delete': return execDcaDelete(supabase, userId, payload);
+      case 'buy_stock': return execBuyStock(supabase, userId, payload);
+      case 'sell_stock': return execSellStock(supabase, userId, payload);
+      case 'basket_execute': return execBasketExecute(supabase, userId, payload);
       default:
         return { ok: false, message: `Unknown action type: ${action.actionType}` };
     }

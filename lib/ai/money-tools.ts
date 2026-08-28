@@ -105,6 +105,50 @@ export const MONEY_TOOLS: Anthropic.Tool[] = [
       "PREVIEW cancelling (deactivating) a DCA schedule. Does NOT execute — requires confirm.",
     input_schema: obj({ scheduleId: { type: 'string', description: 'Schedule id (from listDcaSchedules).' } }),
   },
+  {
+    name: 'previewBuyStock',
+    description:
+      "PREVIEW buying a stock/ETF with real money. Does NOT execute — returns a preview and stores a pending action the user MUST confirm. Resolve the company name to a ticker first.",
+    input_schema: obj({
+      symbol: SYMBOL_SCHEMA,
+      dollarAmount: { type: 'number', description: 'Dollars to invest (≥ $1).' },
+      shares: { type: 'number', description: 'Optional: exact share count (alternative to dollarAmount).' },
+      orderType: { type: 'string', description: 'Optional: market (default) | limit | stop | stop_limit.' },
+      limitPrice: { type: 'number', description: 'Optional: for limit/stop_limit orders.' },
+    }),
+  },
+  {
+    name: 'previewSellStock',
+    description:
+      "PREVIEW selling a position with real money. Does NOT execute — requires confirm. Resolve the company name to a ticker first.",
+    input_schema: obj({
+      symbol: SYMBOL_SCHEMA,
+      shares: { type: 'number', description: 'Number of shares to sell.' },
+      dollarAmount: { type: 'number', description: 'Optional: sell by dollar value instead.' },
+      orderType: { type: 'string', description: 'Optional: market (default) | limit | stop | stop_limit.' },
+      limitPrice: { type: 'number', description: 'Optional: for limit/stop_limit orders.' },
+    }),
+  },
+  {
+    name: 'previewExecuteBasket',
+    description:
+      "PREVIEW buying a basket of stocks/ETFs (one order per leg) with real money. Does NOT execute — requires confirm.",
+    input_schema: obj({
+      basketName: { type: 'string', description: 'Optional basket label.' },
+      stocks: {
+        type: 'array',
+        description: 'Legs to buy: [{symbol, dollarAmount}]',
+        items: {
+          type: 'object',
+          properties: {
+            symbol: { type: 'string' },
+            dollarAmount: { type: 'number' },
+          },
+          required: ['symbol', 'dollarAmount'],
+        },
+      },
+    }),
+  },
 ];
 
 interface PreviewResult {
@@ -293,6 +337,73 @@ export async function executeMoneyTool(
         const scheduleId = String(input?.scheduleId ?? '').trim();
         if (!scheduleId) return fail('scheduleId is required (from listDcaSchedules).');
         return storePending('dca_delete', { scheduleId }, 'Cancel (deactivate) this DCA schedule.', null, null);
+      }
+
+      case 'previewBuyStock': {
+        const symbol = cleanSymbol(input?.symbol);
+        const dollarAmount = input?.dollarAmount != null ? Number(input.dollarAmount) : null;
+        const shares = input?.shares != null ? Number(input.shares) : null;
+        if (!symbol) return fail('A valid ticker symbol is required.');
+        if ((dollarAmount == null || dollarAmount < 1) && (shares == null || shares <= 0)) {
+          return fail('Provide a dollar amount (≥ $1) or a share count.');
+        }
+        if (dollarAmount != null && dollarAmount < 1) return fail('dollarAmount must be at least $1.');
+        if (shares != null && shares <= 0) return fail('shares must be positive.');
+        const payload: Record<string, unknown> = {
+          symbol,
+          side: 'BUY',
+          orderType: input?.orderType || 'market',
+        };
+        if (dollarAmount != null) payload.dollarAmount = dollarAmount;
+        if (shares != null) payload.shares = shares;
+        if (input?.limitPrice != null) payload.limitPrice = Number(input.limitPrice);
+        const summary = dollarAmount != null
+          ? `Buy ${fmtMoney(dollarAmount)} of ${symbol}.`
+          : `Buy ${shares} share${shares === 1 ? '' : 's'} of ${symbol}.`;
+        return storePending('buy_stock', payload, summary, dollarAmount, symbol);
+      }
+
+      case 'previewSellStock': {
+        const symbol = cleanSymbol(input?.symbol);
+        const shares = input?.shares != null ? Number(input.shares) : null;
+        const dollarAmount = input?.dollarAmount != null ? Number(input.dollarAmount) : null;
+        if (!symbol) return fail('A valid ticker symbol is required.');
+        if ((shares == null || shares <= 0) && (dollarAmount == null || dollarAmount <= 0)) {
+          return fail('Provide a share count or dollar value to sell.');
+        }
+        if (shares != null && shares <= 0) return fail('shares must be positive.');
+        const payload: Record<string, unknown> = {
+          symbol,
+          side: 'SELL',
+          orderType: input?.orderType || 'market',
+        };
+        if (shares != null) payload.shares = shares;
+        if (dollarAmount != null) payload.dollarAmount = dollarAmount;
+        if (input?.limitPrice != null) payload.limitPrice = Number(input.limitPrice);
+        const summary = shares != null
+          ? `Sell ${shares} share${shares === 1 ? '' : 's'} of ${symbol}.`
+          : `Sell ${fmtMoney(dollarAmount as number)} of ${symbol}.`;
+        return storePending('sell_stock', payload, summary, null, symbol);
+      }
+
+      case 'previewExecuteBasket': {
+        const stocksRaw = input?.stocks;
+        if (!Array.isArray(stocksRaw) || stocksRaw.length === 0) {
+          return fail('stocks must be a non-empty array of {symbol, dollarAmount}.');
+        }
+        const stocks = stocksRaw.map((s: any) => ({
+          symbol: cleanSymbol(s?.symbol) || '',
+          dollarAmount: Number(s?.dollarAmount) || 0,
+        }));
+        if (stocks.some((s: any) => !s.symbol)) return fail('Each basket leg needs a valid symbol.');
+        if (stocks.some((s: any) => !s.dollarAmount || s.dollarAmount < 1)) {
+          return fail('Each basket leg needs a dollar amount ≥ $1.');
+        }
+        const total = stocks.reduce((sum: number, s: any) => sum + s.dollarAmount, 0);
+        const basketName = input?.basketName ? String(input.basketName).trim() : 'Basket';
+        const payload: Record<string, unknown> = { basketName, stocks };
+        const summary = `Buy a basket (${basketName}) — ${stocks.length} position${stocks.length === 1 ? '' : 's'}, ${fmtMoney(total)} total.`;
+        return storePending('basket_execute', payload, summary, total, null);
       }
 
       default:
