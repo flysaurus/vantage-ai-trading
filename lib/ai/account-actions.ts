@@ -175,7 +175,7 @@ export function detectRebalanceFollowUp(
   if (!REBALANCE_FOLLOWUP_RE.test(last)) return false;
   const prevAssistant = [...messages]
     .reverse()
-    .find((m) => m.role === 'assistant')?.content ?? '';
+    .find((m) => m.role === 'assistant' || m.role === 'ai')?.content ?? '';
   return /rebalance\s+plan\s+to|ready\s+to\s+rebalance/i.test(prevAssistant);
 }
 
