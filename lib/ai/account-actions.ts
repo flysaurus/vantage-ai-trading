@@ -171,25 +171,44 @@ export function rebalancePlanToLegs(plan: RebalancePlan): RebalanceLeg[] {
     }));
 }
 
-/** Preview text shown when the user says "execute the rebalance" (pre-confirm). */
-export function formatRebalanceExecutionPreview(plan: RebalancePlan): string {
+/** Build a markdown table of the executable trades (buys then sells; CASH excluded). */
+function buildRebalanceTable(
+  plan: RebalancePlan,
+  includeTarget: boolean,
+): { table: string; totalBuy: number; totalSell: number; count: number } {
   const buys = plan.lines
     .filter((l) => l.action === 'buy' && l.symbol.toUpperCase() !== 'CASH')
     .sort((a, b) => b.delta - a.delta);
   const sells = plan.lines
-    .filter((l) => l.action === 'sell')
+    .filter((l) => l.action === 'sell' && l.symbol.toUpperCase() !== 'CASH')
     .sort((a, b) => a.delta - b.delta);
-  const count = buys.length + sells.length;
-  const bullets = [
-    ...buys.map((l) => `• Buy **${l.symbol}** (${l.name}) — ${usd(l.delta)}`),
-    ...sells.map((l) => `• Sell **${l.symbol}** (${l.name}) — ${usd(l.delta)}`),
+  const header = includeTarget
+    ? '| Action | Symbol | Holding | Amount | Target |\n|:---|:---|:---|---:|---:|'
+    : '| Action | Symbol | Holding | Amount |\n|:---|:---|:---|---:|';
+  const row = (l: RebalanceLine, action: string) =>
+    includeTarget
+      ? `| ${action} | **${l.symbol}** | ${l.name} | ${usd(l.delta)} | ${l.targetPercent}% |`
+      : `| ${action} | **${l.symbol}** | ${l.name} | ${usd(l.delta)} |`;
+  const table = [
+    header,
+    ...buys.map((l) => row(l, 'Buy')),
+    ...sells.map((l) => row(l, 'Sell')),
   ].join('\n');
-  const totalBuy = buys.reduce((s, l) => s + l.delta, 0);
-  const totalSell = sells.reduce((s, l) => s + Math.abs(l.delta), 0);
+  return {
+    table,
+    totalBuy: buys.reduce((s, l) => s + l.delta, 0),
+    totalSell: sells.reduce((s, l) => s + Math.abs(l.delta), 0),
+    count: buys.length + sells.length,
+  };
+}
+
+/** Preview text shown when the user says "execute the rebalance" (pre-confirm). */
+export function formatRebalanceExecutionPreview(plan: RebalancePlan): string {
+  const { table, totalBuy, totalSell, count } = buildRebalanceTable(plan, false);
   return [
     `Ready to rebalance to **${plan.styleName}** — ${count} trade${count === 1 ? '' : 's'}:`,
     '',
-    bullets,
+    table,
     '',
     `**Total:** buy ${usd(totalBuy)} · sell ${usd(totalSell)}.`,
     '',
@@ -238,25 +257,30 @@ export function formatRebalancePlanAnswer(plan: RebalancePlan): string {
   if (plan.lines.length === 0) {
     return `Your portfolio is already aligned with the **${plan.styleName}** targets — no rebalancing trades needed.`;
   }
-  const buyLines = plan.lines.filter((l) => l.action === 'buy').sort((a, b) => b.delta - a.delta);
-  const sellLines = plan.lines.filter((l) => l.action === 'sell').sort((a, b) => a.delta - b.delta);
+  const { table, totalBuy, totalSell, count } = buildRebalanceTable(plan, true);
+  const cashLine = plan.lines.find((l) => l.symbol.toUpperCase() === 'CASH');
 
-  const bullets = [
-    ...buyLines.map((l) => `• **${l.symbol}** (${l.name}): buy ${usd(l.delta)} → ${l.targetPercent}% target`),
-    ...sellLines.map((l) => `• **${l.symbol}** (${l.name}): sell ${usd(l.delta)} → ${l.targetPercent}% target`),
-  ].join('\n');
-
-  return [
+  const parts: string[] = [
     `Here's the rebalance plan to **${plan.styleName}** — ${plan.description}`,
     '',
     `Portfolio value: ${usd(plan.equity)} · Cash: ${usd(plan.cash)}`,
     '',
-    bullets,
+    table,
+  ];
+  if (cashLine && Math.abs(cashLine.delta) >= 1) {
+    const to = usd(cashLine.currentValue + cashLine.delta);
+    const note = cashLine.delta < 0
+      ? `Cash: ${usd(cashLine.currentValue)} → ${to} — the buys above are funded from cash.`
+      : `Cash: ${usd(cashLine.currentValue)} → ${to} — the sells above raise cash to target.`;
+    parts.push('', note);
+  }
+  parts.push(
     '',
-    `**Summary:** ${plan.lines.length} trades — ${usd(plan.totalBuy)} to buy, ${usd(plan.totalSell)} to sell.`,
+    `**Summary:** ${count} trades — ${usd(totalBuy)} to buy · ${usd(totalSell)} to sell.`,
     '',
     `⚠️ I haven't executed anything — this is a proposal. Say "execute the rebalance" to place these trades.`,
-  ].join('\n');
+  );
+  return parts.join('\n');
 }
 
 /**
