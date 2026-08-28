@@ -332,6 +332,58 @@ async function execBasketExecute(
   });
 }
 
+// ── Rebalance execution (Phase 4 — real multi-leg orders) ───────────────────
+// Fires every stored leg as a real notional (dollar-amount) market order.
+// Sells run first (to free cash/buying power), then buys. Each leg goes through
+// placeSingleTrade → trade-gate + idempotency + broker + persist + notify, so a
+// single leg's rejection never aborts the rest.
+async function execRebalance(
+  supabase: any,
+  userId: string,
+  payload: Record<string, unknown>,
+): Promise<ExecResult> {
+  const legs = Array.isArray(payload.legs) ? (payload.legs as any[]) : [];
+  if (legs.length === 0) return { ok: false, message: 'No rebalance trades were stored.' };
+
+  // Sells first (free up cash / buying power), then buys.
+  const ordered = [...legs].sort((a, b) => {
+    const rank = (s: any) => (s?.side === 'SELL' ? 0 : 1);
+    return rank(a) - rank(b);
+  });
+
+  const out: string[] = [];
+  let placed = 0;
+  let failed = 0;
+  for (const leg of ordered) {
+    const symbol = String(leg?.symbol || '').toUpperCase();
+    const side = leg?.side === 'SELL' ? 'SELL' : 'BUY';
+    const dollarAmount = Number(leg?.dollarAmount) || 0;
+    if (!symbol || dollarAmount < 1) {
+      failed++;
+      out.push(`❌ Skipped an invalid leg (${symbol || 'missing symbol'}).`);
+      continue;
+    }
+    const r = await placeSingleTrade({
+      supabase,
+      userId,
+      symbol,
+      side,
+      dollarAmount,
+      orderType: 'market',
+    });
+    if (r.ok) {
+      placed++;
+      out.push(`✅ ${r.message}`);
+    } else {
+      failed++;
+      out.push(`❌ ${side === 'BUY' ? 'Buy' : 'Sell'} ${symbol} $${dollarAmount.toFixed(2)} — ${r.message}`);
+    }
+  }
+
+  const head = `Rebalance executed: ${placed} of ${legs.length} trades placed${failed ? ` (${failed} failed)` : ''}.`;
+  return { ok: placed > 0, message: [head, '', ...out].join('\n') };
+}
+
 // ── Dispatcher ───────────────────────────────────────────────────────────────
 
 export async function executePendingAction(
@@ -353,6 +405,7 @@ export async function executePendingAction(
       case 'buy_stock': return execBuyStock(supabase, userId, payload);
       case 'sell_stock': return execSellStock(supabase, userId, payload);
       case 'basket_execute': return execBasketExecute(supabase, userId, payload);
+      case 'rebalance_execute': return execRebalance(supabase, userId, payload);
       default:
         return { ok: false, message: `Unknown action type: ${action.actionType}` };
     }

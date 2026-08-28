@@ -14,14 +14,14 @@ import { resolveTickers } from '@/lib/ticker-resolver';
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
-import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch } from '@/lib/ai/account-actions'
+import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
 import { MONEY_TOOLS, executeMoneyTool } from '@/lib/ai/money-tools'
 import type { MoneyToolContext } from '@/lib/ai/money-tools'
-import { detectConfirmIntent, confirmationRequiresSymbolEcho, symbolEchoMatches, findParamConflict } from '@/lib/ai/confirm'
-import { getPendingAction, markPendingAction } from '@/lib/ai/pending-actions'
+import { detectConfirmIntent, actionRequiresSymbolEcho, symbolEchoMatches, findParamConflict } from '@/lib/ai/confirm'
+import { getPendingAction, markPendingAction, createPendingAction } from '@/lib/ai/pending-actions'
 import { executePendingAction } from '@/lib/ai/executors'
 import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
@@ -1077,7 +1077,7 @@ export async function POST(req: Request) {
 
           // confirm → escalate strength by amount (echo the symbol for large sums).
           if (
-            confirmationRequiresSymbolEcho(pending.amountUsd) &&
+            actionRequiresSymbolEcho(pending.actionType, pending.amountUsd) &&
             !symbolEchoMatches(lastMessage, pending.confirmToken)
           ) {
             const amt = pending.amountUsd != null ? ` $${pending.amountUsd}` : '';
@@ -1097,6 +1097,37 @@ export async function POST(req: Request) {
         }
         // No pending action → fall through to the model ("confirm what?").
       }
+    }
+
+    // ── Deterministic REBALANCE EXECUTION (Phase 4 — real multi-leg orders) ──
+    // "execute the rebalance" stages a preview (pending_action) and asks for
+    // confirmation. The actual order placement happens in the confirm gate above
+    // via executePendingAction → execRebalance. Detected BEFORE detectAccountAction
+    // so "execute the rebalance" isn't re-read as a new plan request.
+    if (mode !== 'alerts' && detectExecuteRebalance(lastMessage)) {
+      const supabase = createServerClient();
+      const targetStyle = (profile.investorStyle || 'Lynch').toLowerCase();
+      if (!portfolioSnapshot || (portfolioSnapshot.equity <= 0 && portfolioSnapshot.positions.length === 0)) {
+        return textSSEResponse('⚠️ I need your current portfolio loaded to rebalance — connect your broker or refresh, then try again.');
+      }
+      if (!userId || userId === 'anonymous') {
+        return textSSEResponse('You need to be signed in to execute trades.');
+      }
+      const plan = computeRebalancePlan(portfolioSnapshot, targetStyle);
+      const legs = rebalancePlanToLegs(plan);
+      if (legs.length === 0) {
+        return textSSEResponse(`Your portfolio is already aligned with the **${plan.styleName}** targets — no rebalancing trades needed.`);
+      }
+      const action = await createPendingAction(supabase, userId, {
+        actionType: 'rebalance_execute',
+        payload: { style: targetStyle, legs },
+        summary: `Rebalance to ${plan.styleName} (${legs.length} trades)`,
+        amountUsd: null,
+        confirmToken: null,
+      });
+      if (!action) return textSSEResponse('Failed to stage the rebalance — please try again.');
+      console.log(`[chat] 🔒 staged rebalance_execute (${legs.length} legs) for user ${userId.slice(0, 8)}`);
+      return textSSEResponse(formatRebalanceExecutionPreview(plan));
     }
 
     // ── Deterministic account actions (grounded — style change + rebalance plan) ──

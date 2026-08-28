@@ -14,7 +14,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createPendingAction } from '@/lib/ai/pending-actions';
-import { confirmationRequiresSymbolEcho } from '@/lib/ai/confirm';
+import { actionRequiresSymbolEcho } from '@/lib/ai/confirm';
 
 export interface MoneyToolContext {
   supabase: any;               // service-role client (server-side only)
@@ -182,7 +182,7 @@ export async function executeMoneyTool(
     amountUsd: number | null,
     confirmToken: string | null,
   ): PreviewResult => {
-    const requiresSymbolEcho = confirmationRequiresSymbolEcho(amountUsd);
+    const requiresSymbolEcho = actionRequiresSymbolEcho(actionType, amountUsd);
     return {
       preview: summary,
       actionType,

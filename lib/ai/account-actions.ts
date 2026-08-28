@@ -144,6 +144,59 @@ export function computeRebalancePlan(portfolio: PortfolioSnapshot | null, style:
 
 const usd = (n: number) => '$' + Math.round(Math.abs(n)).toLocaleString('en-US');
 
+/** Detect an explicit rebalance EXECUTION command ("execute the rebalance").
+ *  Distinct from "rebalance" alone, which means "show me the plan". */
+export function detectExecuteRebalance(message: string): boolean {
+  const m = message.trim();
+  if (!m || m.length > 240) return false;
+  if (!/\brebalance\b/i.test(m)) return false;
+  return /\b(?:execute|place|run|perform|proceed|go\s+ahead|fire|submit)\b/i.test(m);
+}
+
+export interface RebalanceLeg {
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  dollarAmount: number;
+}
+
+/** Convert a rebalance plan into executable order legs (excludes the CASH bucket). */
+export function rebalancePlanToLegs(plan: RebalancePlan): RebalanceLeg[] {
+  return plan.lines
+    .filter((l) => l.symbol && l.symbol.toUpperCase() !== 'CASH')
+    .filter((l) => Math.abs(l.delta) >= 1)
+    .map((l) => ({
+      symbol: l.symbol.toUpperCase(),
+      side: l.action === 'buy' ? ('BUY' as const) : ('SELL' as const),
+      dollarAmount: Math.round(Math.abs(l.delta) * 100) / 100,
+    }));
+}
+
+/** Preview text shown when the user says "execute the rebalance" (pre-confirm). */
+export function formatRebalanceExecutionPreview(plan: RebalancePlan): string {
+  const buys = plan.lines
+    .filter((l) => l.action === 'buy' && l.symbol.toUpperCase() !== 'CASH')
+    .sort((a, b) => b.delta - a.delta);
+  const sells = plan.lines
+    .filter((l) => l.action === 'sell')
+    .sort((a, b) => a.delta - b.delta);
+  const count = buys.length + sells.length;
+  const bullets = [
+    ...buys.map((l) => `• Buy **${l.symbol}** (${l.name}) — ${usd(l.delta)}`),
+    ...sells.map((l) => `• Sell **${l.symbol}** (${l.name}) — ${usd(l.delta)}`),
+  ].join('\n');
+  const totalBuy = buys.reduce((s, l) => s + l.delta, 0);
+  const totalSell = sells.reduce((s, l) => s + Math.abs(l.delta), 0);
+  return [
+    `Ready to rebalance to **${plan.styleName}** — ${count} trade${count === 1 ? '' : 's'}:`,
+    '',
+    bullets,
+    '',
+    `**Total:** buy ${usd(totalBuy)} · sell ${usd(totalSell)}.`,
+    '',
+    `⚠️ Nothing has run yet. Reply "confirm" to place these trades, or "cancel" to abort.`,
+  ].join('\n');
+}
+
 /** Human label for a style key ("Lynch (Growth)"). */
 export function styleLabel(style: string): string {
   return getStyleConfig(style).label;

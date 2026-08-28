@@ -90,6 +90,16 @@ export function confirmationRequiresSymbolEcho(amountUsd: number | null | undefi
   return amountUsd != null && amountUsd >= 500;
 }
 
+/** Symbol-echo gate keyed on BOTH action type and amount. Sells always require
+ *  echoing the ticker (irreversible + symbol-critical) regardless of amount. */
+export function actionRequiresSymbolEcho(
+  actionType: string | null | undefined,
+  amountUsd: number | null | undefined,
+): boolean {
+  if (actionType === 'sell_stock') return true;
+  return amountUsd != null && amountUsd >= 500;
+}
+
 // ── Fuzzy helpers (closed-set matching only) ────────────────────────────────
 
 export function levenshtein(a: string, b: string): number {
