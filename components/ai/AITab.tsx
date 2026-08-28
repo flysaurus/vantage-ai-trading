@@ -1107,6 +1107,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
     // Single-shot: reset the Deep Dive toggle once a deep send is committed
     if (mode === 'deep') setDeepMode(false);
 
+    // 45s client-side timeout — aborts cleanly BEFORE Vercel's ~60s SSE kill so
+    // we can surface an honest "taking longer than expected" instead of Safari's
+    // opaque "Load failed" on a dropped stream.
+    const abortController = new AbortController();
+    const abortTimeout = setTimeout(() => abortController.abort(), 45000);
+
     try {
       const res = await apiPost('/api/chat', {
         messages: contextMessages,
@@ -1127,7 +1133,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           environment: isDemoAccount ? 'demo' : (activeAccount?.environment || 'live'),
           tradingEnabled: isDemoAccount ? false : (activeAccount?.tradingEnabled ?? false),
         },
-      });
+      }, { signal: abortController.signal });
 
       if (!res.ok) {
         if (res.status === 429) {
@@ -1415,6 +1421,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
           }
           setMessages(prev => [...prev, { role: 'ai', content: msg }]);
         }
+      } else if (error?.name === 'AbortError') {
+        // Client aborted the request (45s timeout) — the stream stalled or Vercel
+        // was about to kill the SSE. Honest message instead of a generic error.
+        setMessages(prev => [...prev, { role: 'ai', content: '⏳ This is taking longer than expected — please try again.' }]);
       } else {
         // Surface the underlying reason (network / stream abort / HTTP status)
         // instead of a bare generic message — makes client-side failures self-diagnosing.
@@ -1422,6 +1432,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         setMessages(prev => [...prev, { role: 'ai', content: `Sorry — I encountered an error${detail}. Please try again.` }]);
       }
     } finally {
+      clearTimeout(abortTimeout);
       setLoading(false); loadingRef.current = false;
       refreshRemaining();
       if (userId) {

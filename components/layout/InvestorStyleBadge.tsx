@@ -11,22 +11,42 @@ import { ALL_STYLES, getStyleContent } from '@/lib/content/investor-styles';
  * NOT gamification — this is identity/preference content that stays.
  */
 export function InvestorStyleBadge() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
 
   const styleId = (user?.investorStyle as string) || 'buffett';
   const styleData = getStyleContent(styleId);
 
   const selectStyle = useCallback(async (newStyle: string) => {
-    sessionStorage.removeItem('vantage_greeting');
+    // Clear greeting cache (localStorage + sessionStorage) so the next greeting
+    // reflects the newly selected style instead of a stale cached one.
+    const storages = [localStorage, sessionStorage];
+    for (const store of storages) {
+      try {
+        Object.keys(store).forEach((key) => {
+          if (key.startsWith('vantage_greeting')) store.removeItem(key);
+        });
+      } catch { /* cross-origin may throw */ }
+    }
+
     if (user?.id) {
       try {
-        await apiPost('/api/db/users/update', { userId: user.id, investorStyle: newStyle });
+        const res = await apiPost('/api/db/users/update', { userId: user.id, investorStyle: newStyle });
+        if (res.ok) {
+          localStorage.setItem('vantage_investor_style', newStyle);
+        }
       } catch {}
     }
+
     setShowPicker(false);
-    window.location.reload();
-  }, [user?.id]);
+
+    // Update AuthContext user in place — refreshes the badge, the AI chat system
+    // prompt (reads user.investorStyle), and every other style surface WITHOUT a
+    // full page reload (which was remounting MainApp and re-running account-select).
+    if (user?.id) {
+      try { await refreshUser(); } catch {}
+    }
+  }, [user?.id, refreshUser]);
 
   return (
     <>

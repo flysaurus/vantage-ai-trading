@@ -1008,6 +1008,7 @@ export async function POST(req: Request) {
     // trades / empty / trivial inputs synchronously; everything else goes to
     // GPT-5 nano, whose output is trusted directly (not a narrow backstop).
     const classification = await classify(lastMessage);
+    tMark('classified');
     console.log(`[chat] ===> CLASSIFY category=${classification.category} vehicle=${classification.vehicle} source=${classification.source} needsSearch=${classification.needsSearch}${classification.gibberish ? ' GIBBERISH' : ''}${classification.trivial ? ' TRIVIAL' : ''}`);
 
     // Empty / pure-gibberish → graceful "didn't understand" (never classified).
@@ -1113,11 +1114,14 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
       }
     }
 
+    tMark('usage check done');
+
     // Stage 2: Search if needed
     let searchContext = ''
     if (classification.needsSearch && classification.searchQuery) {
       searchContext = await searchWeb(classification.searchQuery)
     }
+    tMark('search done');
 
     // ── Tiered ticker resolution: 5-tier system replaces regex-only extractTickers ──
     let liveMarketContext = ''
@@ -1233,6 +1237,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         console.error('[chat] Baseline market data error:', e)
       }
     }
+    tMark('ticker resolution + market data done');
 
     // ── Pre-flight symbol resolution: resolve company names from search results
     // BEFORE the Anthropic call. This prevents the model from burning tool-loop
@@ -1250,6 +1255,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     } catch (e) {
       console.error('[chat] Pre-resolution error (non-fatal):', e)
     }
+    tMark('pre-resolve done');
 
     // ── Prompt Caching: static instructions cached, dynamic context not ──
     // CRITICAL: Inject authoritative server date — models do NOT know the real date
@@ -1415,6 +1421,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     } else {
       model = 'claude-haiku-4-5';
     }
+    tMark('model selected');
 
     // Safety: cap messages to prevent context abuse (UI sends max 5)
     const cappedMessages = messages.slice(-20);
@@ -1456,6 +1463,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         tools: [resolveSymbolTool],
         tool_choice: { type: 'auto' },
       })
+      tMark('model stream started');
     } catch (streamInitError: any) {
       // The model stream failed BEFORE any bytes were produced (Anthropic 4xx/5xx,
       // rate limit, overloaded, or timeout). A bare 500 here surfaces to the user
