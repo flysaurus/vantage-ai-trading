@@ -1,62 +1,103 @@
-// ─── NYSE Holiday Calendar ───────────────────────────────────
-// Source: NYSE official holiday schedule (https://www.nyse.com/markets/hours-calendars)
-// Last reviewed: July 2026. Review annually — holidays valid through end of 2026.
+// ─── NYSE Holiday Calendar (programmatic) ───────────────────
+// Computed at module load for 2025–2050 using the standard NYSE rules
+// (mirrors the NYSE official schedule + exchange_calendars conventions).
+// No annual maintenance needed — bump NYSE_RANGE_END to cover further years.
 //
 // FULL-DAY CLOSURES (market closed all day):
 //   New Year's Day, MLK Day, Presidents Day, Good Friday, Memorial Day,
-//   Juneteenth (June 19), Independence Day (July 4 or observed),
-//   Labor Day, Thanksgiving, Christmas
+//   Juneteenth (June 19), Independence Day (July 4), Labor Day,
+//   Thanksgiving, Christmas — all with weekend-observed shifts.
 //
 // EARLY CLOSE (market closes at 1:00 PM ET, 780 minutes):
-//   Day before Independence Day (if weekday), Black Friday (day after Thanksgiving),
-//   Christmas Eve (Dec 24, if weekday)
+//   Day before Independence Day (Jul 3, when Jul 4 is Tue–Fri),
+//   Black Friday (day after Thanksgiving), Christmas Eve (Dec 24, weekday).
 
-const NYSE_FULL_DAY_HOLIDAYS_2025 = [
-  '2025-01-01', // New Year's Day (Wed)
-  '2025-01-20', // Martin Luther King Jr. Day (Mon)
-  '2025-02-17', // Presidents Day (Mon)
-  '2025-04-18', // Good Friday (Fri)
-  '2025-05-26', // Memorial Day (Mon)
-  '2025-06-19', // Juneteenth National Independence Day (Thu)
-  '2025-07-04', // Independence Day (Fri)
-  '2025-09-01', // Labor Day (Mon)
-  '2025-11-27', // Thanksgiving Day (Thu)
-  '2025-12-25', // Christmas Day (Thu)
-];
+const NYSE_RANGE_START = 2025;
+const NYSE_RANGE_END = 2050;
 
-const NYSE_EARLY_CLOSE_2025 = [
-  '2025-11-28', // Day after Thanksgiving / Black Friday (Fri) — close 1:00 PM ET
-  '2025-12-24', // Christmas Eve (Wed) — close 1:00 PM ET
-];
+// Easter Sunday via the Meeus/Jones/Butcher algorithm (for Good Friday).
+function easterSunday(year: number): Date {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(Date.UTC(year, month - 1, day));
+}
 
-const NYSE_FULL_DAY_HOLIDAYS_2026 = [
-  '2026-01-01', // New Year's Day (Thu)
-  '2026-01-19', // Martin Luther King Jr. Day (Mon)
-  '2026-02-16', // Presidents Day (Mon)
-  '2026-04-03', // Good Friday (Fri)
-  '2026-05-25', // Memorial Day (Mon)
-  '2026-06-19', // Juneteenth National Independence Day (Fri)
-  '2026-07-03', // Independence Day (observed — Jul 4 is Saturday)
-  '2026-09-07', // Labor Day (Mon)
-  '2026-11-26', // Thanksgiving Day (Thu)
-  '2026-12-25', // Christmas Day (Fri)
-];
+// nth weekday of a month (weekday: 0=Sun..6=Sat, n: 1-based).
+function nthWeekday(year: number, month: number, weekday: number, n: number): Date {
+  const first = new Date(Date.UTC(year, month, 1)).getUTCDay();
+  const day = 1 + ((weekday - first + 7) % 7) + (n - 1) * 7;
+  return new Date(Date.UTC(year, month, day));
+}
 
-const NYSE_EARLY_CLOSE_2026 = [
-  '2026-07-02', // Day before Independence Day observed (Thu) — close 1:00 PM ET
-  '2026-11-27', // Day after Thanksgiving / Black Friday (Fri) — close 1:00 PM ET
-  '2026-12-24', // Christmas Eve (Thu) — close 1:00 PM ET
-];
+// Last weekday of a month (weekday: 0=Sun..6=Sat).
+function lastWeekday(year: number, month: number, weekday: number): Date {
+  const last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const off = (new Date(Date.UTC(year, month, last)).getUTCDay() - weekday + 7) % 7;
+  return new Date(Date.UTC(year, month, last - off));
+}
 
-const NYSE_HOLIDAYS = new Set([
-  ...NYSE_FULL_DAY_HOLIDAYS_2025,
-  ...NYSE_FULL_DAY_HOLIDAYS_2026,
-]);
+// Saturday → previous Friday; Sunday → following Monday; else unchanged.
+function observedHoliday(year: number, month: number, day: number): Date {
+  const d = new Date(Date.UTC(year, month, day));
+  const wd = d.getUTCDay();
+  if (wd === 6) return new Date(Date.UTC(year, month, day - 1));
+  if (wd === 0) return new Date(Date.UTC(year, month, day + 1));
+  return d;
+}
 
-const NYSE_EARLY_CLOSE = new Set([
-  ...NYSE_EARLY_CLOSE_2025,
-  ...NYSE_EARLY_CLOSE_2026,
-]);
+const fmtDate = (d: Date): string => d.toISOString().slice(0, 10);
+
+function nyseFullDayHolidays(year: number): Date[] {
+  return [
+    observedHoliday(year, 0, 1),                    // New Year's Day (observed)
+    nthWeekday(year, 0, 1, 3),                      // MLK Jr. Day — 3rd Mon Jan
+    nthWeekday(year, 1, 1, 3),                      // Presidents Day — 3rd Mon Feb
+    new Date(easterSunday(year).getTime() - 2 * 86400000), // Good Friday
+    lastWeekday(year, 4, 1),                        // Memorial Day — last Mon May
+    observedHoliday(year, 5, 19),                   // Juneteenth (observed)
+    observedHoliday(year, 6, 4),                    // Independence Day (observed)
+    nthWeekday(year, 8, 1, 1),                      // Labor Day — 1st Mon Sep
+    nthWeekday(year, 10, 4, 4),                     // Thanksgiving — 4th Thu Nov
+    observedHoliday(year, 11, 25),                  // Christmas Day (observed)
+  ];
+}
+
+function nyseEarlyCloses(year: number): Date[] {
+  const out: Date[] = [];
+  const full = new Set(nyseFullDayHolidays(year).map(fmtDate));
+  const isWeekday = (d: Date) => { const w = d.getUTCDay(); return w >= 1 && w <= 5; };
+  // Black Friday (day after Thanksgiving)
+  out.push(new Date(nthWeekday(year, 10, 4, 4).getTime() + 86400000));
+  // Christmas Eve (weekday, not a full holiday)
+  const xmasEve = new Date(Date.UTC(year, 11, 24));
+  if (isWeekday(xmasEve) && !full.has(fmtDate(xmasEve))) out.push(xmasEve);
+  // Day before Independence Day (Jul 3 when Jul 4 is Tue–Fri)
+  const july4Dow = new Date(Date.UTC(year, 6, 4)).getUTCDay();
+  if (july4Dow >= 2 && july4Dow <= 5) {
+    const july3 = new Date(Date.UTC(year, 6, 3));
+    if (isWeekday(july3) && !full.has(fmtDate(july3))) out.push(july3);
+  }
+  return out;
+}
+
+const NYSE_HOLIDAYS = new Set<string>();
+const NYSE_EARLY_CLOSE = new Set<string>();
+for (let y = NYSE_RANGE_START; y <= NYSE_RANGE_END; y++) {
+  for (const d of nyseFullDayHolidays(y)) NYSE_HOLIDAYS.add(fmtDate(d));
+  for (const d of nyseEarlyCloses(y)) NYSE_EARLY_CLOSE.add(fmtDate(d));
+}
 
 // Market hours in minutes since midnight ET
 const MARKET_OPEN_MINUTES = 570;   // 9:30 AM ET
