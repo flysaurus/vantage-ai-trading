@@ -1125,6 +1125,20 @@ export function AITab({ messages, setMessages }: AITabProps) {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York',
         retryAttempt: retryOpts?.retryAttempt ?? 0,
         validationFailures: retryOpts?.retryFailures ?? null,
+        // Structured portfolio snapshot — powers deterministic rebalance plans
+        // (server computes exact dollar deltas vs style targets) + Phase 3
+        // grounding (corrects fabricated portfolio-total claims).
+        portfolio: liveAccount ? {
+          equity: liveAccount.equity ?? 0,
+          cash: liveAccount.cash ?? 0,
+          positions: (liveAccount.positions || []).map((p: any) => ({
+            symbol: p.symbol,
+            name: p.name || p.symbol,
+            qty: p.qty || 0,
+            price: p.price ?? p.avgCost ?? 0,
+            marketValue: p.marketValue || 0,
+          })),
+        } : null,
         // Account context — prevents AI from presenting Demo holdings as real
         accountMeta: {
           isDemo: isDemoAccount,

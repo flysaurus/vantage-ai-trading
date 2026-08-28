@@ -14,6 +14,8 @@ import { resolveTickers } from '@/lib/ticker-resolver';
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
+import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch } from '@/lib/ai/account-actions'
+import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
 import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
@@ -965,7 +967,10 @@ export async function POST(req: Request) {
   const tMark = (label: string) => console.log(`[chat] ⏱ +${Date.now() - t0}ms ${label}`);
   try {
     const body = await req.json()
-    const { messages, portfolioContext, additionalContext, mode, timezone, retryAttempt: retryAttemptRaw, validationFailures: retryFailuresRaw, accountMeta } = body
+    const { messages, portfolioContext, additionalContext, mode, timezone, retryAttempt: retryAttemptRaw, validationFailures: retryFailuresRaw, accountMeta, portfolio } = body
+    const portfolioSnapshot: PortfolioSnapshot | null = (portfolio && typeof portfolio === 'object' && Array.isArray(portfolio.positions))
+      ? portfolio as PortfolioSnapshot
+      : null;
     const retryAttempt: number = typeof retryAttemptRaw === 'number' ? retryAttemptRaw : 0;
     const retryFailures: ValidationFailure[] | undefined = Array.isArray(retryFailuresRaw) ? retryFailuresRaw : undefined;
 
@@ -1010,6 +1015,64 @@ export async function POST(req: Request) {
       if (profileKind) {
         console.log(`[chat] 🧭 profile question (${profileKind}) → deterministic answer`);
         return Response.json({ content: buildProfileAnswer(profile, profileKind) });
+      }
+    }
+
+    // ── Deterministic account actions (grounded — style change + rebalance plan) ──
+    // "change my style to Lynch", "rebalance my portfolio", or the compound
+    // "change my style to Lynch and rebalance" are handled here with real data,
+    // not the free-form model (which previously hallucinated portfolios/picks).
+    // Style change is the only mutation and is reversible; rebalance is PLAN-ONLY
+    // (execution is a separate, gated action).
+    if (mode !== 'alerts') {
+      const action = detectAccountAction(lastMessage);
+      if (action) {
+        const supabase = createServerClient();
+        if (action.type === 'invalid_style') {
+          return Response.json({ content: formatInvalidStyleAnswer(action.requested) });
+        }
+
+        if (action.type === 'change_style' || action.type === 'change_and_rebalance') {
+          try {
+            if (userId && userId !== 'anonymous') {
+              await (supabase as any)
+                .from('users')
+                .update({ investor_style: action.style, investor_style_set_at: new Date().toISOString() })
+                .eq('id', userId);
+              console.log(`[chat] 🎛️ style changed → ${action.style} (user ${userId.slice(0, 8)})`);
+            }
+          } catch (e) {
+            console.error('[chat] style change failed:', e);
+          }
+        }
+
+        if (action.type === 'change_style') {
+          return Response.json({ content: formatStyleChangeAnswer(action.style, profile.riskTolerance) });
+        }
+
+        // rebalance / change_and_rebalance → compute a grounded plan.
+        const targetStyle = action.type === 'change_and_rebalance'
+          ? action.style
+          : (action.style || profile.investorStyle.toLowerCase());
+
+        if (!portfolioSnapshot || (portfolioSnapshot.equity <= 0 && portfolioSnapshot.positions.length === 0)) {
+          const prefix = action.type === 'change_and_rebalance'
+            ? `✅ Your investor style is now **${styleLabel(action.style)}**.
+
+`
+            : '';
+          return Response.json({
+            content: prefix + formatTargetsOnlyAnswer(targetStyle) + '\n\n⚠️ I need your current portfolio loaded to compute exact trades — connect your broker or refresh, then say "rebalance my portfolio."'
+          });
+        }
+
+        const plan = computeRebalancePlan(portfolioSnapshot, targetStyle);
+        const prefix = action.type === 'change_and_rebalance'
+          ? `✅ Your investor style is now **${styleLabel(action.style)}**.
+
+`
+          : '';
+        return Response.json({ content: prefix + formatRebalancePlanAnswer(plan) });
       }
     }
 
@@ -1751,6 +1814,16 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           // Defensive: strip any leaked [RECOMMEND:...] markers so no ghost
           // buy/sell buttons render for a message that wasn't a recommendation.
           responseText = responseText.replace(/\[RECOMMEND:[^\]]*\]/g, '');
+          // Phase 3 grounding backstop: if the light-path model fabricated a
+          // portfolio/account total that deviates >5% from the actual equity,
+          // append an honest correction instead of letting the hallucination stand.
+          if (portfolioSnapshot && portfolioSnapshot.equity > 0) {
+            const correction = detectPortfolioTotalMismatch(responseText, portfolioSnapshot.equity);
+            if (correction) {
+              console.log('[chat] 🔧 Phase 3 grounding correction appended');
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: correction })}\n\n`));
+            }
+          }
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           if (userId && userId !== 'anonymous') {
             const totalTokens = totalInputTokens + totalOutputTokens;
