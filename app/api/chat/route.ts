@@ -18,6 +18,11 @@ import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChang
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
+import { MONEY_TOOLS, executeMoneyTool } from '@/lib/ai/money-tools'
+import type { MoneyToolContext } from '@/lib/ai/money-tools'
+import { detectConfirmIntent, confirmationRequiresSymbolEcho, symbolEchoMatches, findParamConflict } from '@/lib/ai/confirm'
+import { getPendingAction, markPendingAction } from '@/lib/ai/pending-actions'
+import { executePendingAction } from '@/lib/ai/executors'
 import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
 import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
@@ -503,6 +508,28 @@ function buildVehicleClarifyResponse(): Response {
           options: ['Stocks only', 'ETFs only', 'A mix of both'],
         },
       })}\n\n`));
+      controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+      controller.close();
+    },
+  });
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
+}
+
+/** Deterministic single-text answer as SSE — mirrors the client's `data.text`
+ *  streaming path. Use this for EVERY deterministic (non-model) response so it
+ *  actually renders: the client ONLY parses `data: {...}` SSE lines, so a plain
+ *  `Response.json({ content })` body is silently dropped (empty AI bubble). */
+function textSSEResponse(content: string): Response {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`));
       controller.enqueue(encoder.encode('data: [DONE]\n\n'));
       controller.close();
     },
@@ -1016,7 +1043,59 @@ export async function POST(req: Request) {
       const profileKind = detectProfileQuestion(lastMessage);
       if (profileKind) {
         console.log(`[chat] 🧭 profile question (${profileKind}) → deterministic answer`);
-        return Response.json({ content: buildProfileAnswer(profile, profileKind) });
+        return textSSEResponse(buildProfileAnswer(profile, profileKind));
+      }
+    }
+
+    // ── Deterministic CONFIRM GATE (plan-then-confirm) ──
+    // Handles the user's reply to a pending-action preview. NEVER the LLM — this
+    // is the safety rail between "the model proposed something" and "a side
+    // effect happened". Execution uses the STORED payload only, never text parsed
+    // out of the confirm message. Negation → cancel; "yes but X" / param change
+    // → re-plan; large amounts → require symbol echo.
+    if (mode !== 'alerts') {
+      const confirmIntent = detectConfirmIntent(lastMessage);
+      if (confirmIntent.type !== 'none') {
+        const supabase = createServerClient();
+        const pending = userId && userId !== 'anonymous'
+          ? await getPendingAction(supabase, userId)
+          : null;
+        if (pending) {
+          if (confirmIntent.type === 'cancel') {
+            await markPendingAction(supabase, pending.id, 'cancelled');
+            return textSSEResponse('✅ Cancelled — nothing was executed.');
+          }
+
+          const conflict = confirmIntent.type === 'modify'
+            ? 'parameters'
+            : findParamConflict(lastMessage, pending.payload);
+          if (confirmIntent.type === 'modify' || conflict) {
+            // Params changed → re-plan, never execute the old preview.
+            await markPendingAction(supabase, pending.id, 'cancelled');
+            return textSSEResponse("Got it — I'll re-plan with those changes. Tell me the new parameters (e.g. \"invest $200 weekly instead\").");
+          }
+
+          // confirm → escalate strength by amount (echo the symbol for large sums).
+          if (
+            confirmationRequiresSymbolEcho(pending.amountUsd) &&
+            !symbolEchoMatches(lastMessage, pending.confirmToken)
+          ) {
+            const amt = pending.amountUsd != null ? ` $${pending.amountUsd}` : '';
+            return textSSEResponse(
+              `To confirm this${amt} action, please type the ticker back: \"confirm ${pending.confirmToken}\".`,
+            );
+          }
+
+          // Atomically transition pending→executed (double-tap returns null).
+          const executed = await markPendingAction(supabase, pending.id, 'executed');
+          if (!executed) {
+            return textSSEResponse('That action was already handled — nothing else ran.');
+          }
+          console.log(`[chat] 🔓 confirm gate → executing ${executed.actionType} (user ${userId?.slice(0, 8)})`);
+          const result = await executePendingAction(supabase, executed);
+          return textSSEResponse(result.message);
+        }
+        // No pending action → fall through to the model ("confirm what?").
       }
     }
 
@@ -1031,7 +1110,7 @@ export async function POST(req: Request) {
       if (action) {
         const supabase = createServerClient();
         if (action.type === 'invalid_style') {
-          return Response.json({ content: formatInvalidStyleAnswer(action.requested) });
+          return textSSEResponse(formatInvalidStyleAnswer(action.requested));
         }
 
         if (action.type === 'change_style' || action.type === 'change_and_rebalance') {
@@ -1049,7 +1128,7 @@ export async function POST(req: Request) {
         }
 
         if (action.type === 'change_style') {
-          return Response.json({ content: formatStyleChangeAnswer(action.style, profile.riskTolerance) });
+          return textSSEResponse(formatStyleChangeAnswer(action.style, profile.riskTolerance));
         }
 
         // rebalance / change_and_rebalance → compute a grounded plan.
@@ -1063,9 +1142,9 @@ export async function POST(req: Request) {
 
 `
             : '';
-          return Response.json({
-            content: prefix + formatTargetsOnlyAnswer(targetStyle) + '\n\n⚠️ I need your current portfolio loaded to compute exact trades — connect your broker or refresh, then say "rebalance my portfolio."'
-          });
+          return textSSEResponse(
+            prefix + formatTargetsOnlyAnswer(targetStyle) + '\n\n⚠️ I need your current portfolio loaded to compute exact trades — connect your broker or refresh, then say "rebalance my portfolio."'
+          );
         }
 
         const plan = computeRebalancePlan(portfolioSnapshot, targetStyle);
@@ -1074,7 +1153,7 @@ export async function POST(req: Request) {
 
 `
           : '';
-        return Response.json({ content: prefix + formatRebalancePlanAnswer(plan) });
+        return textSSEResponse(prefix + formatRebalancePlanAnswer(plan));
       }
     }
 
@@ -1093,17 +1172,17 @@ export async function POST(req: Request) {
 
     // Empty / pure-gibberish → graceful "didn't understand" (never classified).
     if (classification.gibberish) {
-      return Response.json({
-        content: "I didn't quite catch that — could you rephrase? I specialize in portfolio analysis and market intelligence, so tell me what you'd like to research, build, or trade.",
-      });
+      return textSSEResponse(
+        "I didn't quite catch that — could you rephrase? I specialize in portfolio analysis and market intelligence, so tell me what you'd like to research, build, or trade.",
+      );
     }
 
     // Off-topic (non-trivial) → polite scope redirect. Trivial commands
     // (hi/help/thanks) fall through to the light path and get a natural reply.
     if (classification.category === 'off_topic' && !classification.trivial) {
-      return Response.json({
-        content: "I specialize exclusively in portfolio analysis and market intelligence. What would you like to know about your portfolio or the markets?",
-      });
+      return textSSEResponse(
+        "I specialize exclusively in portfolio analysis and market intelligence. What would you like to know about your portfolio or the markets?",
+      );
     }
 
     // ── Vehicle resolution ─────────────────────────────────────
@@ -1525,8 +1604,8 @@ Use these for any market-direction questions ("how are markets today?", "any sel
       },
     };
 
-    // ── Tool definitions: resolveSymbol + read-only account tools ──
-    const allTools: Anthropic.Tool[] = [resolveSymbolTool, ...READONLY_TOOLS];
+    // ── Tool definitions: resolveSymbol + read-only account tools + money tools ──
+    const allTools: Anthropic.Tool[] = [resolveSymbolTool, ...READONLY_TOOLS, ...MONEY_TOOLS];
     const toolCtx: ReadonlyToolContext = {
       // Lazy: service-role client is only constructed when a DB-backed tool
       // actually runs (in-memory tools never touch it).
@@ -1775,6 +1854,11 @@ Use these for any market-direction questions ("how are markets today?", "any sel
               const t0 = Date.now();
               result = await resolveSymbol(tb.input?.companyName || '');
               console.log(`[chat] resolveSymbol("${tb.input?.companyName || ''}") → ${Date.now() - t0}ms`);
+            } else if (tb.name.startsWith('preview')) {
+              // Money tools are PREVIEW-ONLY: they validate + store a pending
+              // action, never execute. The deterministic confirm gate (earlier in
+              // this route) is what actually runs the side effect.
+              result = await executeMoneyTool(tb.name, tb.input, toolCtx);
             } else {
               result = await executeReadonlyTool(tb.name, tb.input, toolCtx);
             }
