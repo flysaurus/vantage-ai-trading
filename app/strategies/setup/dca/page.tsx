@@ -9,7 +9,6 @@ import {
   DollarSign, Activity, Layers, Calendar, Clock, Repeat,
 } from 'lucide-react';
 import { SymbolSearch } from '@/components/trade/SymbolSearch';
-import { usePortfolio } from '@/hooks/usePortfolio';
 
 // ─── Types ──────────────────────────────────────────────────
 interface StockDetails {
@@ -72,9 +71,46 @@ function todayStr(): string {
 // ─── Component ──────────────────────────────────────────────
 export default function DcaSetupPage() {
   const router = useRouter();
-  const { account } = usePortfolio();
-  const holdings = account?.positions || [];
-  const buyingPower = account?.buyingPower ?? 0;
+  // Real broker data only — /strategies/* routes are standalone (NOT wrapped in
+  // BrokerProvider), so usePortfolio() would fall back to demo data (mislabeled
+  // "Your Positions" + a wrong buying-power limit). Fetch real positions/accounts
+  // directly instead; never fall back to demo holdings.
+  const [holdings, setHoldings] = useState<{ symbol: string; qty: number }[]>([]);
+  const [buyingPower, setBuyingPower] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [posRes, acctRes] = await Promise.all([
+          apiGet('/api/broker/snaptrade/positions'),
+          apiGet('/api/accounts'),
+        ]);
+        if (posRes.ok && !cancelled) {
+          const data: unknown = await posRes.json();
+          const list = Array.isArray(data)
+            ? (data as Array<{ symbol?: string; units?: number | string }>)
+            : [];
+          setHoldings(
+            list
+              .filter((p) => p && typeof p.symbol === 'string' && p.symbol)
+              .map((p) => ({ symbol: (p.symbol as string).toUpperCase(), qty: Number(p.units || 0) }))
+          );
+        }
+        if (acctRes.ok && !cancelled) {
+          const data: unknown = await acctRes.json();
+          const accounts = (data as any)?.accounts;
+          if (Array.isArray(accounts)) {
+            const live = accounts.find((a: any) => a && !a.isDemo);
+            if (live && live.buyingPower != null) setBuyingPower(Number(live.buyingPower) || 0);
+          }
+        }
+      } catch {
+        // Keep defaults (empty holdings, buyingPower 0).
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Section 1
   const [selectedSymbol, setSelectedSymbol] = useState('');
