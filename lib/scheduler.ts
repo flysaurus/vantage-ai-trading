@@ -38,6 +38,7 @@ interface DcaExecutionResult {
 }
 
 import { getPrice } from '@/lib/market-data';
+import { isTradingDay } from '@/lib/market-hours';
 import { resolveSnapTradeCredentials, SnapTradeAuthError, SnapTradeAmbiguousError } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { formatBrokerName } from '@/lib/broker-name';
@@ -102,6 +103,14 @@ export function calculateNextRun(config: DcaConfig, fromDate?: Date): Date {
     }
   }
 
+  // Skip weekends and full-day NYSE holidays — never schedule a DCA run
+  // on a day the market is closed.
+  let safety = 0;
+  while (!isTradingDay(base) && safety < 30) {
+    base.setDate(base.getDate() + 1);
+    safety++;
+  }
+
   return base;
 }
 
@@ -111,6 +120,13 @@ export function calculateNextRun(config: DcaConfig, fromDate?: Date): Date {
 export async function executeDcaSchedules(supabase: any): Promise<DcaExecutionResult[]> {
   const results: DcaExecutionResult[] = [];
   const now = new Date();
+
+  // Market closed (weekend or full-day holiday) — do not place any DCA orders
+  // today. Due schedules stay due and will fire on the next trading day's cron.
+  if (!isTradingDay(now)) {
+    console.log('[scheduler][dca] Market closed — skipping DCA execution');
+    return results;
+  }
 
   // Fetch active DCA schedules that are due
   const { data: schedules, error } = await supabase

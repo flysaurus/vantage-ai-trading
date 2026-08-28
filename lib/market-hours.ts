@@ -195,3 +195,43 @@ export function getMarketStatus(nowOverride?: Date): MarketStatus {
     nextOpenLabel: getNextOpenLabel(nextOpen),
   };
 }
+
+// ─── Trading-day calendar helpers ───────────────────────────
+// Used by the DCA scheduler to skip weekends and full-day NYSE
+// holidays (early-close days are still trading days — the market
+// opens 9:30 ET, so a market order still fills that morning).
+
+function etDateParts(date: Date): { dateStr: string; weekday: string } {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+  });
+  const parts = fmt.formatToParts(date);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value || '';
+  return {
+    dateStr: `${get('year')}-${get('month')}-${get('day')}`,
+    weekday: get('weekday'),
+  };
+}
+
+// True if `date` is a full trading day (Mon–Fri and not a full-day NYSE holiday).
+export function isTradingDay(date: Date): boolean {
+  const { dateStr, weekday } = etDateParts(date);
+  if (weekday === 'Sat' || weekday === 'Sun') return false;
+  return !NYSE_HOLIDAYS.has(dateStr);
+}
+
+// Next full trading day strictly after `date`.
+export function nextTradingDay(date: Date): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + 1);
+  let safety = 0;
+  while (!isTradingDay(next) && safety < 30) {
+    next.setDate(next.getDate() + 1);
+    safety++;
+  }
+  return next;
+}
