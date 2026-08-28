@@ -16,6 +16,8 @@ import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
 import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
+import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
+import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
 import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
 import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
@@ -1523,6 +1525,17 @@ Use these for any market-direction questions ("how are markets today?", "any sel
       },
     };
 
+    // ── Tool definitions: resolveSymbol + read-only account tools ──
+    const allTools: Anthropic.Tool[] = [resolveSymbolTool, ...READONLY_TOOLS];
+    const toolCtx: ReadonlyToolContext = {
+      // Lazy: service-role client is only constructed when a DB-backed tool
+      // actually runs (in-memory tools never touch it).
+      get supabase() { return createServerClient(); },
+      userId,
+      portfolioSnapshot,
+      investorStyle: profile.investorStyle,
+    };
+
     // ── Build initial conversation ────────────────────────────
     const initialMessages: Array<{ role: 'user' | 'assistant'; content: any }> =
       cappedMessages.map((m: any) => ({
@@ -1538,7 +1551,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         max_tokens: mode === 'deep' ? 8192 : 4096,
         system: systemBlocks as any,
         messages: initialMessages,
-        tools: [resolveSymbolTool],
+        tools: allTools,
         tool_choice: { type: 'auto' },
       })
       tMark('model stream started');
@@ -1692,7 +1705,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
                 max_tokens: mode === 'deep' ? 8192 : 4096,
                 system: systemBlocks as any,
                 messages: convMessages,
-                tools: [resolveSymbolTool],
+                tools: allTools,
                 tool_choice: { type: 'auto' },
               });
 
@@ -1763,7 +1776,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
               result = await resolveSymbol(tb.input?.companyName || '');
               console.log(`[chat] resolveSymbol("${tb.input?.companyName || ''}") → ${Date.now() - t0}ms`);
             } else {
-              result = JSON.stringify({ error: `Unknown tool: ${tb.name}` });
+              result = await executeReadonlyTool(tb.name, tb.input, toolCtx);
             }
             convMessages.push({
               role: 'user' as const,
