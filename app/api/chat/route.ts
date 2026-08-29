@@ -993,6 +993,22 @@ function stripForeignSuffixes(text: string): string {
   );
 }
 
+// Strategy-advice / ideas questions are ADVICE, not a portfolio build. GPT-5 nano
+// occasionally misclassifies "what strategies should I consider" →
+// portfolio_construction (especially when a stale vehicle answer like "A mix of
+// both" sits in history), which fires the slow screening pipeline and blows the
+// 60s Vercel function timeout → Safari "Load failed". Detect these
+// deterministically and force them to the light path.
+const CONSTRUCTION_VERBS =
+  /\b(build|rebuild|re-?balance|add|diversify|grow|deploy|allocate|convert|construct|create|execute|buy|purchase|sell|short|invest)\b/i;
+
+function isStrategyAdviceQuery(message: string): boolean {
+  const m = (message || '').toLowerCase();
+  const hasAdviceNoun = /\bstrateg(y|ies)\b|\bideas?\b|\badvice\b|\brecommendations?\b|\bsuggestions?\b/.test(m);
+  const asksForDirection = /\bconsider\b|\bshould\b|\bwould\b|\bcould\b|\bwhat\b|\bhow\b|\bgive\s+me\b/.test(m);
+  return hasAdviceNoun && asksForDirection && !CONSTRUCTION_VERBS.test(m);
+}
+
 // ─── POST Handler ───
 export async function POST(req: Request) {
   const t0 = Date.now();
@@ -1237,6 +1253,16 @@ export async function POST(req: Request) {
     const classification = await classify(lastMessage);
     tMark('classified');
     console.log(`[chat] ===> CLASSIFY category=${classification.category} vehicle=${classification.vehicle} source=${classification.source} needsSearch=${classification.needsSearch}${classification.gibberish ? ' GIBBERISH' : ''}${classification.trivial ? ' TRIVIAL' : ''}`);
+
+    // Strategy-advice / ideas questions must NOT run the heavy build pipeline.
+    // GPT-5 nano sometimes routes "what strategies should I consider" →
+    // portfolio_construction (especially when a stale "A mix of both" vehicle
+    // answer sits in history), firing screening → 60s Vercel timeout → "Load failed".
+    if (classification.category === 'portfolio_construction' && isStrategyAdviceQuery(lastMessage)) {
+      classification.category = 'portfolio_relative_question';
+      classification.vehicle = 'unspecified';
+      console.log(`[chat] 🧭 Downgraded portfolio_construction → portfolio_relative_question (strategy-advice query, no build verb)`);
+    }
 
     // Empty / pure-gibberish → graceful "didn't understand" (never classified).
     if (classification.gibberish) {
