@@ -64,7 +64,10 @@ export function normalizeStyle(input: string): string | null {
  * (which fall through to the model) — so "how would the app react if I change my
  * style to Lynch?" never mutates the profile.
  */
-export function detectAccountAction(message: string): AccountAction | null {
+export function detectAccountAction(
+  message: string,
+  context?: { riskTolerance?: string; investorStyle?: string }
+): AccountAction | null {
   const m = message.trim();
   if (!m || m.length > 240) return null;
 
@@ -91,7 +94,14 @@ export function detectAccountAction(message: string): AccountAction | null {
   const comparativeRisk = /\b(more|less)\b/i.test(m);
   const hasRiskChange = hasChangeVerb && riskLevel != null && !rebalanceMatch && !style && (explicitRisk || (comparativeRisk && !styleMatch));
 
-  if (hasRiskChange && !hypothetical) return { type: 'change_risk', risk: riskLevel! };
+  // Context-aware: a comparative ("more/less") risk change that is a NO-OP — the
+  // target risk equals the current risk — can't be about risk. Reinterpret it as
+  // a STYLE request (falls through to the style picker). Explicit "risk" mentions
+  // are NOT reinterpreted ("change my risk to aggressive" stays a risk answer).
+  const noOpRiskChange = !explicitRisk && comparativeRisk && !!context?.riskTolerance && !!riskLevel
+    && riskLevel.toLowerCase() === context.riskTolerance.toLowerCase();
+
+  if (hasRiskChange && !noOpRiskChange && !hypothetical) return { type: 'change_risk', risk: riskLevel! };
 
   // Rebalance target style: "rebalance ... to/into/as X"
   let rebStyle: string | null = null;

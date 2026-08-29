@@ -1265,7 +1265,7 @@ export async function POST(req: Request) {
     // Style change is the only mutation and is reversible; rebalance is PLAN-ONLY
     // (execution is a separate, gated action).
     if (mode !== 'alerts') {
-      const action = detectAccountAction(lastMessage);
+      const action = detectAccountAction(lastMessage, { riskTolerance: profile.riskTolerance, investorStyle: profile.investorStyle });
       if (action) {
         const supabase = createServerClient();
         if (action.type === 'change_style_ask') {

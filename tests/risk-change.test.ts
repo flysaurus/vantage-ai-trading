@@ -26,6 +26,17 @@ describe('detectAccountAction — risk-tolerance change', () => {
     expect(detectAccountAction(msg)).toEqual({ type: 'change_risk', risk });
   });
 
+  it('reinterprets a no-op comparative risk change as a style request', () => {
+    // Risk already Aggressive → "more aggressive" can't be risk; it's style.
+    expect(detectAccountAction('make me more aggressive', { riskTolerance: 'Aggressive' })).toEqual({ type: 'invalid_style', requested: 'more aggressive' });
+    // But when risk is NOT already Aggressive, it's a genuine risk bump.
+    expect(detectAccountAction('make me more aggressive', { riskTolerance: 'Moderate' })).toEqual({ type: 'change_risk', risk: 'Aggressive' });
+  });
+
+  it('does NOT reinterpret an explicit no-op risk change as style', () => {
+    expect(detectAccountAction('change my risk to aggressive', { riskTolerance: 'Aggressive' })).toEqual({ type: 'change_risk', risk: 'Aggressive' });
+  });
+
   it('does NOT treat a bare risk word as a risk change (it refers to style)', () => {
     expect(detectAccountAction('make it aggressive')).not.toEqual(expect.objectContaining({ type: 'change_risk' }));
     expect(detectAccountAction('change it to conservative')).not.toEqual(expect.objectContaining({ type: 'change_risk' }));
