@@ -14,7 +14,7 @@ import { resolveTickers } from '@/lib/ticker-resolver';
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
-import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, formatRebalanceBudgetPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
+import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
@@ -1120,6 +1120,7 @@ export async function POST(req: Request) {
       const plan = computeRebalancePlan(portfolioSnapshot, targetStyle, {
         cashOnly: scope.cashOnly,
         customAmount: scope.customAmount ?? undefined,
+        assetClass: scope.assetClass ?? undefined,
       });
       const legs = rebalancePlanToLegs(plan);
       if (legs.length === 0) {
@@ -1190,18 +1191,27 @@ export async function POST(req: Request) {
         }
 
         if (action.type === 'rebalance') {
-          if (detectCashOnlyRebalance(lastMessage)) {
-            const plan = computeRebalancePlan(portfolioSnapshot, targetStyle, { cashOnly: true });
+          const assetClass = detectAssetClass(lastMessage);
+          if (assetClass) {
+            // Asset class chosen → compute the plan using the resolved scope + asset class.
+            const scope = detectScopedRebalanceMode(messages);
+            const plan = computeRebalancePlan(portfolioSnapshot, targetStyle, {
+              cashOnly: scope.cashOnly,
+              customAmount: scope.customAmount ?? undefined,
+              assetClass,
+            });
             return textSSEResponse(formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' });
+          }
+          // Budget chosen but no asset class yet → ask what to buy.
+          if (detectCashOnlyRebalance(lastMessage)) {
+            return textSSEResponse(formatAssetClassPrompt('cash-only'), { kind: 'rebalance_asset' });
           }
           const customAmount = detectCustomAmountRebalance(lastMessage);
           if (customAmount != null) {
-            const plan = computeRebalancePlan(portfolioSnapshot, targetStyle, { customAmount });
-            return textSSEResponse(formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' });
+            return textSSEResponse(formatAssetClassPrompt('custom', customAmount), { kind: 'rebalance_asset' });
           }
           if (detectFullPortfolioRebalance(lastMessage)) {
-            const plan = computeRebalancePlan(portfolioSnapshot, targetStyle);
-            return textSSEResponse(formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' });
+            return textSSEResponse(formatAssetClassPrompt('full'), { kind: 'rebalance_asset' });
           }
           return textSSEResponse(formatRebalanceBudgetPrompt(portfolioSnapshot, targetStyle), { kind: 'rebalance_budget' });
         }

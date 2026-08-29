@@ -260,7 +260,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   //   rebalance_confirm  → ✓ Confirm / ✕ Cancel
   //   rebalance_budget   → 💵 available cash / 📊 full portfolio / ✏️ custom
   //   rebalance_custom   → inline $ amount input + deploy
-  const [rebalanceAction, setRebalanceAction] = useState<{ kind: 'rebalance_plan' | 'rebalance_confirm' | 'rebalance_budget' | 'rebalance_custom'; msgId: string } | null>(null);
+  const [rebalanceAction, setRebalanceAction] = useState<{ kind: 'rebalance_plan' | 'rebalance_confirm' | 'rebalance_budget' | 'rebalance_custom' | 'rebalance_asset'; msgId: string } | null>(null);
   const [customAmountValue, setCustomAmountValue] = useState('');
 
   // ── TL;DR toggle state (set of collapsed message indices) ──
@@ -2129,6 +2129,23 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                       </button>
                       <button onClick={() => { setCustomAmountValue(''); setRebalanceAction({ kind: 'rebalance_budget', msgId: msg.id! }); }} disabled={loading} style={ghost}>
                         ✕ Back
+                      </button>
+                    </div>
+                  );
+                }
+
+                // Asset-class pick (after budget chosen) → ETFs / Stocks / Mix
+                if (kind === 'rebalance_asset') {
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                      <button onClick={() => sendMessage('rebalance into ETFs', 'chat')} disabled={loading} style={solid('#22d3ee')}>
+                        📊 ETFs
+                      </button>
+                      <button onClick={() => sendMessage('rebalance into stocks', 'chat')} disabled={loading} style={solid('#34d399')}>
+                        💼 Individual stocks
+                      </button>
+                      <button onClick={() => sendMessage('rebalance into a mix of ETFs and stocks', 'chat')} disabled={loading} style={ghost}>
+                        🔀 Mix of both
                       </button>
                     </div>
                   );

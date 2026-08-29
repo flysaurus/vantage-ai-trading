@@ -6,7 +6,7 @@
 // ──────────────────────────────────────────────────────────────
 
 import { getStyleConfig } from '@/lib/investor-style-defaults';
-import { getInvestorStyleTargets } from '@/lib/investor-style-targets';
+import { getInvestorStyleTargets, resolveRebalanceTargets, type AssetClass } from '@/lib/investor-style-targets';
 
 const VALID_STYLES = ['buffett', 'lynch', 'livermore', 'soros', 'munger'];
 
@@ -99,15 +99,18 @@ export interface RebalancePlan {
   cashOnly?: boolean;
   /** Custom dollar amount to deploy (buy-only) when a fixed budget was requested. */
   customAmount?: number;
+  /** Asset class the plan targets: ETFs, individual stocks, or a 50/50 mix. */
+  assetClass?: AssetClass;
 }
 
 /** Compute proposed rebalance trades (dollar deltas) from holdings → style targets. */
 export function computeRebalancePlan(
   portfolio: PortfolioSnapshot | null,
   style: string,
-  opts?: { cashOnly?: boolean; customAmount?: number },
+  opts?: { cashOnly?: boolean; customAmount?: number; assetClass?: AssetClass },
 ): RebalancePlan {
-  const { targets, styleName, description } = getInvestorStyleTargets(style);
+  const { styleName, description } = getInvestorStyleTargets(style);
+  const targets = resolveRebalanceTargets(style, opts?.assetClass);
   const equity = portfolio?.equity ?? 0;
   const cash = portfolio?.cash ?? 0;
   const positions = portfolio?.positions ?? [];
@@ -145,6 +148,7 @@ export function computeRebalancePlan(
       totalSell: 0,
       cashOnly: opts?.cashOnly ?? false,
       customAmount: opts?.customAmount,
+      assetClass: opts?.assetClass,
     };
   }
 
@@ -186,7 +190,7 @@ export function computeRebalancePlan(
   const totalBuy = all.filter((l) => l.action === 'buy').reduce((s, l) => s + l.delta, 0);
   const totalSell = all.filter((l) => l.action === 'sell').reduce((s, l) => s + Math.abs(l.delta), 0);
 
-  return { styleName, description, equity, cash, lines: all, totalBuy, totalSell };
+  return { styleName, description, equity, cash, lines: all, totalBuy, totalSell, assetClass: opts?.assetClass };
 }
 
 const usd = (n: number) => '$' + Math.round(Math.abs(n)).toLocaleString('en-US');
@@ -285,33 +289,72 @@ export function detectFullPortfolioRebalance(message: string): boolean {
 export interface ScopedRebalanceMode {
   cashOnly: boolean;
   customAmount: number | null;
+  assetClass: AssetClass | null;
 }
 
 /**
  * Resolve the rebalance scope for the current turn: cash-only, a custom dollar
- * amount, or full portfolio. Checks the literal message first, then carries the
- * mode forward from the prior assistant plan text (so "execute the rebalance"
- * after a scoped plan re-uses the same scope).
+ * amount, or full portfolio — plus the asset class (ETFs / stocks / mix). Checks
+ * the literal message first, then carries the mode forward from the prior
+ * assistant plan/prompt text (so "execute the rebalance" after a scoped plan
+ * re-uses the same scope).
  */
 export function detectScopedRebalanceMode(
   messages: Array<{ role: string; content: string }>,
 ): ScopedRebalanceMode {
-  const empty: ScopedRebalanceMode = { cashOnly: false, customAmount: null };
+  const empty: ScopedRebalanceMode = { cashOnly: false, customAmount: null, assetClass: null };
   if (!Array.isArray(messages) || messages.length === 0) return empty;
   const last = (messages[messages.length - 1]?.content ?? '').trim();
-  if (detectCashOnlyRebalance(last)) return { cashOnly: true, customAmount: null };
+
+  const lastAsset = detectAssetClass(last);
+
+  if (detectCashOnlyRebalance(last)) return { cashOnly: true, customAmount: null, assetClass: lastAsset };
   const amt = detectCustomAmountRebalance(last);
-  if (amt != null) return { cashOnly: false, customAmount: amt };
-  if (detectFullPortfolioRebalance(last)) return empty;
+  if (amt != null) return { cashOnly: false, customAmount: amt, assetClass: lastAsset };
+  if (detectFullPortfolioRebalance(last)) return { ...empty, assetClass: lastAsset };
+
   const prevAssistant = [...messages]
     .reverse()
     .find((m) => m.role === 'assistant' || m.role === 'ai')?.content ?? '';
-  if (/cash[- ]?only/i.test(prevAssistant)) return { cashOnly: true, customAmount: null };
+  const carry: ScopedRebalanceMode = { cashOnly: false, customAmount: null, assetClass: null };
+  if (/cash[- ]?only/i.test(prevAssistant)) carry.cashOnly = true;
   if (/custom\s*(?:rebalance|amount)/i.test(prevAssistant)) {
     const prevAmt = parseCustomRebalanceAmount(prevAssistant);
-    if (prevAmt != null) return { cashOnly: false, customAmount: prevAmt };
+    if (prevAmt != null) carry.customAmount = prevAmt;
   }
-  return empty;
+  carry.assetClass = detectAssetClass(last) || detectAssetClass(prevAssistant);
+  return carry;
+}
+
+/** Detect an asset-class choice (ETF / stock / mix) in a rebalance message. */
+export function detectAssetClass(message: string): AssetClass | null {
+  const m = (message || '').toLowerCase();
+  if (!m || m.length > 240) return null;
+  // "mix" / "both" / ETF+stock together → mix
+  if (/\bmix\b/.test(m) || /\bboth\b/.test(m) || (/\betfs?\b/.test(m) && /\bstocks?\b/.test(m))) {
+    return 'mix';
+  }
+  if (/\bstocks?\b/.test(m) || /\bequities\b/.test(m) || /individual\s+stocks?/.test(m)) return 'stock';
+  if (/\betfs?\b/.test(m)) return 'etf';
+  return null;
+}
+
+/** Asset-class prompt shown after the budget is chosen (before computing the plan). */
+export function formatAssetClassPrompt(
+  scope: 'cash-only' | 'custom' | 'full',
+  customAmount?: number,
+): string {
+  const scopeLine =
+    scope === 'cash-only'
+      ? '**Cash-only rebalance** — deploy only your available cash.'
+      : scope === 'custom'
+        ? `**Custom rebalance** — deploy ${usd(customAmount ?? 0)}.`
+        : '**Full portfolio rebalance** — rebalance your entire account.';
+  return [
+    `${scopeLine} What do you want to put the money into?`,
+    '',
+    `Choose one below 👇`,
+  ].join('\n');
 }
 
 /** Budget-selection prompt shown when the user asks to rebalance (no scope given). */
@@ -475,7 +518,7 @@ export function formatRebalancePlanAnswer(plan: RebalancePlan): string {
   if (plan.cashOnly) {
     const remaining = Math.max(0, plan.cash - totalBuy);
     return [
-      `Here's the **cash-only** rebalance plan to **${plan.styleName}** — deploy your available cash across the target ETFs (no sells, existing positions untouched):`,
+      `Here's the **cash-only** rebalance plan to **${plan.styleName}** — deploy your available cash across the target ${plan.assetClass === 'stock' ? 'stocks' : plan.assetClass === 'mix' ? 'ETFs and stocks' : 'ETFs'} (no sells, existing positions untouched):`,
       '',
       `Available cash: ${usd(plan.cash)}`,
       '',
@@ -489,7 +532,7 @@ export function formatRebalancePlanAnswer(plan: RebalancePlan): string {
   if (plan.customAmount != null) {
     const remaining = Math.max(0, plan.customAmount - totalBuy);
     return [
-      `Here's the **custom rebalance** plan to **${plan.styleName}** — deploy ${usd(plan.customAmount)} across the target ETFs (no sells, existing positions untouched):`,
+      `Here's the **custom rebalance** plan to **${plan.styleName}** — deploy ${usd(plan.customAmount)} across the target ${plan.assetClass === 'stock' ? 'stocks' : plan.assetClass === 'mix' ? 'ETFs and stocks' : 'ETFs'} (no sells, existing positions untouched):`,
       '',
       table,
       '',
