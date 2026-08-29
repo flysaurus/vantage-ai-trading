@@ -547,8 +547,7 @@ export function formatRiskChangeAnswer(risk: RiskLevel): string {
 }
 
 /** Read-only, deterministic account-state answer (cash / equity / positions). */
-export function buildAccountStateAnswer(snapshot: PortfolioSnapshot, risk: string): string {
-  const usd = (n: number) =>
+export function buildAccountStateAnswer(snapshot: PortfolioSnapshot, risk: string): string {  const usd = (n: number) =>
     n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
   const sorted = [...snapshot.positions].sort((a, b) => b.marketValue - a.marketValue);
   const lines = [
@@ -566,6 +565,59 @@ export function buildAccountStateAnswer(snapshot: PortfolioSnapshot, risk: strin
   }
   lines.push('', `Risk tolerance: **${risk}**.`);
   return lines.join('\n');
+}
+
+/**
+ * Detect a read-only account-state query (cash / equity / balance / buying
+ * power / net worth / "how am I doing"). Deterministic backstop for the
+ * account_state taxonomy — the classifier mislabels "whats my account balance"
+ * → single_security_research and "whats my situation" → market_commentary, so
+ * these common phrasings are answered before the LLM can mis-route them.
+ *
+ * Deliberately excludes trade/research instructions about a specific security
+ * ("how much cash should i invest in nvda", "buy $100 worth of voo") and
+ * company fundamentals ("apple balance sheet", "meta debt situation").
+ */
+export function detectAccountStateIntent(m: string): boolean {
+  const s = m.trim().toLowerCase();
+  if (!s || s.length > 240) return false;
+
+  // Trade / research about a specific security is NOT account state.
+  if (/\b(?:invest\s+(?:in|into)|buy|sell|purchase|trade)\b/.test(s)) return false;
+
+  // Company fundamentals (not MY account).
+  if (/\b(?:balance\s*sheet|debt\s*situation)\b/.test(s)) return false;
+
+  // Strong account nouns (unambiguous in a finance chat).
+  const strong = /\b(?:account\s*balance|current\s*balance|portfolio\s*balance|cash\s*balance|overall\s*balance|available\s*cash|cash\s*position|reserved\s*funds?|buy(?:ing|in)\s*power|spending\s*power|net\s*worth|account\s*(?:value|worth)|portfolio\s*(?:value|worth)|total\s*(?:account\s*value|portfolio\s*value|invested)|(?:my|current|total|account)\s+equity)\b/;
+  if (strong.test(s)) return true;
+
+  // "cash" with an ownership/inquiry signal.
+  if (/\bcash\b/.test(s) && /\b(my|mine|i\s+have|i've|i\s+got|do\s+i\s+have|have\s+i\s+got|have\s+left|\bleft\b|available|reserved|sitting|position|in\s+my\s+account|how\s+much|whats?\s+my)\b/.test(s)) return true;
+
+  // "reserved" (cash) on its own — "how much is reserved right now".
+  if (/\breserved\b/.test(s)) return true;
+
+  // "funds" with ownership ("reserved funds", "how much do i have in funds").
+  if (/\bfunds?\b/.test(s) && /\b(reserved|available|my|mine|i\s+have|do\s+i\s+have|in\s+my\s+account|how\s+much|have\s+i\s+got)\b/.test(s)) return true;
+
+  // "money" specifically about account balance (NOT "losing money" / "money move").
+  if (/\bmoney\b/.test(s) && /\b(in\s+my\s+account|is\s+in\s+my\s+account|do\s+i\s+have|have\s+i\s+got|going\s+on\s+with\s+my|have\s+total|to\s+invest)\b/.test(s)) return true;
+
+  // "invested" total / amount.
+  if (/\b(invested\s+(?:total|amount)|total\s+invested)\b/.test(s)) return true;
+
+  // Vague account-health probes (safe — don't collide with tickers).
+  if (/\b(how\s+(?:am\s+)?i\s+doing|hows?\s+my\s+account|whats?\s+going\s+on\s+with\s+my\s+money|whats?\s+my\s+situation|total\s+damage|what\s+do\s+i\s+own|sitting\s+in\s+my\s+account)\b/.test(s)) return true;
+
+  // "how much am i worth / working with / got in here / got to spend".
+  if (/\bhow\s+much\s+(?:am\s+i\s+worth|am\s+i\s+working\s+with|have\s+i\s+got\s+in\s+here|have\s+i\s+got\s+to\s+spend)\b/.test(s)) return true;
+
+  // "how much do i have" / "how much have i got" as a COMPLETE query — not
+  // "how much do i have in nvda" (position size in a single security).
+  if (/\bhow\s+much\s+(?:do\s+i\s+have|have\s+i\s+got|i\s+have)\s*$/i.test(s)) return true;
+
+  return false;
 }
 
 // ── Scheduled / queued activity (DCA + open orders) ─────────────────────────

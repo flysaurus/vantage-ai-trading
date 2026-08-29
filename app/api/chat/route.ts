@@ -15,7 +15,7 @@ import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
 import { detectAppHelpIntent, buildAppHelpAnswer } from '@/lib/ai/app-help'
-import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, detectScheduledActivityIntent, buildScheduledActivityAnswer } from '@/lib/ai/account-actions'
+import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, detectScheduledActivityIntent, buildScheduledActivityAnswer, detectAccountStateIntent } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
@@ -1150,6 +1150,20 @@ export async function POST(req: Request) {
         console.log('[chat] 🧭 scheduled-activity → deterministic answer');
         return textSSEResponse(await fetchScheduledActivityAnswer(userId));
       }
+    }
+
+    // ── Deterministic account-state router (cash / equity / balance) ──
+    // "whats my account balance", "how much cash do i have", "whats my buying
+    // power" are read-only queries the classifier mislabels as security research
+    // or market commentary. Answer from the live portfolio snapshot BEFORE the
+    // classifier can mis-route them. Falls through (prompt broker connection)
+    // when no portfolio is loaded.
+    if (mode !== 'alerts' && detectAccountStateIntent(lastMessage)) {
+      if (portfolioSnapshot && (portfolioSnapshot.equity > 0 || portfolioSnapshot.positions.length > 0)) {
+        console.log('[chat] 🧭 account-state → deterministic answer');
+        return textSSEResponse(buildAccountStateAnswer(portfolioSnapshot, profile.riskTolerance));
+      }
+      // No portfolio loaded → fall through so the model prompts broker connection.
     }
 
     // ── Deterministic CONFIRM GATE (plan-then-confirm) ──
