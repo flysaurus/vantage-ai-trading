@@ -57,6 +57,35 @@ describe('detectAccountAction — style change with target', () => {
   });
 });
 
+describe('detectAccountAction — style synonyms + "change it to" form', () => {
+  it.each([
+    ['change my style to value', 'buffett'],
+    ['change my style to growth', 'lynch'],
+    ['change my style to momentum', 'livermore'],
+    ['change my style to dividend', 'munger'],
+    ['change my style to quality', 'munger'],
+    ['change my style to macro', 'soros'],
+  ])('maps %s → change_style(%s)', (msg, style) => {
+    expect(detectAccountAction(msg)).toEqual({ type: 'change_style', style });
+  });
+
+  it.each([
+    ['Change it to value', 'buffett'],
+    ['change it to value', 'buffett'],
+    ['change to value', 'buffett'],
+    ['switch it to growth', 'lynch'],
+    ['switch to macro', 'soros'],
+    ['change it to value investing', 'buffett'],
+  ])('routes %s → change_style(%s) without the word "style"', (msg, style) => {
+    expect(detectAccountAction(msg)).toEqual({ type: 'change_style', style });
+  });
+
+  it('risk words still take precedence over the broadened style match', () => {
+    expect(detectAccountAction('change it to aggressive')).toEqual({ type: 'change_risk', risk: 'Aggressive' });
+    expect(detectAccountAction('change to conservative')).toEqual({ type: 'change_risk', risk: 'Conservative' });
+  });
+});
+
 describe('formatStylePickPrompt', () => {
   it('mentions the current style and all five available styles', () => {
     const text = formatStylePickPrompt('Lynch');

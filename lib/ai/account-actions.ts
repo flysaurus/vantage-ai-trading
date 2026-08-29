@@ -33,14 +33,30 @@ export type AccountAction =
   | { type: 'change_style_ask' }
   | { type: 'change_risk'; risk: RiskLevel };
 
-/** Normalize a spoken style name ("Lynch", "warren buffett") → key ("lynch"). */
+/** Style descriptors → canonical key ("value" → buffett, "growth" → lynch, …). */
+const STYLE_SYNONYMS: Record<string, string> = {
+  value: 'buffett',
+  'value investing': 'buffett',
+  moat: 'buffett',
+  growth: 'lynch',
+  garp: 'lynch',
+  momentum: 'livermore',
+  dividend: 'munger',
+  dividends: 'munger',
+  quality: 'munger',
+  macro: 'soros',
+};
+
+/** Normalize a spoken style name ("Lynch", "warren buffett", "value") → key ("lynch"). */
 export function normalizeStyle(input: string): string | null {
   const s = String(input || '')
     .trim()
     .toLowerCase()
     .replace(/\b(warren|peter|george|charlie|benjamin|stanley|philip|john|jim)\b\s*/g, '')
     .trim();
-  return VALID_STYLES.includes(s) ? s : null;
+  if (VALID_STYLES.includes(s)) return s;
+  if (STYLE_SYNONYMS[s]) return STYLE_SYNONYMS[s];
+  return null;
 }
 
 /**
@@ -54,7 +70,7 @@ export function detectAccountAction(message: string): AccountAction | null {
 
   const hypothetical = /\b(should|could|would|might|what if|how would|how do i|how to|how should|what happens if)\b/i.test(m);
 
-  const styleMatch = /(?:please\s+)?(?:change|switch|set|move|update)\s+(?:my\s+)?(?:investment|investor|trading|investing)?\s*style\s+(?:to|into)\s+([a-z][a-z\s]{1,24})/i.exec(m);
+  const styleMatch = /(?:please\s+)?(?:change|switch|set|move|update)\s+(?:(?:my|the|it)\s+)?(?:(?:investment|investor|trading|investing)\s+)?(?:style\s+)?(?:to|into)\s+([a-z][a-z\s]{1,24})/i.exec(m);
   const rebalanceMatch = /\brebalance\b/i.test(m);
 
   // "change my style" with NO target style → ask which style (style picker).
