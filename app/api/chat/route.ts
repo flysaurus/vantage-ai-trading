@@ -1743,6 +1743,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         let totalInputTokens = 0;
         let totalOutputTokens = 0;
         let turn = 0;
+        let stagedMoneyPreview = false; // set when a preview* money tool stages a pending action this turn
         const MAX_TOOL_TURNS = 8; // enough for complex portfolios with many symbol lookups (pharma, minerals, etc.)
         const convMessages: Array<{ role: 'user' | 'assistant'; content: any }> =
           [...initialMessages];
@@ -1926,6 +1927,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
               // Money tools are PREVIEW-ONLY: they validate + store a pending
               // action, never execute. The deterministic confirm gate (earlier in
               // this route) is what actually runs the side effect.
+              stagedMoneyPreview = true;
               result = await executeMoneyTool(tb.name, tb.input, toolCtx);
             } else {
               result = await executeReadonlyTool(tb.name, tb.input, toolCtx);
@@ -2265,6 +2267,21 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         } catch (bgErr) {
           console.error('[chat] Budget gate error:', bgErr);
         }
+        }
+
+        // ── Pending-action confirm/cancel buttons ──
+        // If a preview* money tool staged a pending action this turn, tag the
+        // response so the client renders ✓ Confirm / ✕ Cancel buttons (same
+        // deterministic phrases the confirm gate already matches).
+        if (stagedMoneyPreview && userId && userId !== 'anonymous' && !validationRejected) {
+          try {
+            const pending = await getPendingAction(createServerClient(), userId);
+            if (pending) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ action: { kind: 'confirm_pending' } })}\n\n`));
+            }
+          } catch (e) {
+            console.error('[chat] confirm_pending detection error:', e);
+          }
         }
 
         // [DONE] signal
