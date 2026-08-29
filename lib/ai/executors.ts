@@ -384,7 +384,9 @@ async function execRebalance(
     });
     if (r.ok) {
       placed++;
-      out.push(`✅ ${r.message}`);
+      // r.message already carries its own leading ✅ (from placeSingleTrade) —
+      // do NOT prefix again or the chat shows a doubled "✅ ✅ Bought X".
+      out.push(r.message);
     } else {
       failed++;
       out.push(`❌ ${side === 'BUY' ? 'Buy' : 'Sell'} ${symbol} $${dollarAmount.toFixed(2)} — ${r.message}`);
@@ -392,7 +394,9 @@ async function execRebalance(
   }
 
   const head = `Rebalance executed: ${placed} of ${legs.length} trades placed${failed ? ` (${failed} failed)` : ''}.`;
-  return { ok: placed > 0, message: [head, '', ...out].join('\n') };
+  // Join with DOUBLE newlines — ReactMarkdown collapses single `\n` into one
+  // paragraph (soft line break), which jammed every leg onto a single line.
+  return { ok: placed > 0, message: [head, ...out].join('\n\n') };
 }
 
 // ── Dispatcher ───────────────────────────────────────────────────────────────
