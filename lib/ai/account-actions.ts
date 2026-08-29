@@ -71,21 +71,25 @@ export function detectAccountAction(message: string): AccountAction | null {
   const hypothetical = /\b(should|could|would|might|what if|how would|how do i|how to|how should|what happens if)\b/i.test(m);
 
   const styleMatch = /(?:please\s+)?(?:change|switch|set|move|update)\s+(?:(?:my|the|it)\s+)?(?:(?:investment|investor|trading|investing)\s+)?(?:style\s+)?(?:to|into)\s+([a-z][a-z\s]{1,24})/i.exec(m);
+  // "make/turn it aggressive" / "make my style X" — the "make … X" form (no "to").
+  const makeStyleMatch = /(?:please\s+)?(?:make|turn)\s+(?:(?:my|the|it|me|this|that)\s+)(?:(?:investment|investor|trading|investing|style)\s+)?([a-z][a-z\s]{1,24})/i.exec(m);
   const rebalanceMatch = /\brebalance\b/i.test(m);
 
-  // "change my style" with NO target style → ask which style (style picker).
-  const styleChangeAskMatch = /(?:please\s+)?(?:change|switch|set|move|update)\s+(?:my\s+)?(?:investment|investor|trading|investing)?\s*style\b(?!\s+(?:to|into)\s+[a-z])/i.test(m);
+  // "change my style" / "make my style" with NO target → ask which (style picker).
+  const styleChangeAskMatch = /(?:please\s+)?(?:change|switch|set|move|update|make|turn)\s+(?:(?:my|the|it|me)\s+)?(?:(?:investment|investor|trading|investing)\s+)?style\b(?!\s+(?:to|into)\s+[a-z])/i.test(m);
 
-  const rawStyle = styleMatch ? styleMatch[1] : null;
+  const rawStyle = styleMatch ? styleMatch[1] : (makeStyleMatch ? makeStyleMatch[1] : null);
   const style = rawStyle ? normalizeStyle(rawStyle) : null;
 
-  // Risk-tolerance change: "change to aggressive", "change my risk to
-  // conservative", "make me more aggressive", "change it to aggressive style".
-  // A risk word like "aggressive" is NOT an investor style — it must map to
-  // risk tolerance (and must NOT be reported as an invalid style).
+  // Risk-tolerance change. A risk word ("aggressive") only maps to RISK when the
+  // message explicitly mentions risk OR uses a "more/less" comparative — a bare
+  // "make it aggressive" / "change it to conservative" refers to the investor
+  // STYLE (the reference from "what's my style"), not risk tolerance.
   const hasChangeVerb = /\b(change|set|switch|make|turn|update|adjust|become)\b/i.test(m);
   const riskLevel = detectRiskLevel(m);
-  const hasRiskChange = hasChangeVerb && riskLevel != null && !rebalanceMatch && !style;
+  const explicitRisk = /\b(risk|tolerance|risk\s+tolerance|risk\s+profile|risk\s+level|risk\s+appetite)\b/i.test(m);
+  const comparativeRisk = /\b(more|less)\b/i.test(m);
+  const hasRiskChange = hasChangeVerb && riskLevel != null && !rebalanceMatch && !style && (explicitRisk || comparativeRisk);
 
   if (hasRiskChange && !hypothetical) return { type: 'change_risk', risk: riskLevel! };
 
@@ -96,12 +100,13 @@ export function detectAccountAction(message: string): AccountAction | null {
     rebStyle = reb ? normalizeStyle(reb[1]) : null;
   }
 
-  // Explicit "change style to <something>" but the target isn't a valid style.
-  if (styleMatch && rawStyle && !style && !rebalanceMatch) {
+  // Explicit "change style to <something>" but target isn't a valid style →
+  // ask with buttons (invalid_style is rendered with the style picker).
+  if ((styleMatch || makeStyleMatch) && rawStyle && !style && !rebalanceMatch) {
     return { type: 'invalid_style', requested: rawStyle.trim() };
   }
 
-  const hasChange = !!styleMatch && !!style;
+  const hasChange = (!!styleMatch || !!makeStyleMatch) && !!style;
   const hasRebalance = rebalanceMatch;
 
   if (hasChange && hasRebalance && !hypothetical) return { type: 'change_and_rebalance', style: style! };
@@ -548,7 +553,7 @@ export function formatStyleChangeAnswer(style: string, risk: string): string {
 }
 
 export function formatInvalidStyleAnswer(requested: string): string {
-  return `I can't set your style to "${requested}" — the available styles are Buffett (Value), Lynch (Growth), Livermore (Momentum), Munger (Dividend), and Soros (Macro). Try "change my style to Lynch".`;
+  return `"${requested}" isn't one of the predefined investor styles — pick one below and I'll update your profile.`;
 }
 
 /** Risk-tolerance change confirmation (deterministic, grounded in the risk lens). */

@@ -1272,7 +1272,7 @@ export async function POST(req: Request) {
           return textSSEResponse(formatStylePickPrompt(profile.investorStyle), { kind: 'style_pick' });
         }
         if (action.type === 'invalid_style') {
-          return textSSEResponse(formatInvalidStyleAnswer(action.requested));
+          return textSSEResponse(formatInvalidStyleAnswer(action.requested), { kind: 'style_pick' });
         }
 
         if (action.type === 'change_style' || action.type === 'change_and_rebalance') {
@@ -1410,7 +1410,7 @@ export async function POST(req: Request) {
             console.log(`[chat] 🎛️ style changed via classifier → ${style} ("${value}")`);
             return textSSEResponse(formatStyleChangeAnswer(style, profile.riskTolerance), { kind: 'style_changed' });
           }
-          return textSSEResponse(formatInvalidStyleAnswer(value));
+          return textSSEResponse(formatInvalidStyleAnswer(value), { kind: 'style_pick' });
         }
         // Missing/invalid field → fall through to the model (shouldn't happen).
         console.warn(`[chat] profile_mutation with field=${field} value="${value}" → fall through`);

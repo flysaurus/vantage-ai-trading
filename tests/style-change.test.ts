@@ -80,9 +80,19 @@ describe('detectAccountAction — style synonyms + "change it to" form', () => {
     expect(detectAccountAction(msg)).toEqual({ type: 'change_style', style });
   });
 
-  it('risk words still take precedence over the broadened style match', () => {
-    expect(detectAccountAction('change it to aggressive')).toEqual({ type: 'change_risk', risk: 'Aggressive' });
-    expect(detectAccountAction('change to conservative')).toEqual({ type: 'change_risk', risk: 'Conservative' });
+  it('explicit risk references ("risk"/comparative) still take precedence over style', () => {
+    expect(detectAccountAction('change my risk to aggressive')).toEqual({ type: 'change_risk', risk: 'Aggressive' });
+    expect(detectAccountAction('make me more aggressive')).toEqual({ type: 'change_risk', risk: 'Aggressive' });
+  });
+
+  it.each([
+    ['make it aggressive', 'aggressive'],
+    ['make me aggressive', 'aggressive'],
+    ['make my style aggressive', 'aggressive'],
+    ['change it to conservative', 'conservative'],
+    ['change it to aggressive style', 'aggressive style'],
+  ])('routes bare risk-word target %s → invalid_style (buttons, not risk)', (msg, requested) => {
+    expect(detectAccountAction(msg)).toEqual({ type: 'invalid_style', requested });
   });
 });
 

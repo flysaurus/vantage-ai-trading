@@ -14,16 +14,20 @@ import { detectAccountAction, detectRiskLevel, buildAccountStateAnswer, formatRi
 
 describe('detectAccountAction — risk-tolerance change', () => {
   it.each([
-    ['change it to aggressive style', 'Aggressive'],
     ['change my risk tolerance to aggressive', 'Aggressive'],
     ['change my risk to conservative', 'Conservative'],
     ['make me more aggressive', 'Aggressive'],
     ['set my risk level to moderate', 'Moderate'],
-    ['change it to conservative', 'Conservative'],
     ['switch my risk profile to aggressive', 'Aggressive'],
     ['update my risk tolerance to low risk', 'Conservative'],
   ])('maps %s → change_risk(%s)', (msg, risk) => {
     expect(detectAccountAction(msg)).toEqual({ type: 'change_risk', risk });
+  });
+
+  it('does NOT treat a bare risk word as a risk change (it refers to style)', () => {
+    expect(detectAccountAction('make it aggressive')).not.toEqual(expect.objectContaining({ type: 'change_risk' }));
+    expect(detectAccountAction('change it to conservative')).not.toEqual(expect.objectContaining({ type: 'change_risk' }));
+    expect(detectAccountAction('change to aggressive')).not.toEqual(expect.objectContaining({ type: 'change_risk' }));
   });
 
   it('does NOT treat a hypothetical risk question as a mutation', () => {
