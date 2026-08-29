@@ -580,6 +580,8 @@ export function detectScheduledActivityIntent(m: string): boolean {
   if (/\b(dca|dollar[\s-]?cost[\s-]?averaging)\b/.test(s)) return true;
   // "what's scheduled/pending/queued" (order noun may be elsewhere in the sentence).
   if (/(what|any|show|list|see|check)\b.*\b(scheduled|pending|queued|recurring)\b/.test(s)) return true;
+  // "what am I waiting to fill" / "still waiting to execute"
+  if (/\b(waiting|wait|still)\b.*\b(fill|execute|order|trade|buy)\b/.test(s)) return true;
   return false;
 }
 

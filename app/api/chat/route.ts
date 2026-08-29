@@ -52,6 +52,7 @@ import {
   detectVehicleAnswer,
 } from '@/lib/ai/manager'
 import { classify } from '@/lib/ai/classifier'
+import { logClassifierAudit } from '@/lib/ai/classifier-audit'
 import { validateResponse } from '@/lib/ai/validator'
 
 /** Fetch the user's DCA schedules + open/queued orders and render the answer. */
@@ -1355,6 +1356,8 @@ export async function POST(req: Request) {
     const classification = await classify(lastMessage);
     tMark('classified');
     console.log(`[chat] ===> CLASSIFY category=${classification.category} vehicle=${classification.vehicle} source=${classification.source} needsSearch=${classification.needsSearch}${classification.gibberish ? ' GIBBERISH' : ''}${classification.trivial ? ' TRIVIAL' : ''}`);
+    // Append-only audit (fire-and-forget) so mislabels can be reviewed over time.
+    void logClassifierAudit(userId, lastMessage, classification);
 
     // ── Classifier Tier-2: deterministic dispatch (profile mutation + account state) ──
     // detectAccountAction / detectAppHelpIntent catch exact & common phrasings.
