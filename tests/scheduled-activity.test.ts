@@ -52,6 +52,13 @@ describe('detectScheduledActivityIntent — negative (must NOT intercept)', () =
     // "wait to buy" is a timing question, not "waiting for my order to fill".
     'is AMD overbought right now should I wait to buy',
     'should I wait to buy NVDA',
+    // DCA / recurring-buy CREATION commands → tool path (dca_create), not a list.
+    'set up a dollar-cost averaging plan',
+    'set up a DCA plan',
+    'create a recurring buy',
+    'start a weekly DCA',
+    'schedule a monthly investment',
+    'add a daily DCA on VOO',
   ])('does NOT match: %s', (m) => {
     expect(detectScheduledActivityIntent(m)).toBe(false);
   });

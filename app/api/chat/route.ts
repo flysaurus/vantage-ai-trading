@@ -15,7 +15,7 @@ import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
 import { detectAppHelpIntent, buildAppHelpAnswer } from '@/lib/ai/app-help'
-import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, detectScheduledActivityIntent, buildScheduledActivityAnswer, detectAccountStateIntent } from '@/lib/ai/account-actions'
+import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, detectScheduledActivityIntent, buildScheduledActivityAnswer, detectAccountStateIntent, isDcaCreationCommand } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
@@ -1426,11 +1426,16 @@ export async function POST(req: Request) {
       }
 
       if (classification.category === 'scheduled_activity') {
-        if (userId && userId !== 'anonymous') {
+        // Creation commands ("set up a DCA plan") are tool-path actions, not
+        // listings — never answer them with the read-only schedule list.
+        if (isDcaCreationCommand(lastMessage)) {
+          console.log('[chat] 🧭 scheduled_activity via classifier but DCA-creation → fall through to tools');
+        } else if (userId && userId !== 'anonymous') {
           console.log('[chat] 🧭 scheduled_activity via classifier → deterministic answer');
           return textSSEResponse(await fetchScheduledActivityAnswer(userId));
+        } else {
+          console.log('[chat] 🧭 scheduled_activity anonymous → fall through to model');
         }
-        console.log('[chat] 🧭 scheduled_activity anonymous → fall through to model');
       }
     }
 

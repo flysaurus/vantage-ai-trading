@@ -670,6 +670,22 @@ export function detectAccountStateIntent(m: string): boolean {
 // ── Scheduled / queued activity (DCA + open orders) ─────────────────────────
 
 /** Detect "what are my scheduled/pending/open/recurring buys or orders" queries. */
+/**
+ * True when the message is a DCA / recurring-buy CREATION command ("set up a
+ * DCA plan", "create a recurring buy", "start a weekly DCA", "schedule a
+ * monthly investment"). These are ACTIONS for the tool path (previewDcaCreate
+ * → dca_create), NOT read-only "show me my schedule" queries — so the
+ * scheduled-activity router (deterministic AND classifier) must let them fall
+ * through to the model instead of returning a schedule listing.
+ */
+export function isDcaCreationCommand(m: string): boolean {
+  const s = m.trim().toLowerCase();
+  if (!s || s.length > 240) return false;
+  if (/\b(set\s*up|create|start|begin|establish|initiate|launch|make|add)\b/.test(s) && /\b(dca|dollar[\s-]?cost[\s-]?averaging|recurring|automatic(?:al)?ly?|auto[\s-]?(?:invest|buy)|weekly|monthly|daily|scheduled)\b/.test(s)) return true;
+  if (/\bschedule\b/.test(s) && /\b(?:a|an|some|the)?\s*(?:dca|dollar[\s-]?cost[\s-]?averaging|recurring|weekly|monthly|daily|automatic|regular)\s*(?:buy|invest|plan|contribution)?\b/.test(s)) return true;
+  return false;
+}
+
 export function detectScheduledActivityIntent(m: string): boolean {
   const s = m.trim().toLowerCase();
   if (!s || s.length > 240) return false;
@@ -680,6 +696,9 @@ export function detectScheduledActivityIntent(m: string): boolean {
   // a read-only listing. ("stop" deliberately excluded — "stop loss order" is a
   // legit read-only status query.)
   if (/\b(cancel|delete|remove|pause|deactivate|turn\s*off)\b/.test(s) && /\b(dca|dollar|order|buy|trade|schedule|recurring|investment|plan|alert)\b/.test(s)) return false;
+
+  // DCA / recurring-buy CREATION commands are tool-path actions, not listings.
+  if (isDcaCreationCommand(s)) return false;
 
   // Gains/returns/P&L math ("realized gain from DCA fills", "what did my DCA
   // earn") is a computation, not a schedule listing — let the model answer it
