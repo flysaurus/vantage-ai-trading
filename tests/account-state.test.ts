@@ -82,6 +82,17 @@ describe('detectAccountStateIntent — non-account queries must NOT match', () =
     'how is the s&p 500 doing overall',
     'when does my money move next',
     'whats still pending in my account',
+    // Rebalance / deployment commands use "available cash" as a SCOPE, not a
+    // balance query — they must route to the rebalance plan, not a cash readout.
+    'rebalance for the available cash',
+    'rebalance using available cash',
+    'rebalance my available cash',
+    'rebalance the available cash only',
+    'rebalance using cash only',
+    'rebalance with my cash',
+    'deploy my available cash',
+    'allocate the available cash',
+    'rebalance my portfolio with the available cash',
   ];
 
   it.each(nonAccount)('does NOT detect: %s', (q) => {

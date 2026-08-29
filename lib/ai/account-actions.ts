@@ -620,6 +620,12 @@ export function detectAccountStateIntent(m: string): boolean {
   // Trade / research about a specific security is NOT account state.
   if (/\b(?:invest\s+(?:in|into)|buy|sell|purchase|trade)\b/.test(s)) return false;
 
+  // Rebalance / deployment commands are ACTIONS, not balance queries.
+  // "rebalance for the available cash" / "deploy my available cash" use
+  // "available cash" as the SCOPE of the action, not the thing being asked
+  // about. They must route to the rebalance path, not a cash-balance readout.
+  if (/\b(?:rebalance|deploy|allocate)\b/.test(s)) return false;
+
   // Company fundamentals (not MY account).
   if (/\b(?:balance\s*sheet|debt\s*situation)\b/.test(s)) return false;
 
