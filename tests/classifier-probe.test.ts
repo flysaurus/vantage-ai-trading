@@ -53,5 +53,5 @@ describe.skipIf(!run)('gpt-5-nano classifier probe (opt-in)', () => {
     for (const m of disagreements) console.log(`  ✗ ${m}`);
 
     expect(ok / total).toBeGreaterThanOrEqual(0.8);
-  }, 600_000);
+  }, 1800_000);
 });

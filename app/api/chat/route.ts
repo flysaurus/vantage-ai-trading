@@ -22,6 +22,7 @@ import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
 import { MONEY_TOOLS, executeMoneyTool } from '@/lib/ai/money-tools'
 import type { MoneyToolContext } from '@/lib/ai/money-tools'
 import { detectConfirmIntent, actionRequiresSymbolEcho, symbolEchoMatches, findParamConflict } from '@/lib/ai/confirm'
+import { isQuestionLike } from '@/lib/ai/question-guard'
 import { getPendingAction, markPendingAction, createPendingAction } from '@/lib/ai/pending-actions'
 import { executePendingAction } from '@/lib/ai/executors'
 import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib/ai-guard'
@@ -1367,9 +1368,9 @@ export async function POST(req: Request) {
     // actions (confirm/execute) are deliberately NOT in the taxonomy: they stay on
     // the deterministic gate.
     if (mode !== 'alerts') {
-      const questionGuard = /\b(should|could|would|might|what if|how (do i|to|would|should)|what happens if|can i|do i need to|is it)\b/i;
+      const questionGuard = isQuestionLike(lastMessage);
 
-      if (classification.category === 'profile_mutation' && !questionGuard.test(lastMessage)) {
+      if (classification.category === 'profile_mutation' && !questionGuard) {
         const field = classification.profileField;
         const value = (classification.profileValue || '').trim();
         const supabase = createServerClient();
