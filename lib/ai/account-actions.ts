@@ -83,6 +83,7 @@ export interface RebalanceLine {
   currentValue: number;
   targetValue: number;
   delta: number;
+  qty: number;
   action: 'buy' | 'sell' | 'hold';
 }
 
@@ -106,16 +107,17 @@ export function computeRebalancePlan(portfolio: PortfolioSnapshot | null, style:
   const lines: RebalanceLine[] = targets.map((t) => {
     const targetValue = equity * t.targetPercent / 100;
     let currentValue = 0;
+    let qty = 0;
     if (t.symbol === 'CASH') {
       currentValue = cash;
     } else {
-      currentValue = positions
-        .filter((p) => (p.symbol || '').toUpperCase() === t.symbol.toUpperCase())
-        .reduce((s, p) => s + (p.marketValue || (p.price || 0) * (p.qty || 0) || 0), 0);
+      const held = positions.filter((p) => (p.symbol || '').toUpperCase() === t.symbol.toUpperCase());
+      currentValue = held.reduce((s, p) => s + (p.marketValue || (p.price || 0) * (p.qty || 0) || 0), 0);
+      qty = held.reduce((s, p) => s + (p.qty || 0), 0);
     }
     const delta = targetValue - currentValue;
     const action: 'buy' | 'sell' | 'hold' = Math.abs(delta) < 1 ? 'hold' : delta > 0 ? 'buy' : 'sell';
-    return { symbol: t.symbol, name: t.name, targetPercent: t.targetPercent, currentValue, targetValue, delta, action };
+    return { symbol: t.symbol, name: t.name, targetPercent: t.targetPercent, currentValue, targetValue, delta, qty, action };
   });
 
   // Individual positions not in any target bucket → sell to cash.
@@ -131,6 +133,7 @@ export function computeRebalancePlan(portfolio: PortfolioSnapshot | null, style:
         currentValue: marketValue,
         targetValue: 0,
         delta: -marketValue,
+        qty: p.qty || 0,
         action: 'sell' as const,
       };
     });
@@ -183,6 +186,7 @@ export interface RebalanceLeg {
   symbol: string;
   side: 'BUY' | 'SELL';
   dollarAmount: number;
+  shares?: number | null;
 }
 
 /** Convert a rebalance plan into executable order legs (excludes the CASH bucket). */
@@ -190,11 +194,18 @@ export function rebalancePlanToLegs(plan: RebalancePlan): RebalanceLeg[] {
   return plan.lines
     .filter((l) => l.symbol && l.symbol.toUpperCase() !== 'CASH')
     .filter((l) => Math.abs(l.delta) >= 1)
-    .map((l) => ({
-      symbol: l.symbol.toUpperCase(),
-      side: l.action === 'buy' ? ('BUY' as const) : ('SELL' as const),
-      dollarAmount: Math.round(Math.abs(l.delta) * 100) / 100,
-    }));
+    .map((l) => {
+      const side: 'BUY' | 'SELL' = l.action === 'buy' ? 'BUY' : 'SELL';
+      const dollarAmount = Math.round(Math.abs(l.delta) * 100) / 100;
+      // Sells are full liquidations of non-target holdings → use the EXACT held
+      // share count (not a notional dollar amount). A notional sell gets
+      // converted back to fractional shares by the broker, which can round to
+      // slightly MORE than the held quantity → "insufficient qty available".
+      if (side === 'SELL') {
+        return { symbol: l.symbol.toUpperCase(), side, dollarAmount, shares: l.qty || null };
+      }
+      return { symbol: l.symbol.toUpperCase(), side, dollarAmount };
+    });
 }
 
 /** Build a markdown table of the executable trades (buys then sells; CASH excluded). */

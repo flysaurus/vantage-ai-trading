@@ -358,7 +358,10 @@ async function execRebalance(
     const symbol = String(leg?.symbol || '').toUpperCase();
     const side = leg?.side === 'SELL' ? 'SELL' : 'BUY';
     const dollarAmount = Number(leg?.dollarAmount) || 0;
-    if (!symbol || dollarAmount < 1) {
+    const sellShares = side === 'SELL' ? Number(leg?.shares) || 0 : 0;
+    const hasQty = sellShares > 0;
+    const hasAmount = dollarAmount >= 1;
+    if (!symbol || (!hasQty && !hasAmount)) {
       failed++;
       out.push(`❌ Skipped an invalid leg (${symbol || 'missing symbol'}).`);
       continue;
@@ -368,8 +371,16 @@ async function execRebalance(
       userId,
       symbol,
       side,
-      dollarAmount,
+      // Sells liquidate the EXACT held quantity — a notional (dollar) sell gets
+      // converted back to fractional shares by the broker, which can round to
+      // slightly MORE than held → "insufficient qty available for order".
+      shares: hasQty ? sellShares : null,
+      dollarAmount: hasQty ? null : dollarAmount,
       orderType: 'market',
+      // Rebalance legs are deterministic (style targets + broker positions),
+      // not LLM-proposed — safe to skip the Finnhub symbol gate so real held
+      // ETFs the broker recognizes (CPER, etc.) sell without being blocked.
+      skipSymbolGate: true,
     });
     if (r.ok) {
       placed++;

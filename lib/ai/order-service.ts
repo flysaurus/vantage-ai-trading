@@ -53,6 +53,14 @@ export interface PlaceSingleTradeArgs {
   stopPrice?: number | null;
   timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok';
   currentPrice?: number | null;
+  /**
+   * Skip the Finnhub symbol-validity gate (Gate 1). Set true ONLY for
+   * deterministic broker-sourced legs (e.g. rebalance sells of real held
+   * positions), where the symbol came from the broker itself rather than an
+   * LLM — so an obscure ETF the user actually holds (CPER, etc.) isn't
+   * blocked just because Finnhub doesn't list it.
+   */
+  skipSymbolGate?: boolean;
 }
 
 export async function placeSingleTrade(args: PlaceSingleTradeArgs): Promise<ExecResult> {
@@ -66,6 +74,7 @@ export async function placeSingleTrade(args: PlaceSingleTradeArgs): Promise<Exec
   const stopPrice = args.stopPrice ?? undefined;
   const timeInForce = args.timeInForce || 'day';
   const currentPrice = args.currentPrice ?? undefined;
+  const skipSymbolGate = args.skipSymbolGate === true;
 
   if (!symbol) return { ok: false, message: 'Missing symbol.' };
   if (!['BUY', 'SELL'].includes(side)) return { ok: false, message: 'Invalid side.' };
@@ -75,14 +84,16 @@ export async function placeSingleTrade(args: PlaceSingleTradeArgs): Promise<Exec
 
   // Gate 1: symbol re-verification (Finnhub). messageId=null → cross-check
   // skipped, but Gate 1 (is this a real ticker?) still applies.
-  try {
-    const gate = await verifyTradeSymbol(symbol, null, supabase, null);
-    if (!gate.allowed) {
-      console.error(`[order-service] 🚫 BLOCKED by trade-gate: ${symbol} — ${gate.detail || gate.reason}`);
-      return { ok: false, message: gate.reason };
+  if (!skipSymbolGate) {
+    try {
+      const gate = await verifyTradeSymbol(symbol, null, supabase, null);
+      if (!gate.allowed) {
+        console.error(`[order-service] 🚫 BLOCKED by trade-gate: ${symbol} — ${gate.detail || gate.reason}`);
+        return { ok: false, message: gate.reason };
+      }
+    } catch (e) {
+      return { ok: false, message: 'Safety verification failed — order not placed.' };
     }
-  } catch (e) {
-    return { ok: false, message: 'Safety verification failed — order not placed.' };
   }
 
   // Gate 2: idempotency (manual path = time-window; the pending-action row is
@@ -278,7 +289,7 @@ export async function placeSingleTrade(args: PlaceSingleTradeArgs): Promise<Exec
     return {
       ok: true,
       message: `✅ ${label} ${symbol} (${result.status.toLowerCase()}) — ${
-        result.filledShares ? `${result.filledShares} shares` : result.message
+        result.filledShares ? `${result.filledShares} shares` : (result.message || 'order submitted')
       }.`,
     };
   } catch (err) {
