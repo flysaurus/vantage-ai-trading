@@ -1238,7 +1238,7 @@ export async function POST(req: Request) {
           } catch (e) {
             console.error('[chat] risk change failed:', e);
           }
-          return textSSEResponse(formatRiskChangeAnswer(action.risk));
+          return textSSEResponse(formatRiskChangeAnswer(action.risk), { kind: 'risk_changed' });
         }
 
         if (action.type === 'change_style') {
@@ -1332,7 +1332,7 @@ export async function POST(req: Request) {
               }
             } catch (e) { console.error('[chat] risk change (classifier) failed:', e); }
             console.log(`[chat] 🎚️ risk changed via classifier → ${risk} ("${value}")`);
-            return textSSEResponse(formatRiskChangeAnswer(risk));
+            return textSSEResponse(formatRiskChangeAnswer(risk), { kind: 'risk_changed' });
           }
         } else if (field === 'style') {
           const style = normalizeStyle(value);

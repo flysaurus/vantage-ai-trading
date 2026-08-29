@@ -198,7 +198,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const isDemoAccount = activeAccount?.isDemo ?? true;
   // Canonical account scope for chat isolation (defaults to demo until accounts resolve)
   const accountId = activeAccountId || 'demo';
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const userId = user?.id ? String(user.id) : null;
   const investorStyle = user?.investorStyle || 'Lynch';
   
@@ -260,7 +260,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   //   rebalance_confirm  → ✓ Confirm / ✕ Cancel
   //   rebalance_budget   → 💵 available cash / 📊 full portfolio / ✏️ custom
   //   rebalance_custom   → inline $ amount input + deploy
-  const [rebalanceAction, setRebalanceAction] = useState<{ kind: 'rebalance_plan' | 'rebalance_confirm' | 'rebalance_budget' | 'rebalance_custom' | 'rebalance_asset' | 'confirm_pending' | 'style_pick' | 'style_changed'; msgId: string } | null>(null);
+  const [rebalanceAction, setRebalanceAction] = useState<{ kind: 'rebalance_plan' | 'rebalance_confirm' | 'rebalance_budget' | 'rebalance_custom' | 'rebalance_asset' | 'confirm_pending' | 'style_pick' | 'style_changed' | 'risk_changed'; msgId: string } | null>(null);
   const [customAmountValue, setCustomAmountValue] = useState('');
 
   // ── TL;DR toggle state (set of collapsed message indices) ──
@@ -1249,6 +1249,16 @@ export function AITab({ messages, setMessages }: AITabProps) {
               if (data.action) {
                 // Deterministic rebalance path tagged this message with inline buttons.
                 setRebalanceAction({ kind: data.action.kind, msgId: aiMsgId });
+                // Style / risk changed server-side (DB write already committed).
+                // Refresh the auth profile so the header badge + settings page stop
+                // showing the stale pre-change value. Mirror what InvestorStyleBadge
+                // does on its own change path.
+                if (data.action.kind === 'style_changed') {
+                  try { localStorage.removeItem('vantage_investor_style'); } catch {}
+                  refreshUser();
+                } else if (data.action.kind === 'risk_changed') {
+                  refreshUser();
+                }
               }
               if (data.corrections) {
                 // Server-side marker validation caught a hallucinated ticker
