@@ -66,6 +66,18 @@ export function detectConfirmIntent(message: string): ConfirmIntent {
   const m = message.toLowerCase().trim();
   if (!m || m.length > 200) return { type: 'none' };
 
+  // A question is never a confirm/cancel. "did my order go through", "what is
+  // a stop loss order", "when does my order execute" contain confirm/cancel
+  // substrings ("go", "execute", "stop") but must NEVER trigger a side effect.
+  // ("do it" / "go ahead" / "can you execute it" are requests, not state questions,
+  // so they still flow through the closed-set match below.)
+  if (
+    /[?]$/.test(m) ||
+    /^(what|whats|what's|when|how|why|who|where|which|did|does|is|are|was|were|am\s+i|have\s+(i|you|we)|do\s+(i|you|we)|has\s+(the|it|my|this|that))\b/.test(m)
+  ) {
+    return { type: 'none' };
+  }
+
   const hasConfirm = CONFIRM_RE.test(m) || hasEmoji(m, CONFIRM_EMOJI);
   const hasCancel = CANCEL_RE.test(m) || hasEmoji(m, CANCEL_EMOJI);
   const hasModify = MODIFY_RE.test(m) || /\bbut\b/.test(m);

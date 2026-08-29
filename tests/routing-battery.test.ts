@@ -117,6 +117,18 @@ const BATTERY: Array<[string, Expected]> = [
   ['what is happening in the market today', 'classifier'],
   ['how much cash do i have', 'classifier'],
   ['what are my positions', 'classifier'],
+  ['explain dollar cost averaging', 'classifier'],
+  ['explain dca to me like im 5', 'classifier'],
+  ['what is a stop loss order', 'classifier'],
+  ['whats on deck', 'classifier'],
+  ['should i be more aggressive', 'classifier'],
+
+  // ── Order-status questions → scheduled_activity (NOT confirm/cancel) ──
+  ['did my order go through', 'scheduled_activity'],
+  ['when does my next order execute', 'scheduled_activity'],
+  ['did my order go thru yet', 'scheduled_activity'],
+  ['did my sell order clear', 'scheduled_activity'],
+  ['whats queued up right now', 'scheduled_activity'],
 ];
 
 describe('deterministic routing battery', () => {

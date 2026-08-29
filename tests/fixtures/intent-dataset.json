@@ -1,0 +1,1466 @@
+[
+  {
+    "message": "build me a portfolio focused on clean energy",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "help me put together a basket of AI stocks",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "i want to start a growth portfolio with $500",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "can u build a dividend portfolio for me",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "construct a tech-heavy portfolio for me plz",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "put together a basket of biotech names",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "i need a diversified starter portfolio",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "build a basket around EV supply chain",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "rebalance my portfolio to be more conservative",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "help me diversify away from just tech stocks",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "create a portfolio with low correlation stocks",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "i want a basket of value stocks under $50",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "build me something similar to warren buffett's style",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "set up a recession-proof portfolio for me",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "add some international exposure to my mix",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "help me build a 10 stock starter portfolio",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "construct an income-focused portfolio",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "i want to rebalance toward small caps",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "build a basket that tracks semiconductor growth",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "put together a few etfs for a lazy portfolio",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "shd i restructure my whole allocation",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "make me a basket around water scarcity theme",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "build something with 60/40 stocks and bonds vibe",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "construct a portfolio that hedges against inflation",
+    "category": "portfolio_construction"
+  },
+  {
+    "message": "tell me about apple's balance sheet",
+    "category": "single_security_research"
+  },
+  {
+    "message": "what's nvda's p/e ratio",
+    "category": "single_security_research"
+  },
+  {
+    "message": "give me a rundown on tesla",
+    "category": "single_security_research"
+  },
+  {
+    "message": "whats the deal with palantir stock",
+    "category": "single_security_research"
+  },
+  {
+    "message": "research amazon for me",
+    "category": "single_security_research"
+  },
+  {
+    "message": "what's amd's revenue growth looking like",
+    "category": "single_security_research"
+  },
+  {
+    "message": "can u pull up microsoft's earnings history",
+    "category": "single_security_research"
+  },
+  {
+    "message": "tell me everything about coinbase stock",
+    "category": "single_security_research"
+  },
+  {
+    "message": "whats meta's debt situation",
+    "category": "single_security_research"
+  },
+  {
+    "message": "give me the fundamentals on netflix",
+    "category": "single_security_research"
+  },
+  {
+    "message": "how has google's stock performed this year",
+    "category": "single_security_research"
+  },
+  {
+    "message": "whats the moat on costco",
+    "category": "single_security_research"
+  },
+  {
+    "message": "tell me about intel's turnaround plan",
+    "category": "single_security_research"
+  },
+  {
+    "message": "research disney stock for me plz",
+    "category": "single_security_research"
+  },
+  {
+    "message": "whats going on with boeing lately",
+    "category": "single_security_research"
+  },
+  {
+    "message": "give me a summary of nike's financials",
+    "category": "single_security_research"
+  },
+  {
+    "message": "whats amgen's dividend yield",
+    "category": "single_security_research"
+  },
+  {
+    "message": "tell me about spy the etf",
+    "category": "single_security_research"
+  },
+  {
+    "message": "research qualcomm's chip business",
+    "category": "single_security_research"
+  },
+  {
+    "message": "what's the story with GameStop stock",
+    "category": "single_security_research"
+  },
+  {
+    "message": "whats snowflake's market cap",
+    "category": "single_security_research"
+  },
+  {
+    "message": "tell me about ford's ev pivot",
+    "category": "single_security_research"
+  },
+  {
+    "message": "give me the lowdown on carvana",
+    "category": "single_security_research"
+  },
+  {
+    "message": "buy 10 shares of apple",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "sell all my tesla",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "buy $500 of nvda",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "place an order for 5 shares of amzn",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "sell 20 shares of amd",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "buy me some spy",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "purchase 3 shares of googl",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "dump my meta position",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "buy $100 worth of voo",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "sell half my palantir",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "get me 15 shares of msft",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "liquidate my coinbase position",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "buy 50 shares of ford",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "sell my entire boeing stake",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "order 25 shares of intel",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "buy $1000 of qqq",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "close out my snowflake position",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "purchase 8 shares of disney",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "sell 100 shares of gme",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "buy me some costco stock",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "get rid of my carvana shares",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "buy 2 shares of berkshire",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "sell everything in my portfolio",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "buy me some tsla plz asap",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "sel all my tsla shares now",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "buy 10 shares aapl asap plz",
+    "category": "direct_trade_instruction"
+  },
+  {
+    "message": "how is my apple position doing",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "am i up or down on tesla",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "whats my biggest winner right now",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "how much have i made on nvda",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "which of my stocks is losing money",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "whats my worst performer this month",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "how diversified am i",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "am i too heavy in tech",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "whats my exposure to semiconductors",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "how correlated are my holdings",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "whats my total gain on amazon",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "which position is dragging my portfolio down",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "how has my portfolio done this week",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "am i overweight in one sector",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "whats my best performing stock ytd",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "how risky is my current mix",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "whats my average cost basis on msft",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "am i diversified enough across sectors",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "how much of my portfolio is in one stock",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "whats my sector breakdown look like",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "which holding has the highest volatility",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "how concentrated is my portfolio",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "whats my unrealized gain across everything",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "am i too exposed to one company",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "how are my basket positions doing overall",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "whats dragging down my total return",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "which stock should i be worried about",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "how balanced is my allocation right now",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "am i overexposed to ai stocks",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "whats my realized vs unrealized gains",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "what should i buy next",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "what am i waiting to fill",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "did my order go through",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "what did i sell last week",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "what should i sell to rebalance",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "did my basket order execute yet",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "what have i bought this month",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "what am i waiting on to fill",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "did my dca buy happen today",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "what did i buy last week",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "am i supposed to sell anything soon",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "what orders did i place yesterday",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "did my sell order clear",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "what should i be buying right now",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "have i bought anything recently",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "what did i end up selling",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "is my order still waiting to fill",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "what trades did i make this week",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "did i already buy nvda this month",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "should i be more aggressive",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "should i switch to growth style",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "should i be more conservative",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "should i change my risk tolerance",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "am i too aggressive right now",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "am i too conservative for my age",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "should i be taking on more risk",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "is my risk tolerance too high",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "should i switch my investing style",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "am i in the right risk category",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "should i dial back my aggressiveness",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "is growth style right for me",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "should i be more risk averse",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "am i too passive with my strategy",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "should i update my risk profile",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "hw diversifed am i rn",
+    "category": "portfolio_relative_question"
+  },
+  {
+    "message": "what is a p/e ratio",
+    "category": "educational"
+  },
+  {
+    "message": "explain what an etf is",
+    "category": "educational"
+  },
+  {
+    "message": "whats the difference between a roth and traditional 401k",
+    "category": "educational"
+  },
+  {
+    "message": "what does dividend yield mean",
+    "category": "educational"
+  },
+  {
+    "message": "explain dollar cost averaging",
+    "category": "educational"
+  },
+  {
+    "message": "what is a stop loss order",
+    "category": "educational"
+  },
+  {
+    "message": "whats the difference between growth and value stocks",
+    "category": "educational"
+  },
+  {
+    "message": "explain what a limit order is",
+    "category": "educational"
+  },
+  {
+    "message": "what does market cap mean",
+    "category": "educational"
+  },
+  {
+    "message": "whats a bull market vs bear market",
+    "category": "educational"
+  },
+  {
+    "message": "explain short selling to me",
+    "category": "educational"
+  },
+  {
+    "message": "what is compound interest",
+    "category": "educational"
+  },
+  {
+    "message": "whats the difference between stocks and bonds",
+    "category": "educational"
+  },
+  {
+    "message": "explain what beta means for a stock",
+    "category": "educational"
+  },
+  {
+    "message": "what is a mutual fund",
+    "category": "educational"
+  },
+  {
+    "message": "whats an index fund",
+    "category": "educational"
+  },
+  {
+    "message": "explain what capital gains tax is",
+    "category": "educational"
+  },
+  {
+    "message": "what does diluted eps mean",
+    "category": "educational"
+  },
+  {
+    "message": "whats a margin account",
+    "category": "educational"
+  },
+  {
+    "message": "explain what a stock split does",
+    "category": "educational"
+  },
+  {
+    "message": "what is fifo in investing",
+    "category": "educational"
+  },
+  {
+    "message": "whats the difference between nasdaq and nyse",
+    "category": "educational"
+  },
+  {
+    "message": "explain dca to me like im 5",
+    "category": "educational"
+  },
+  {
+    "message": "wut is a p/e ratio mean",
+    "category": "educational"
+  },
+  {
+    "message": "whats the market doing today",
+    "category": "market_commentary"
+  },
+  {
+    "message": "why is the market down so much",
+    "category": "market_commentary"
+  },
+  {
+    "message": "whats the fed gonna do with rates",
+    "category": "market_commentary"
+  },
+  {
+    "message": "how is inflation affecting stocks",
+    "category": "market_commentary"
+  },
+  {
+    "message": "whats happening with the economy right now",
+    "category": "market_commentary"
+  },
+  {
+    "message": "is a recession coming",
+    "category": "market_commentary"
+  },
+  {
+    "message": "why are tech stocks selling off",
+    "category": "market_commentary"
+  },
+  {
+    "message": "whats the outlook for the market this year",
+    "category": "market_commentary"
+  },
+  {
+    "message": "how are interest rates affecting the market",
+    "category": "market_commentary"
+  },
+  {
+    "message": "whats going on with the yield curve",
+    "category": "market_commentary"
+  },
+  {
+    "message": "why is the dollar so strong right now",
+    "category": "market_commentary"
+  },
+  {
+    "message": "whats the jobs report gonna do to stocks",
+    "category": "market_commentary"
+  },
+  {
+    "message": "how is the s&p 500 doing overall",
+    "category": "market_commentary"
+  },
+  {
+    "message": "whats causing all this market volatility",
+    "category": "market_commentary"
+  },
+  {
+    "message": "is the bull market gonna keep going",
+    "category": "market_commentary"
+  },
+  {
+    "message": "whats the deal with the debt ceiling",
+    "category": "market_commentary"
+  },
+  {
+    "message": "how are tariffs affecting the market",
+    "category": "market_commentary"
+  },
+  {
+    "message": "whats the fear and greed index at",
+    "category": "market_commentary"
+  },
+  {
+    "message": "why did the market rally today",
+    "category": "market_commentary"
+  },
+  {
+    "message": "whats the general sentiment on wall street",
+    "category": "market_commentary"
+  },
+  {
+    "message": "wuts goin on w the market today",
+    "category": "market_commentary"
+  },
+  {
+    "message": "apple vs microsoft which is better",
+    "category": "comparative"
+  },
+  {
+    "message": "compare nvda and amd",
+    "category": "comparative"
+  },
+  {
+    "message": "whats better spy or voo",
+    "category": "comparative"
+  },
+  {
+    "message": "tesla vs ford whos winning",
+    "category": "comparative"
+  },
+  {
+    "message": "compare coke and pepsi stock",
+    "category": "comparative"
+  },
+  {
+    "message": "amazon vs walmart which has better growth",
+    "category": "comparative"
+  },
+  {
+    "message": "whats the difference between qqq and spy",
+    "category": "comparative"
+  },
+  {
+    "message": "compare visa and mastercard",
+    "category": "comparative"
+  },
+  {
+    "message": "netflix vs disney streaming battle",
+    "category": "comparative"
+  },
+  {
+    "message": "which is better google or meta",
+    "category": "comparative"
+  },
+  {
+    "message": "compare boeing and airbus",
+    "category": "comparative"
+  },
+  {
+    "message": "whats better costco or target",
+    "category": "comparative"
+  },
+  {
+    "message": "amd vs intel who wins the chip war",
+    "category": "comparative"
+  },
+  {
+    "message": "compare palantir and c3.ai",
+    "category": "comparative"
+  },
+  {
+    "message": "visa vs paypal which is the better buy",
+    "category": "comparative"
+  },
+  {
+    "message": "compare exxon and chevron",
+    "category": "comparative"
+  },
+  {
+    "message": "whats better vanguard or fidelity etfs",
+    "category": "comparative"
+  },
+  {
+    "message": "compare snowflake and databricks",
+    "category": "comparative"
+  },
+  {
+    "message": "tesla vs rivian long term",
+    "category": "comparative"
+  },
+  {
+    "message": "compare pfizer and moderna",
+    "category": "comparative"
+  },
+  {
+    "message": "whats the weather like today",
+    "category": "off_topic"
+  },
+  {
+    "message": "can u recommend a good pizza place",
+    "category": "off_topic"
+  },
+  {
+    "message": "how do i cook pasta",
+    "category": "off_topic"
+  },
+  {
+    "message": "whats the capital of france",
+    "category": "off_topic"
+  },
+  {
+    "message": "tell me a joke",
+    "category": "off_topic"
+  },
+  {
+    "message": "whats the best movie of 2024",
+    "category": "off_topic"
+  },
+  {
+    "message": "how do i change a tire",
+    "category": "off_topic"
+  },
+  {
+    "message": "whats a good workout routine",
+    "category": "off_topic"
+  },
+  {
+    "message": "can u help me write an email",
+    "category": "off_topic"
+  },
+  {
+    "message": "whats the meaning of life",
+    "category": "off_topic"
+  },
+  {
+    "message": "how do i learn spanish",
+    "category": "off_topic"
+  },
+  {
+    "message": "whats a good recipe for dinner",
+    "category": "off_topic"
+  },
+  {
+    "message": "tell me about ancient rome",
+    "category": "off_topic"
+  },
+  {
+    "message": "how do i fix my wifi",
+    "category": "off_topic"
+  },
+  {
+    "message": "whats the best programming language",
+    "category": "off_topic"
+  },
+  {
+    "message": "can u write me a poem",
+    "category": "off_topic"
+  },
+  {
+    "message": "how far is the moon from earth",
+    "category": "off_topic"
+  },
+  {
+    "message": "whats a good book to read",
+    "category": "off_topic"
+  },
+  {
+    "message": "how do i train my dog",
+    "category": "off_topic"
+  },
+  {
+    "message": "whats the tallest mountain in the world",
+    "category": "off_topic"
+  },
+  {
+    "message": "make me more aggressive",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "switch my style to growth",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "change my risk tolerance to high",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "set me to conservative mode",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "make my portfolio more defensive",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "switch me to a buffett style strategy",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "set my investor style to lynch",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "change me to a value investor",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "make me more risk averse",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "switch my strategy to momentum",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "set my risk level to moderate",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "change my investing style to income focused",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "make me a more aggressive investor",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "switch me over to growth spotter",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "set my style to dividend focused",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "change my profile to conservative",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "make my strategy more cautious",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "switch my investing approach to value",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "set me up as a growth investor",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "change my risk setting to low",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "make me less risky",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "switch my style to lynch style",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "update my risk tolerance to aggressive",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "change my investor profile to moderate",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "set my strategy to quality compounders",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "make me a defensive investor",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "switch me to a higher risk profile",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "change my style setting to growth",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "set my investing mode to conservative",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "make my approach more balanced",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "switch my profile to aggressive growth",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "update my style to value investing",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "make me more conservative",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "switch me to growth",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "set me to high risk",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "change my style now",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "swich me to growth stratgy",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "make me more aggresive with investments",
+    "category": "profile_mutation"
+  },
+  {
+    "message": "how much cash do i have",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my account balance",
+    "category": "account_state"
+  },
+  {
+    "message": "how much buying power do i have",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my total portfolio value",
+    "category": "account_state"
+  },
+  {
+    "message": "how much money is in my account",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my available cash",
+    "category": "account_state"
+  },
+  {
+    "message": "how much is reserved right now",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my net worth in here",
+    "category": "account_state"
+  },
+  {
+    "message": "how much have i invested total",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my current equity",
+    "category": "account_state"
+  },
+  {
+    "message": "how much cash do i have left",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my total account value",
+    "category": "account_state"
+  },
+  {
+    "message": "how much money do i have to invest",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my buying power right now",
+    "category": "account_state"
+  },
+  {
+    "message": "how much is my portfolio worth",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my total invested amount",
+    "category": "account_state"
+  },
+  {
+    "message": "how much cash is available",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my current balance",
+    "category": "account_state"
+  },
+  {
+    "message": "how much do i have in reserved funds",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my portfolio worth today",
+    "category": "account_state"
+  },
+  {
+    "message": "how am i doing overall",
+    "category": "account_state"
+  },
+  {
+    "message": "what do i own",
+    "category": "account_state"
+  },
+  {
+    "message": "how much do i have",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my total account value right now",
+    "category": "account_state"
+  },
+  {
+    "message": "how much money do i have total",
+    "category": "account_state"
+  },
+  {
+    "message": "whats sitting in my account",
+    "category": "account_state"
+  },
+  {
+    "message": "how much have i got to spend",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my current cash position",
+    "category": "account_state"
+  },
+  {
+    "message": "how much is my account worth",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my overall balance look like",
+    "category": "account_state"
+  },
+  {
+    "message": "how much am i worth in this account",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my spending power right now",
+    "category": "account_state"
+  },
+  {
+    "message": "how am i doing",
+    "category": "account_state"
+  },
+  {
+    "message": "hows my account looking",
+    "category": "account_state"
+  },
+  {
+    "message": "whats going on with my money",
+    "category": "account_state"
+  },
+  {
+    "message": "how much am i working with",
+    "category": "account_state"
+  },
+  {
+    "message": "whats my situation right now",
+    "category": "account_state"
+  },
+  {
+    "message": "how much have i got in here",
+    "category": "account_state"
+  },
+  {
+    "message": "whats the total damage looking like",
+    "category": "account_state"
+  },
+  {
+    "message": "hw much cash i got left fr",
+    "category": "account_state"
+  },
+  {
+    "message": "hw much have i made on my 401k",
+    "category": "account_state"
+  },
+  {
+    "message": "hw much buyin power i got",
+    "category": "account_state"
+  },
+  {
+    "message": "whats queued up right now",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "when does my dca run next",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "do i have any pending orders",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats my next scheduled buy",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "when is my next dca purchase",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "do i have any open orders right now",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats scheduled for this week",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "when does my money move next",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats happening with my orders",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "do i have anything pending",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "when is my next weekly buy",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats in my order queue",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "do i have any dca schedules active",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "when does my next order execute",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats my upcoming trade activity",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "do i have orders waiting to fill",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "when will my pending order go through",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats scheduled to happen next",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "do i have any active dca plans",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "when does my next scheduled purchase hit",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats still pending in my account",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "do i have basket orders waiting",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "when is my next automatic buy",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats queued for execution",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "do i have any orders in flight",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "when does my recurring buy trigger next",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats on my schedule this week",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "do i have pending basket purchases",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "when will my open orders clear",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats my dca schedule looking like",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats queued",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "when does my money move",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats coming up",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats in the pipeline",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats about to happen",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats next in line",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats still processing",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats waiting to go through",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "whats on deck",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "wuts queued up rn fr",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "did my order go thru yet",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "wats my dca schedule lookin like",
+    "category": "scheduled_activity"
+  },
+  {
+    "message": "is nvda a buy right now",
+    "category": "single_security_research"
+  },
+  {
+    "message": "should i sell tsla",
+    "category": "single_security_research"
+  },
+  {
+    "message": "whats a good etf for me",
+    "category": "single_security_research"
+  },
+  {
+    "message": "is apple a good buy today",
+    "category": "single_security_research"
+  },
+  {
+    "message": "should i buy more amd",
+    "category": "single_security_research"
+  },
+  {
+    "message": "is tesla overvalued right now",
+    "category": "single_security_research"
+  },
+  {
+    "message": "should i sell my nvda or hold",
+    "category": "single_security_research"
+  },
+  {
+    "message": "is amazon a buy at this price",
+    "category": "single_security_research"
+  },
+  {
+    "message": "is meta worth buying now",
+    "category": "single_security_research"
+  },
+  {
+    "message": "should i sell boeing right now",
+    "category": "single_security_research"
+  },
+  {
+    "message": "is palantir a good investment",
+    "category": "single_security_research"
+  },
+  {
+    "message": "is coinbase a buy or sell",
+    "category": "single_security_research"
+  },
+  {
+    "message": "should i buy the dip on tesla",
+    "category": "single_security_research"
+  },
+  {
+    "message": "is intel a value trap right now",
+    "category": "single_security_research"
+  },
+  {
+    "message": "is netflix overpriced right now",
+    "category": "single_security_research"
+  },
+  {
+    "message": "should i sell disney or hold",
+    "category": "single_security_research"
+  },
+  {
+    "message": "is qualcomm a good buy",
+    "category": "single_security_research"
+  },
+  {
+    "message": "is snowflake worth the risk",
+    "category": "single_security_research"
+  },
+  {
+    "message": "should i buy more spy",
+    "category": "single_security_research"
+  },
+  {
+    "message": "is gme still a good play",
+    "category": "single_security_research"
+  },
+  {
+    "message": "shd i buy nvda rn",
+    "category": "single_security_research"
+  }
+]

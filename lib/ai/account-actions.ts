@@ -574,14 +574,26 @@ export function buildAccountStateAnswer(snapshot: PortfolioSnapshot, risk: strin
 export function detectScheduledActivityIntent(m: string): boolean {
   const s = m.trim().toLowerCase();
   if (!s || s.length > 240) return false;
+
+  // Educational definitions are NOT scheduled activity — "explain DCA",
+  // "what is dollar cost averaging", "what's a dca" (no ownership/next/when signal).
+  const definitional = /\b(what\s+is|whats|what's|explain|define|meaning|mean|tell\s+me\s+(about|how)|how\s+(does|do|to))\b/;
+  const mentionsDca = /\b(dca|dollar[\s-]?cost[\s-]?averaging)\b/.test(s);
+  if (mentionsDca) {
+    const ownsDca = /\b(my|mine|i\s+have|next|when|schedule|plan|active|running|set\s*up|have\s+any|any)\b/.test(s);
+    if (definitional.test(s) && !ownsDca) return false;
+    return true;
+  }
+
   // "scheduled buys" / "pending orders" / "open orders" / "recurring buys" / "queued trades"
   if (/\b(scheduled|pending|open|recurring|queued|upcoming)\s+(buys?|purchases?|orders?|trades?|investments?|activity)\b/.test(s)) return true;
-  // Any DCA / dollar-cost-averaging reference.
-  if (/\b(dca|dollar[\s-]?cost[\s-]?averaging)\b/.test(s)) return true;
   // "what's scheduled/pending/queued" (order noun may be elsewhere in the sentence).
-  if (/(what|any|show|list|see|check)\b.*\b(scheduled|pending|queued|recurring)\b/.test(s)) return true;
-  // "what am I waiting to fill" / "still waiting to execute"
-  if (/\b(waiting|wait|still)\b.*\b(fill|execute|order|trade|buy)\b/.test(s)) return true;
+  if (/(what'?s?|wuts?|wats?|any|show|list|see|check)\b.*\b(scheduled|pending|queued|recurring)\b/.test(s)) return true;
+  // "what am I waiting to fill" / "still waiting to execute" / "waiting to go through"
+  if (/\b(waiting|wait|still)\b.*\b(fill|execute|order|trade|buy|go\s*(through|thru))\b/.test(s)) return true;
+  // Order status: "did my order go through", "when does my next order execute",
+  // "did my order go thru yet", "did my sell order clear".
+  if (/\b(did|when|does|is|has|will)\b.*\b(order|buy|trade|purchase|fill)\b.*\b(go\s*(through|thru)|execute|executed|fill|filled|clear|cleared|happen|complete)\b/.test(s)) return true;
   return false;
 }
 
