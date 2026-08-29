@@ -26,7 +26,9 @@ export type TaxonomyCategory =
   | 'educational'
   | 'market_commentary'
   | 'comparative'
-  | 'off_topic';
+  | 'off_topic'
+  | 'profile_mutation'
+  | 'account_state';
 
 export interface ClassifierResult {
   category: TaxonomyCategory;
@@ -40,6 +42,10 @@ export interface ClassifierResult {
   /** True when input is a trivial command (hi/help/thanks) → light path. */
   trivial?: boolean;
   confidence: number;
+  /** For profile_mutation: which profile field to change ('style' | 'risk'). */
+  profileField?: 'style' | 'risk';
+  /** For profile_mutation: the raw target value (e.g. "aggressive", "Lynch"). */
+  profileValue?: string;
 }
 
 const TAXONOMY: TaxonomyCategory[] = [
@@ -51,6 +57,8 @@ const TAXONOMY: TaxonomyCategory[] = [
   'market_commentary',
   'comparative',
   'off_topic',
+  'profile_mutation',
+  'account_state',
 ];
 
 // ─── Fast-path ────────────────────────────────────────────────
@@ -146,6 +154,8 @@ interface Gpt5Raw {
   vehicle?: string;
   needsSearch?: boolean | string;
   searchQuery?: string | null;
+  profileField?: string;
+  profileValue?: string;
 }
 
 const VEHICLES: VehiclePreference[] = ['stocks', 'etfs', 'mixed', 'unspecified'];
@@ -186,14 +196,18 @@ Categories (choose exactly one):
 - "market_commentary" — macro/market questions ("what's happening in the market", "how are rates moving")
 - "comparative" — comparing two or more securities ("AAPL vs MSFT", "which is better VOO or SPY")
 - "off_topic" — genuinely outside finance/investing (jokes, weather, recipes, etc.)
+- "profile_mutation" — the user is COMMANDING a change to their own investor profile: their risk tolerance ("change it to aggressive", "make me more conservative", "I want to be a high-risk investor") or their investor style ("change my style to Lynch", "switch me to Buffett"). This is a COMMAND, not a question — do NOT use this category for "should I be more aggressive?" or "what style should I use?" (those are questions, classify as portfolio_relative_question or educational).
+- "account_state" — a QUESTION about the user's OWN account numbers: "how much cash do I have", "what are my positions", "what's my equity", "how much am I invested". Read-only — never triggers any action.
 
 Also output these fields:
 - "vehicle": ONLY relevant when category is "portfolio_construction". One of "stocks", "etfs", "mixed", "unspecified". Use "unspecified" when the user did not indicate which vehicle.
 - "needsSearch": true if answering needs current/recent data (news, prices, recent events). false if it is conceptual or about the user's own holdings.
 - "searchQuery": a concise search query string when needsSearch is true, otherwise null.
+- "profileField": ONLY when category is "profile_mutation". Exactly one of "style" (investor style change) or "risk" (risk-tolerance change).
+- "profileValue": ONLY when category is "profile_mutation". The raw target value the user wants (e.g. "aggressive", "conservative", "Lynch", "Buffett"). Preserve the user's wording; the app normalizes it.
 
 Reply with EXACTLY this JSON shape, nothing else:
-{"category":"...","vehicle":"...","needsSearch":true,"searchQuery":"..."}`;
+{"category":"...","vehicle":"...","needsSearch":true,"searchQuery":"...","profileField":"...","profileValue":"..."}`;
 
 async function classifyWithGpt5Nano(
   message: string,
@@ -246,6 +260,9 @@ async function classifyWithGpt5Nano(
       ? parsed.searchQuery.trim().slice(0, 200)
       : null;
 
+    const profileField = (parsed.profileField === 'style' || parsed.profileField === 'risk') ? parsed.profileField : undefined;
+    const profileValue = typeof parsed.profileValue === 'string' ? parsed.profileValue.trim().slice(0, 64) : undefined;
+
     return {
       category,
       vehicle,
@@ -253,6 +270,8 @@ async function classifyWithGpt5Nano(
       searchQuery,
       source: 'gpt5_nano',
       confidence: 0.9,
+      profileField,
+      profileValue,
     };
   } catch (e) {
     console.error('[classifier] GPT-5 nano failed:', (e as Error)?.message);

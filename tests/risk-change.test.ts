@@ -10,7 +10,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { describe, it, expect } from 'vitest';
-import { detectAccountAction, formatRiskChangeAnswer } from '../lib/ai/account-actions';
+import { detectAccountAction, detectRiskLevel, buildAccountStateAnswer, formatRiskChangeAnswer, type PortfolioSnapshot } from '../lib/ai/account-actions';
 
 describe('detectAccountAction — risk-tolerance change', () => {
   it.each([
@@ -48,5 +48,49 @@ describe('formatRiskChangeAnswer', () => {
     const text = formatRiskChangeAnswer('Aggressive');
     expect(text).toContain('Aggressive');
     expect(text).toContain('rebalance');
+  });
+});
+
+describe('detectRiskLevel (exported for classifier Tier-2 dispatch)', () => {
+  it.each([
+    ['aggressive', 'Aggressive'],
+    ['Aggressive', 'Aggressive'],
+    ['high risk', 'Aggressive'],
+    ['risk taking', 'Aggressive'],
+    ['risky', 'Aggressive'],
+    ['conservative', 'Conservative'],
+    ['low risk', 'Conservative'],
+    ['risk averse', 'Conservative'],
+    ['cautious', 'Conservative'],
+    ['safe', 'Conservative'],
+    ['moderate', 'Moderate'],
+    ['balanced', 'Moderate'],
+  ])('maps %s → %s', (val, risk) => {
+    expect(detectRiskLevel(val)).toBe(risk);
+  });
+
+  it('returns null for non-risk values', () => {
+    expect(detectRiskLevel('banana')).toBeNull();
+    expect(detectRiskLevel('Lynch')).toBeNull();
+  });
+});
+
+describe('buildAccountStateAnswer', () => {
+  const snapshot: PortfolioSnapshot = {
+    equity: 101930,
+    cash: 100866,
+    positions: [
+      { symbol: 'TSLA', name: 'Tesla Inc', qty: 1, price: 201, marketValue: 201 },
+      { symbol: 'NVDA', name: 'NVIDIA', qty: 2, price: 17.5, marketValue: 35 },
+    ],
+  };
+
+  it('reports equity, cash, and positions deterministically', () => {
+    const text = buildAccountStateAnswer(snapshot, 'Aggressive');
+    expect(text).toContain('$101,930');
+    expect(text).toContain('$100,866');
+    expect(text).toContain('TSLA');
+    expect(text).toContain('Aggressive');
+    expect(text).toContain('2 held');
   });
 });

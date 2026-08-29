@@ -15,7 +15,7 @@ import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
 import { detectAppHelpIntent, buildAppHelpAnswer } from '@/lib/ai/app-help'
-import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
+import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
@@ -1308,6 +1308,57 @@ export async function POST(req: Request) {
     const classification = await classify(lastMessage);
     tMark('classified');
     console.log(`[chat] ===> CLASSIFY category=${classification.category} vehicle=${classification.vehicle} source=${classification.source} needsSearch=${classification.needsSearch}${classification.gibberish ? ' GIBBERISH' : ''}${classification.trivial ? ' TRIVIAL' : ''}`);
+
+    // ── Classifier Tier-2: deterministic dispatch (profile mutation + account state) ──
+    // detectAccountAction / detectAppHelpIntent catch exact & common phrasings.
+    // For phrasings the regex misses, GPT-5 nano labels the intent and we dispatch
+    // to the SAME deterministic handlers here. The LLM only LABELS — the DB write
+    // and the answer text are deterministic code, never the model. Safety-critical
+    // actions (confirm/execute) are deliberately NOT in the taxonomy: they stay on
+    // the deterministic gate.
+    if (mode !== 'alerts') {
+      const questionGuard = /\b(should|could|would|might|what if|how (do i|to|would|should)|what happens if|can i|do i need to|is it)\b/i;
+
+      if (classification.category === 'profile_mutation' && !questionGuard.test(lastMessage)) {
+        const field = classification.profileField;
+        const value = (classification.profileValue || '').trim();
+        const supabase = createServerClient();
+        if (field === 'risk') {
+          const risk = detectRiskLevel(value);
+          if (risk) {
+            try {
+              if (userId && userId !== 'anonymous') {
+                await (supabase as any).from('users').update({ risk_tolerance: risk.toLowerCase() }).eq('id', userId);
+              }
+            } catch (e) { console.error('[chat] risk change (classifier) failed:', e); }
+            console.log(`[chat] 🎚️ risk changed via classifier → ${risk} ("${value}")`);
+            return textSSEResponse(formatRiskChangeAnswer(risk));
+          }
+        } else if (field === 'style') {
+          const style = normalizeStyle(value);
+          if (style) {
+            try {
+              if (userId && userId !== 'anonymous') {
+                await (supabase as any).from('users').update({ investor_style: style, investor_style_set_at: new Date().toISOString() }).eq('id', userId);
+              }
+            } catch (e) { console.error('[chat] style change (classifier) failed:', e); }
+            console.log(`[chat] 🎛️ style changed via classifier → ${style} ("${value}")`);
+            return textSSEResponse(formatStyleChangeAnswer(style, profile.riskTolerance), { kind: 'style_changed' });
+          }
+          return textSSEResponse(formatInvalidStyleAnswer(value));
+        }
+        // Missing/invalid field → fall through to the model (shouldn't happen).
+        console.warn(`[chat] profile_mutation with field=${field} value="${value}" → fall through`);
+      }
+
+      if (classification.category === 'account_state') {
+        if (portfolioSnapshot && (portfolioSnapshot.equity > 0 || portfolioSnapshot.positions.length > 0)) {
+          return textSSEResponse(buildAccountStateAnswer(portfolioSnapshot, profile.riskTolerance));
+        }
+        // No portfolio loaded → let the model prompt the user to connect a broker.
+        console.log('[chat] 🧭 account_state with no portfolio → fall through to model');
+      }
+    }
 
     // Strategy-advice / ideas questions must NOT run the heavy build pipeline.
     // GPT-5 nano sometimes routes "what strategies should I consider" →

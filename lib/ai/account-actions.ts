@@ -96,7 +96,7 @@ export function detectAccountAction(message: string): AccountAction | null {
 }
 
 /** Map a risk-level word/phrase → canonical risk tolerance, or null. */
-function detectRiskLevel(m: string): RiskLevel | null {
+export function detectRiskLevel(m: string): RiskLevel | null {
   const match = /\b(aggressive|conservative|moderate|balanced|high[\s-]?risk|low[\s-]?risk|risk[\s-]?averse|risk[\s-]?taking|risky|cautious|safe)\b/i.exec(m);
   if (!match) return null;
   const w = match[1].toLowerCase().replace(/[\s-]+/g, ' ');
@@ -544,6 +544,28 @@ export function formatRiskChangeAnswer(risk: RiskLevel): string {
     '',
     `This now drives how I size positions and frame risk across Vantage. Want me to rebalance your portfolio to match? Just say "rebalance".`,
   ].join('\n');
+}
+
+/** Read-only, deterministic account-state answer (cash / equity / positions). */
+export function buildAccountStateAnswer(snapshot: PortfolioSnapshot, risk: string): string {
+  const usd = (n: number) =>
+    n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const sorted = [...snapshot.positions].sort((a, b) => b.marketValue - a.marketValue);
+  const lines = [
+    `Here's your account as it stands now:`,
+    '',
+    `- **Equity:** ${usd(snapshot.equity)}`,
+    `- **Cash:** ${usd(snapshot.cash)}`,
+    `- **Positions:** ${sorted.length} held`,
+  ];
+  if (sorted.length > 0) {
+    lines.push('', 'Top positions:');
+    for (const p of sorted.slice(0, 6)) {
+      lines.push(`- ${p.symbol}${p.name ? ` (${p.name})` : ''} — ${usd(p.marketValue)} · ${p.qty} @ ${usd(p.price)}`);
+    }
+  }
+  lines.push('', `Risk tolerance: **${risk}**.`);
+  return lines.join('\n');
 }
 
 /** Ask which style to switch to (when the user said "change my style" with no target). */
