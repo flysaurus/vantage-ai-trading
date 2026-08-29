@@ -24,3 +24,25 @@ export function isQuestionLike(message: string): boolean {
   if (PHRASES.test(m)) return true;
   return false;
 }
+
+// "Is this phrased as a leaning / preference, not a clear command?"
+//
+// The deterministic account-action router handles real commands ("make me more
+// conservative") BEFORE the classifier. Anything that reaches the Tier-2
+// profile_mutation gate has already failed the deterministic command matcher —
+// so a message that ALSO reads as a hedge or a preference ("I think I want to be
+// more conservative", "conservative sounds better for me") must NOT be silently
+// mutated. It should fall through to the model for a clarifying question instead.
+const HEDGES =
+  /\b(i\s+think|i\s+guess|i\s+suppose|i\s+feel\s+(?:like|that)?|i'?m\s+(?:thinking|leaning|considering|not\s+sure)|not\s+sure|maybe|perhaps|probably|possibly|i\s+might|i\s+may|kinda|sort\s+of|i\s+reckon|i\s+wonder|i\s+want\s+to\s+be|i'?d\s+like\s+to\s+be)\b/i;
+
+const PREFERENCES =
+  /\b(?:sounds?|looks?|feels?|seems?)\s+(?:better|good|right|nice|best|safer|wiser|like\s+a\s+good\s+idea)\b|\bwould\s+be\s+(?:better|good|nice|safer)\b|\bi'?m\s+leaning\s+(?:toward|towards|to)\b/i;
+
+export function isHesitant(message: string): boolean {
+  const m = message.trim();
+  if (!m) return false;
+  if (HEDGES.test(m)) return true;
+  if (PREFERENCES.test(m)) return true;
+  return false;
+}

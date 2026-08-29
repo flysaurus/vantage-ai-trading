@@ -22,7 +22,7 @@ import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
 import { MONEY_TOOLS, executeMoneyTool } from '@/lib/ai/money-tools'
 import type { MoneyToolContext } from '@/lib/ai/money-tools'
 import { detectConfirmIntent, actionRequiresSymbolEcho, symbolEchoMatches, findParamConflict } from '@/lib/ai/confirm'
-import { isQuestionLike } from '@/lib/ai/question-guard'
+import { isQuestionLike, isHesitant } from '@/lib/ai/question-guard'
 import { getPendingAction, markPendingAction, createPendingAction } from '@/lib/ai/pending-actions'
 import { executePendingAction } from '@/lib/ai/executors'
 import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib/ai-guard'
@@ -1383,8 +1383,9 @@ export async function POST(req: Request) {
     // the deterministic gate.
     if (mode !== 'alerts') {
       const questionGuard = isQuestionLike(lastMessage);
+      const hesitantGuard = isHesitant(lastMessage);
 
-      if (classification.category === 'profile_mutation' && !questionGuard) {
+      if (classification.category === 'profile_mutation' && !questionGuard && !hesitantGuard) {
         const field = classification.profileField;
         const value = (classification.profileValue || '').trim();
         const supabase = createServerClient();

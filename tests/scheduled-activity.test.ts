@@ -42,6 +42,16 @@ describe('detectScheduledActivityIntent — negative (must NOT intercept)', () =
     'how much cash do I have',
     'what is a P/E ratio',
     'sell NVDA',
+    // Mutation commands on scheduled items → tool path, not a list.
+    'cancel my pending DCA on AAPL',
+    'delete my recurring buy on VOO',
+    'pause my weekly DCA',
+    // Gains/returns math → computation, not a schedule listing.
+    'what is my realized gain from cancelled and completed DCA fills this year',
+    'how much did my DCA earn so far',
+    // "wait to buy" is a timing question, not "waiting for my order to fill".
+    'is AMD overbought right now should I wait to buy',
+    'should I wait to buy NVDA',
   ])('does NOT match: %s', (m) => {
     expect(detectScheduledActivityIntent(m)).toBe(false);
   });

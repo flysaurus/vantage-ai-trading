@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isQuestionLike } from '../lib/ai/question-guard';
+import { isQuestionLike, isHesitant } from '../lib/ai/question-guard';
 
 describe('isQuestionLike', () => {
   // The gpt-5-nano probe found these questions mislabeled as profile_mutation.
@@ -40,5 +40,41 @@ describe('isQuestionLike', () => {
 
   it.each(commands)('allows command: %s', (c) => {
     expect(isQuestionLike(c)).toBe(false);
+  });
+});
+
+describe('isHesitant', () => {
+  // A leaning / preference / hedge is NOT a clear command — it must NOT be
+  // silently mutated by the Tier-2 profile_mutation classifier. These should
+  // fall through to the model for a clarifying question instead.
+  const hesitant = [
+    'i think i want to be more conservative',
+    'conservative sounds better for me',
+    'i guess i should be less aggressive',
+    'maybe more conservative',
+    'perhaps i should switch to growth',
+    'i might want to be more aggressive',
+    "i'm leaning toward value investing",
+    "i'm considering a more aggressive approach",
+    'i want to be more conservative',
+    "i'd like to be more conservative",
+    'i feel like conservative is right for me',
+    'i suppose moderate is safer',
+  ];
+
+  it.each(hesitant)('flags as hesitant (blocks mutation): %s', (m) => {
+    expect(isHesitant(m)).toBe(true);
+  });
+
+  const commands = [
+    'change my style to Lynch',
+    'make me more aggressive',
+    'switch to Buffett',
+    'set my risk to conservative',
+    'rebalance my portfolio',
+  ];
+
+  it.each(commands)('does NOT flag a direct command: %s', (c) => {
+    expect(isHesitant(c)).toBe(false);
   });
 });

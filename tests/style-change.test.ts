@@ -98,6 +98,28 @@ describe('detectAccountAction — style synonyms + "change it to" form', () => {
   });
 });
 
+describe('detectAccountAction — "…to a (more/less) X style" (style AFTER target)', () => {
+  // "switch me to a more aggressive style" says STYLE — it must NEVER silently
+  // mutate risk tolerance. It routes to invalid_style (style-picker buttons).
+  it.each([
+    ['switch me to a more aggressive style', 'more aggressive'],
+    ['switch me to a conservative style', 'conservative'],
+    ['move me to a more aggressive style', 'more aggressive'],
+  ])('routes %s → invalid_style (style buttons, NOT risk)', (msg, requested) => {
+    expect(detectAccountAction(msg)).toEqual({ type: 'invalid_style', requested });
+  });
+
+  it('does NOT route "switch me to a more aggressive style" to change_risk', () => {
+    const a = detectAccountAction('switch me to a more aggressive style');
+    expect(a?.type).not.toBe('change_risk');
+  });
+
+  it('maps a real style name after the target → change_style', () => {
+    expect(detectAccountAction('move me to a growth style')).toEqual({ type: 'change_style', style: 'lynch' });
+    expect(detectAccountAction('switch me to a value style')).toEqual({ type: 'change_style', style: 'buffett' });
+  });
+});
+
 describe('formatStylePickPrompt', () => {
   it('mentions the current style and all five available styles', () => {
     const text = formatStylePickPrompt('Lynch');

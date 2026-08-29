@@ -81,7 +81,13 @@ export function detectAccountAction(
   // "change my style" / "make my style" with NO target → ask which (style picker).
   const styleChangeAskMatch = /(?:please\s+)?(?:change|switch|set|move|update|make|turn)\s+(?:(?:my|the|it|me)\s+)?(?:(?:investment|investor|trading|investing)\s+)?style\b(?!\s+(?:to|into)\s+[a-z])/i.test(m);
 
-  const rawStyle = styleMatch ? styleMatch[1] : (makeStyleMatch ? makeStyleMatch[1] : null);
+  // "switch/change/move … to a (more/less) X style" — style AFTER the target.
+  // ("switch me to a more aggressive style"). Anchored to a change verb so it never
+  // fires on "rebalance to X style" (that's a rebalance target, handled separately).
+  const styleAfterMatch = /\b(?:change|switch|set|move|update|make|turn|adjust|become)\b[^.!?]{0,30}?\b(?:to|into)\s+(?:a\s+|an\s+|more\s+|less\s+)?([a-z][a-z\s]{0,20}?)\s*style\b/i.exec(m);
+  const styleMentioned = /\bstyle\b/i.test(m);
+
+  const rawStyle = styleMatch ? styleMatch[1] : (makeStyleMatch ? makeStyleMatch[1] : (styleAfterMatch ? styleAfterMatch[1] : null));
   const style = rawStyle ? normalizeStyle(rawStyle) : null;
 
   // Risk-tolerance change. A risk word ("aggressive") only maps to RISK when the
@@ -92,7 +98,7 @@ export function detectAccountAction(
   const riskLevel = detectRiskLevel(m);
   const explicitRisk = /\b(risk|tolerance|risk\s+tolerance|risk\s+profile|risk\s+level|risk\s+appetite)\b/i.test(m);
   const comparativeRisk = /\b(more|less)\b/i.test(m);
-  const hasRiskChange = hasChangeVerb && riskLevel != null && !rebalanceMatch && !style && (explicitRisk || (comparativeRisk && !styleMatch));
+  const hasRiskChange = hasChangeVerb && riskLevel != null && !rebalanceMatch && !style && !styleMentioned && (explicitRisk || (comparativeRisk && !styleMatch));
 
   // Context-aware: a comparative ("more/less") risk change that is a NO-OP — the
   // target risk equals the current risk — can't be about risk. Reinterpret it as
@@ -112,11 +118,11 @@ export function detectAccountAction(
 
   // Explicit "change style to <something>" but target isn't a valid style →
   // ask with buttons (invalid_style is rendered with the style picker).
-  if ((styleMatch || makeStyleMatch) && rawStyle && !style && !rebalanceMatch) {
+  if ((styleMatch || makeStyleMatch || styleAfterMatch) && rawStyle && !style && !rebalanceMatch) {
     return { type: 'invalid_style', requested: rawStyle.trim() };
   }
 
-  const hasChange = (!!styleMatch || !!makeStyleMatch) && !!style;
+  const hasChange = (!!styleMatch || !!makeStyleMatch || !!styleAfterMatch) && !!style;
   const hasRebalance = rebalanceMatch;
 
   if (hasChange && hasRebalance && !hypothetical) return { type: 'change_and_rebalance', style: style! };
@@ -668,6 +674,18 @@ export function detectScheduledActivityIntent(m: string): boolean {
   const s = m.trim().toLowerCase();
   if (!s || s.length > 240) return false;
 
+  // Mutation commands on scheduled items ("cancel my DCA", "delete the open
+  // order", "pause my recurring buys") are ACTIONS for the tool path (dca_delete
+  // / order cancel), not "show me my schedule" queries. Don't intercept them as
+  // a read-only listing. ("stop" deliberately excluded — "stop loss order" is a
+  // legit read-only status query.)
+  if (/\b(cancel|delete|remove|pause|deactivate|turn\s*off)\b/.test(s) && /\b(dca|dollar|order|buy|trade|schedule|recurring|investment|plan|alert)\b/.test(s)) return false;
+
+  // Gains/returns/P&L math ("realized gain from DCA fills", "what did my DCA
+  // earn") is a computation, not a schedule listing — let the model answer it
+  // rather than returning a DCA/order list that doesn't answer the question.
+  if (/\b(gains?|returns?|profit|earn(?:ed|s)?|made|yield|p&l|performance|appreciation)\b/.test(s)) return false;
+
   // Educational definitions are NOT scheduled activity — "explain DCA",
   // "what is dollar cost averaging", "what's a dca" (no ownership/next/when signal).
   const definitional = /\b(what\s+is|whats|what's|explain|define|meaning|mean|tell\s+me\s+(about|how)|how\s+(does|do|to))\b/;
@@ -682,8 +700,10 @@ export function detectScheduledActivityIntent(m: string): boolean {
   if (/\b(scheduled|pending|open|recurring|queued|upcoming)\s+(buys?|purchases?|orders?|trades?|investments?|activity)\b/.test(s)) return true;
   // "what's scheduled/pending/queued" (order noun may be elsewhere in the sentence).
   if (/(what'?s?|wuts?|wats?|any|show|list|see|check)\b.*\b(scheduled|pending|queued|recurring)\b/.test(s)) return true;
-  // "what am I waiting to fill" / "still waiting to execute" / "waiting to go through"
-  if (/\b(waiting|wait|still)\b.*\b(fill|execute|order|trade|buy|go\s*(through|thru))\b/.test(s)) return true;
+  // "what am I waiting to fill" / "still waiting to execute" / "waiting to go
+  // through". Gerund "waiting" only — bare "wait" is usually a timing question
+  // ("should I wait to buy") that must route to research, not to the schedule.
+  if (/\b(waiting|still\s+waiting|waiting\s+(?:on|for))\b.*\b(fill|filled|execute|executed|order|trade|go\s*(through|thru)|clear)\b/.test(s)) return true;
   // Order status: "did my order go through", "when does my next order execute",
   // "did my order go thru yet", "did my sell order clear".
   if (/\b(did|when|does|is|has|will)\b.*\b(order|buy|trade|purchase|fill)\b.*\b(go\s*(through|thru)|execute|executed|fill|filled|clear|cleared|happen|complete)\b/.test(s)) return true;

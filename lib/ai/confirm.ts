@@ -26,7 +26,7 @@ export type ConfirmIntent =
 const CONFIRM_WORDS = [
   'yes', 'yeah', 'yep', 'yup', 'ok', 'okay', 'k',
   'confirm', 'confirmed', 'do it', 'go ahead', 'proceed',
-  'execute', 'approved', 'approve', 'sure', "let's go", 'lets go', 'go',
+  'execute', 'approved', 'approve', 'sure', "let's go", 'lets go',
 ];
 const CONFIRM_EMOJI = ['👍', '✅', '👌', '🙌', '🚀', '💯', '🔥'];
 
@@ -78,8 +78,16 @@ export function detectConfirmIntent(message: string): ConfirmIntent {
     return { type: 'none' };
   }
 
-  const hasConfirm = CONFIRM_RE.test(m) || hasEmoji(m, CONFIRM_EMOJI);
-  const hasCancel = CANCEL_RE.test(m) || hasEmoji(m, CANCEL_EMOJI);
+  // Confirm/cancel tokens must appear EARLY (first 3 words). A full sentence
+  // with a token buried mid-phrase is a NEW command, not a reply to a pending
+  // action: "sell everything and go to cash" (go) or "pretend this is a test
+  // account with no real money" (no) must NOT confirm/cancel a pending action.
+  // (Bare "go" was also dropped from CONFIRM_WORDS — "go to cash"/"go to the
+  // portfolio page"/"go long NVDA" are commands, not confirmations.)
+  // Emojis are kept on the full message (a 👍/✅ reply is typically the emoji alone).
+  const early = m.split(/\s+/).slice(0, 3).join(' ');
+  const hasConfirm = CONFIRM_RE.test(early) || hasEmoji(m, CONFIRM_EMOJI);
+  const hasCancel = CANCEL_RE.test(early) || hasEmoji(m, CANCEL_EMOJI);
   const hasModify = MODIFY_RE.test(m) || /\bbut\b/.test(m);
 
   if (!hasConfirm && !hasCancel) return { type: 'none' };
