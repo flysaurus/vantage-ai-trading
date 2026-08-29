@@ -9,8 +9,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
-const INACTIVITY_WARNING_MS = 8 * 60 * 1000; // 8 minutes
-const INACTIVITY_LOGOUT_MS = 10 * 60 * 1000; // 10 minutes
+const INACTIVITY_WARNING_MS = 28 * 60 * 1000; // 28 minutes
+const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000; // 30 minutes
 const COUNTDOWN_SECONDS = 120; // 2 minutes
 
 interface UseInactivityReturn {
@@ -60,6 +60,7 @@ export function useInactivity(): UseInactivityReturn {
     // Schedule warning at 8 min (countdown effect handles ticking)
     if (remainingToWarning > 0) {
       warningTimerRef.current = setTimeout(() => {
+        showWarningRef.current = true;
         setShowWarning(true);
         setCountdown(COUNTDOWN_SECONDS);
       }, remainingToWarning);
@@ -104,9 +105,22 @@ export function useInactivity(): UseInactivityReturn {
     performSignOut();
   }, [performSignOut]);
 
-  // Track user activity — restarts idle timer on every interaction
+  // Track user activity — restarts idle timer on every interaction.
+  // Registered on `document` with `capture: true` so events originating in
+  // child containers are caught. This matters because the AI chat scrolls inside
+  // its own overflow container, and `scroll` does NOT bubble to `window` — a user
+  // wheel-scrolling a long response would otherwise generate zero tracked events
+  // and get force-signed-out while actively reading. `wheel`, `pointer*`, `click`,
+  // `input`, and `focus` are tracked explicitly for the same reason.
   useEffect(() => {
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'];
+    const events = [
+      'mousedown', 'mousemove', 'mouseup', 'click',
+      'keydown', 'keyup',
+      'pointerdown', 'pointermove', 'pointerup',
+      'touchstart', 'touchmove',
+      'scroll', 'wheel',
+      'input', 'focus',
+    ];
 
     // Don't track inactivity if user isn't authenticated
     if (!document.cookie.includes('sb-')) return;
@@ -121,17 +135,18 @@ export function useInactivity(): UseInactivityReturn {
 
       // If warning is already showing, dismiss it and restart
       if (showWarningRef.current) {
+        showWarningRef.current = false;
         setShowWarning(false);
         setCountdown(COUNTDOWN_SECONDS);
       }
       startTimersRef.current();
     };
 
-    events.forEach((e) => window.addEventListener(e, handler, { passive: true }));
+    events.forEach((e) => document.addEventListener(e, handler, { capture: true, passive: true }));
     startTimers();
 
     return () => {
-      events.forEach((e) => window.removeEventListener(e, handler));
+      events.forEach((e) => document.removeEventListener(e, handler, { capture: true }));
       clearTimers();
     };
   }, [startTimers, clearTimers]);
