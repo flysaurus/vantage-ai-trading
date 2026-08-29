@@ -525,10 +525,13 @@ function buildVehicleClarifyResponse(): Response {
  *  streaming path. Use this for EVERY deterministic (non-model) response so it
  *  actually renders: the client ONLY parses `data: {...}` SSE lines, so a plain
  *  `Response.json({ content })` body is silently dropped (empty AI bubble). */
-function textSSEResponse(content: string): Response {
+function textSSEResponse(content: string, action?: { kind: string }): Response {
   const encoder = new TextEncoder();
   const body = new ReadableStream({
     start(controller) {
+      if (action) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ action })}\n\n`));
+      }
       controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`));
       controller.enqueue(encoder.encode('data: [DONE]\n\n'));
       controller.close();
@@ -1127,7 +1130,7 @@ export async function POST(req: Request) {
       });
       if (!action) return textSSEResponse('Failed to stage the rebalance — please try again.');
       console.log(`[chat] 🔒 staged rebalance_execute (${legs.length} legs) for user ${userId.slice(0, 8)}`);
-      return textSSEResponse(formatRebalanceExecutionPreview(plan));
+      return textSSEResponse(formatRebalanceExecutionPreview(plan), { kind: 'rebalance_confirm' });
     }
 
     // ── Deterministic account actions (grounded — style change + rebalance plan) ──
@@ -1184,7 +1187,7 @@ export async function POST(req: Request) {
 
 `
           : '';
-        return textSSEResponse(prefix + formatRebalancePlanAnswer(plan));
+        return textSSEResponse(prefix + formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' });
       }
     }
 

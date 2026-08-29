@@ -252,6 +252,13 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [budgetWarnings, setBudgetWarnings] = useState<any>(null); // budget gate violations
   const [showBudgetWarning, setShowBudgetWarning] = useState(false);
 
+  // ── Rebalance action buttons ──
+  // When the deterministic rebalance path emits a plan or execution preview, it
+  // tags the SSE with `data.action = { kind: 'rebalance_plan' | 'rebalance_confirm' }`.
+  // We surface inline buttons (Execute / Confirm / Cancel) under that AI message so
+  // Em can drive the flow by clicking instead of typing phrases.
+  const [rebalanceAction, setRebalanceAction] = useState<{ kind: 'rebalance_plan' | 'rebalance_confirm'; msgId: string } | null>(null);
+
   // ── TL;DR toggle state (set of collapsed message indices) ──
   const [collapsedTLDRs, setCollapsedTLDRs] = useState<Set<number>>(new Set());
 
@@ -1092,6 +1099,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInput('');
+    setRebalanceAction(null); // clear any staged rebalance buttons while the new turn runs
     setLoading(true); loadingRef.current = true;
 
     // Send last 10 messages to cap context window, but ALWAYS include
@@ -1230,6 +1238,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 lastAiResponseRef.current = displayedContentRef.current + charQueueRef.current.join('');
                 startDrainer();
                 // Auto-scroll handled by the streaming useEffect above (pin-to-bottom)
+              }
+              if (data.action) {
+                // Deterministic rebalance path tagged this message with inline buttons.
+                setRebalanceAction({ kind: data.action.kind, msgId: aiMsgId });
               }
               if (data.corrections) {
                 // Server-side marker validation caught a hallucinated ticker
@@ -1913,6 +1925,9 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           // space the accent bar used to eat so prose isn't a narrow column)
           // Compute clarifying options from [CLARIFY:...] markers for chips BELOW the bubble
           const isLastAiMsg = !loading && !messages.slice(i + 1).some(m => m.role === 'ai');
+          // Rebalance inline buttons (Execute / Confirm / Cancel) — only on the
+          // last AI message that the deterministic rebalance path tagged.
+          const showRebalanceButtons = isLastAiMsg && rebalanceAction !== null && rebalanceAction.msgId === msg.id;
           const isClarifyResolved = !!(msg.id && getResolvedClarify().has(msg.id));
           // Only show CLARIFY chips if this is the last AI message AND the CLARIFY hasn't been resolved
           const clarifyQuestions = (isLastAiMsg && !isClarifyResolved) ? parseClarifyMarkers(msg.content) : [];
@@ -2024,6 +2039,70 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   </>
                 );
               })()}
+              {/* Rebalance inline action buttons (Execute / Confirm / Cancel) */}
+              {showRebalanceButtons && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                  {rebalanceAction!.kind === 'rebalance_plan' ? (
+                    <button
+                      onClick={() => sendMessage('execute the rebalance', 'chat')}
+                      disabled={loading}
+                      style={{
+                        background: '#22d3ee',
+                        color: '#0b1220',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '8px 16px',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        fontFamily: 'inherit',
+                        opacity: loading ? 0.6 : 1,
+                      }}
+                    >
+                      ▶ Execute rebalance
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => sendMessage('confirm', 'chat')}
+                        disabled={loading}
+                        style={{
+                          background: '#34d399',
+                          color: '#0b1220',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '8px 16px',
+                          fontSize: '13px',
+                          fontWeight: 700,
+                          cursor: loading ? 'not-allowed' : 'pointer',
+                          fontFamily: 'inherit',
+                          opacity: loading ? 0.6 : 1,
+                        }}
+                      >
+                        ✓ Confirm
+                      </button>
+                      <button
+                        onClick={() => sendMessage('cancel', 'chat')}
+                        disabled={loading}
+                        style={{
+                          background: 'transparent',
+                          color: 'rgba(255,255,255,0.7)',
+                          border: '1px solid rgba(255,255,255,0.22)',
+                          borderRadius: '8px',
+                          padding: '8px 16px',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: loading ? 'not-allowed' : 'pointer',
+                          fontFamily: 'inherit',
+                          opacity: loading ? 0.6 : 1,
+                        }}
+                      >
+                        ✕ Cancel
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
               {/* Inline trade buttons (Demo/Gold only) */}
               {(() => {
                 if (tier === 'silver') return null;
