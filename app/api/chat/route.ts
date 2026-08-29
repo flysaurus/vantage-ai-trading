@@ -14,7 +14,7 @@ import { resolveTickers } from '@/lib/ticker-resolver';
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
-import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
+import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
@@ -1039,6 +1039,25 @@ export async function POST(req: Request) {
       name: body.name || 'M',
       timezone: timezone || 'America/New_York',
     }
+
+    // Fresh investor style from DB overrides the stale client body. The client
+    // caches `user.investorStyle`, so immediately after "change my style to X"
+    // the NEXT request still sends the OLD style. The DB is the source of truth,
+    // so a "rebalance" follow-up targets the style the user just switched to.
+    if (userId && userId !== 'anonymous') {
+      try {
+        const supabase = createServerClient();
+        const { data: userRow } = await (supabase as any)
+          .from('users')
+          .select('investor_style')
+          .eq('id', userId)
+          .maybeSingle();
+        if (userRow?.investor_style) profile.investorStyle = userRow.investor_style;
+      } catch (e) {
+        console.error('[chat] fresh profile fetch failed (non-fatal):', e);
+      }
+    }
+
     const profileContext = buildUserProfileContext(profile)
 
     // Finance guard — check last user message
@@ -1168,6 +1187,9 @@ export async function POST(req: Request) {
       const action = detectAccountAction(lastMessage);
       if (action) {
         const supabase = createServerClient();
+        if (action.type === 'change_style_ask') {
+          return textSSEResponse(formatStylePickPrompt(profile.investorStyle), { kind: 'style_pick' });
+        }
         if (action.type === 'invalid_style') {
           return textSSEResponse(formatInvalidStyleAnswer(action.requested));
         }
@@ -1187,7 +1209,7 @@ export async function POST(req: Request) {
         }
 
         if (action.type === 'change_style') {
-          return textSSEResponse(formatStyleChangeAnswer(action.style, profile.riskTolerance));
+          return textSSEResponse(formatStyleChangeAnswer(action.style, profile.riskTolerance), { kind: 'style_changed' });
         }
 
         // rebalance / change_and_rebalance → compute a grounded plan.

@@ -5,7 +5,7 @@
 // service-role supabase). Also exports the light-path grounding backstop.
 // ──────────────────────────────────────────────────────────────
 
-import { getStyleConfig } from '@/lib/investor-style-defaults';
+import { getStyleConfig, getAllStyleLabels } from '@/lib/investor-style-defaults';
 import { getInvestorStyleTargets, resolveRebalanceTargets, type AssetClass } from '@/lib/investor-style-targets';
 
 const VALID_STYLES = ['buffett', 'lynch', 'livermore', 'soros', 'munger'];
@@ -26,7 +26,8 @@ export type AccountAction =
   | { type: 'change_style'; style: string }
   | { type: 'invalid_style'; requested: string }
   | { type: 'rebalance'; style: string | null }
-  | { type: 'change_and_rebalance'; style: string };
+  | { type: 'change_and_rebalance'; style: string }
+  | { type: 'change_style_ask' };
 
 /** Normalize a spoken style name ("Lynch", "warren buffett") → key ("lynch"). */
 export function normalizeStyle(input: string): string | null {
@@ -52,6 +53,9 @@ export function detectAccountAction(message: string): AccountAction | null {
   const styleMatch = /(?:please\s+)?(?:change|switch|set|move|update)\s+(?:my\s+)?(?:investment|investor|trading|investing)?\s*style\s+(?:to|into)\s+([a-z][a-z\s]{1,24})/i.exec(m);
   const rebalanceMatch = /\brebalance\b/i.test(m);
 
+  // "change my style" with NO target style → ask which style (style picker).
+  const styleChangeAskMatch = /(?:please\s+)?(?:change|switch|set|move|update)\s+(?:my\s+)?(?:investment|investor|trading|investing)?\s*style\b(?!\s+(?:to|into)\s+[a-z])/i.test(m);
+
   const rawStyle = styleMatch ? styleMatch[1] : null;
   const style = rawStyle ? normalizeStyle(rawStyle) : null;
 
@@ -73,6 +77,7 @@ export function detectAccountAction(message: string): AccountAction | null {
   if (hasChange && hasRebalance && !hypothetical) return { type: 'change_and_rebalance', style: style! };
   if (hasChange && !hypothetical) return { type: 'change_style', style: style! };
   if (hasRebalance) return { type: 'rebalance', style: rebStyle };
+  if (styleChangeAskMatch && !hypothetical) return { type: 'change_style_ask' };
   return null;
 }
 
@@ -503,6 +508,19 @@ export function formatStyleChangeAnswer(style: string, risk: string): string {
 
 export function formatInvalidStyleAnswer(requested: string): string {
   return `I can't set your style to "${requested}" — the available styles are Buffett (Value), Lynch (Growth), Livermore (Momentum), Munger (Dividend), and Soros (Macro). Try "change my style to Lynch".`;
+}
+
+/** Ask which style to switch to (when the user said "change my style" with no target). */
+export function formatStylePickPrompt(currentStyle: string): string {
+  const current = getStyleConfig(currentStyle).label;
+  const labels = getAllStyleLabels().map((s) => s.label);
+  return [
+    `You're currently on **${current}**. Which investor style would you like to switch to?`,
+    '',
+    labels.map((l) => `• ${l}`).join('\n'),
+    '',
+    `Pick one below and I'll update your profile — then I can analyze your portfolio against the new style and rebalance if you want.`,
+  ].join('\n');
 }
 
 export function formatRebalancePlanAnswer(plan: RebalancePlan): string {

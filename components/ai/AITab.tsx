@@ -260,7 +260,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   //   rebalance_confirm  → ✓ Confirm / ✕ Cancel
   //   rebalance_budget   → 💵 available cash / 📊 full portfolio / ✏️ custom
   //   rebalance_custom   → inline $ amount input + deploy
-  const [rebalanceAction, setRebalanceAction] = useState<{ kind: 'rebalance_plan' | 'rebalance_confirm' | 'rebalance_budget' | 'rebalance_custom' | 'rebalance_asset' | 'confirm_pending'; msgId: string } | null>(null);
+  const [rebalanceAction, setRebalanceAction] = useState<{ kind: 'rebalance_plan' | 'rebalance_confirm' | 'rebalance_budget' | 'rebalance_custom' | 'rebalance_asset' | 'confirm_pending' | 'style_pick' | 'style_changed'; msgId: string } | null>(null);
   const [customAmountValue, setCustomAmountValue] = useState('');
 
   // ── TL;DR toggle state (set of collapsed message indices) ──
@@ -2058,6 +2058,40 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   fontFamily: 'inherit',
                   opacity: loading ? 0.6 : 1,
                 };
+
+                // Style picker ("change my style" with no target) → choose a style
+                if (kind === 'style_pick') {
+                  const styles = [
+                    { key: 'Buffett', label: '💰 Buffett (Value)' },
+                    { key: 'Lynch', label: '📈 Lynch (GARP)' },
+                    { key: 'Livermore', label: '⚡ Livermore (Momentum)' },
+                    { key: 'Munger', label: '🏛️ Munger (Quality)' },
+                    { key: 'Soros', label: '🌐 Soros (Macro)' },
+                  ];
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                      {styles.map((s) => (
+                        <button key={s.key} onClick={() => sendMessage(`change my style to ${s.key}`, 'chat')} disabled={loading} style={ghost}>
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                }
+
+                // Style changed → offer to rebalance against the new style
+                if (kind === 'style_changed') {
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                      <button onClick={() => sendMessage('rebalance', 'chat')} disabled={loading} style={solid('#22d3ee')}>
+                        ✓ Yes, rebalance to new style
+                      </button>
+                      <button onClick={() => setRebalanceAction(null)} disabled={loading} style={ghost}>
+                        Not now
+                      </button>
+                    </div>
+                  );
+                }
 
                 // Budget selection prompt (rebalance with no explicit scope)
                 if (kind === 'rebalance_budget') {
