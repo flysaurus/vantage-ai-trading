@@ -28,7 +28,8 @@ export type TaxonomyCategory =
   | 'comparative'
   | 'off_topic'
   | 'profile_mutation'
-  | 'account_state';
+  | 'account_state'
+  | 'scheduled_activity';
 
 export interface ClassifierResult {
   category: TaxonomyCategory;
@@ -59,6 +60,7 @@ const TAXONOMY: TaxonomyCategory[] = [
   'off_topic',
   'profile_mutation',
   'account_state',
+  'scheduled_activity',
 ];
 
 // ─── Fast-path ────────────────────────────────────────────────
@@ -198,6 +200,7 @@ Categories (choose exactly one):
 - "off_topic" — genuinely outside finance/investing (jokes, weather, recipes, etc.)
 - "profile_mutation" — the user is COMMANDING a change to their own investor profile: their risk tolerance ("change it to aggressive", "make me more conservative", "I want to be a high-risk investor") or their investor style ("change my style to Lynch", "switch me to Buffett"). This is a COMMAND, not a question — do NOT use this category for "should I be more aggressive?" or "what style should I use?" (those are questions, classify as portfolio_relative_question or educational).
 - "account_state" — a QUESTION about the user's OWN account numbers: "how much cash do I have", "what are my positions", "what's my equity", "how much am I invested". Read-only — never triggers any action.
+- "scheduled_activity" — a QUESTION about the user's OWN scheduled or queued activity: recurring buys (DCA), scheduled/upcoming buys, open or pending orders, "what am I waiting to fill", "what's queued to execute". Read-only — never triggers any action.
 
 Also output these fields:
 - "vehicle": ONLY relevant when category is "portfolio_construction". One of "stocks", "etfs", "mixed", "unspecified". Use "unspecified" when the user did not indicate which vehicle.

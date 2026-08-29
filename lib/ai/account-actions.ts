@@ -568,6 +568,111 @@ export function buildAccountStateAnswer(snapshot: PortfolioSnapshot, risk: strin
   return lines.join('\n');
 }
 
+// ── Scheduled / queued activity (DCA + open orders) ─────────────────────────
+
+/** Detect "what are my scheduled/pending/open/recurring buys or orders" queries. */
+export function detectScheduledActivityIntent(m: string): boolean {
+  const s = m.trim().toLowerCase();
+  if (!s || s.length > 240) return false;
+  // "scheduled buys" / "pending orders" / "open orders" / "recurring buys" / "queued trades"
+  if (/\b(scheduled|pending|open|recurring|queued|upcoming)\s+(buys?|purchases?|orders?|trades?|investments?|activity)\b/.test(s)) return true;
+  // Any DCA / dollar-cost-averaging reference.
+  if (/\b(dca|dollar[\s-]?cost[\s-]?averaging)\b/.test(s)) return true;
+  // "what's scheduled/pending/queued" (order noun may be elsewhere in the sentence).
+  if (/(what|any|show|list|see|check)\b.*\b(scheduled|pending|queued|recurring)\b/.test(s)) return true;
+  return false;
+}
+
+export interface ScheduledDca {
+  symbol: string;
+  amount: number | null;
+  frequency: string | null;
+  dayOfWeek?: string;
+  dayOfMonth?: string;
+  endDate?: string | null;
+  nextRunAt: string | null;
+  isActive: boolean;
+}
+
+export interface QueuedOrder {
+  symbol: string;
+  side: 'buy' | 'sell';
+  qty: number | null;
+  notional: number | null;
+  status: string;
+  createdAt: string | null;
+}
+
+function formatDcaFrequency(freq: string | null, dayOfWeek?: string, dayOfMonth?: string): string {
+  switch (freq) {
+    case 'daily': return 'daily';
+    case 'weekly': return dayOfWeek ? `weekly (${dayOfWeek})` : 'weekly';
+    case 'biweekly': return dayOfWeek ? `every 2 weeks (${dayOfWeek})` : 'every 2 weeks';
+    case 'monthly': return dayOfMonth ? `monthly (day ${dayOfMonth})` : 'monthly';
+    default: return freq || 'recurring';
+  }
+}
+
+function formatDcaDate(iso: string | null): string {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  } catch { return '—'; }
+}
+
+/** Read-only, deterministic answer listing DCA schedules + open/queued orders. */
+export function buildScheduledActivityAnswer(dcas: ScheduledDca[], orders: QueuedOrder[]): string {
+  const usd = (n: number) =>
+    n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const active = dcas.filter((d) => d.isActive);
+  const paused = dcas.filter((d) => !d.isActive);
+
+  if (active.length === 0 && paused.length === 0 && orders.length === 0) {
+    return [
+      `You don't have any scheduled buys or open orders right now.`,
+      '',
+      `To start a recurring buy, tell me something like "invest $100 weekly into VOO" and I'll stage the schedule for your confirmation.`,
+    ].join('\n');
+  }
+
+  const lines: string[] = [`Here's your scheduled and queued activity:`];
+
+  if (active.length > 0) {
+    lines.push('', '**Recurring buys (DCA)**');
+    for (const d of active) {
+      const freq = formatDcaFrequency(d.frequency, d.dayOfWeek, d.dayOfMonth);
+      const next = d.nextRunAt ? formatDcaDate(d.nextRunAt) : 'not scheduled';
+      const end = d.endDate ? ` · ends ${formatDcaDate(d.endDate)}` : '';
+      lines.push(`- ${d.symbol}: ${usd(d.amount ?? 0)} ${freq} · next ${next}${end}`);
+    }
+  }
+
+  if (paused.length > 0) {
+    lines.push('', '**Paused DCA**');
+    for (const d of paused) {
+      lines.push(`- ${d.symbol}: ${usd(d.amount ?? 0)} ${formatDcaFrequency(d.frequency, d.dayOfWeek, d.dayOfMonth)} (paused)`);
+    }
+  }
+
+  if (orders.length > 0) {
+    lines.push('', '**Open orders (waiting to fill)**');
+    for (const o of orders) {
+      const side = o.side === 'buy' ? 'Buy' : 'Sell';
+      const amount = o.notional != null
+        ? usd(o.notional)
+        : o.qty != null
+          ? `${Number(o.qty).toLocaleString('en-US', { maximumFractionDigits: 4 })} sh`
+          : '—';
+      lines.push(`- ${side} ${o.symbol}: ${amount} · ${o.status}`);
+    }
+  }
+
+  lines.push('', 'Orders fill at the next market open; DCA buys run automatically on their schedule.');
+  return lines.join('\n');
+}
+
 /** Ask which style to switch to (when the user said "change my style" with no target). */
 export function formatStylePickPrompt(currentStyle: string): string {
   const current = getStyleConfig(currentStyle).label;

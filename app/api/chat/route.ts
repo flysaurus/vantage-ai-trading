@@ -15,7 +15,7 @@ import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
 import { detectAppHelpIntent, buildAppHelpAnswer } from '@/lib/ai/app-help'
-import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
+import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, detectScheduledActivityIntent, buildScheduledActivityAnswer } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
@@ -53,6 +53,41 @@ import {
 } from '@/lib/ai/manager'
 import { classify } from '@/lib/ai/classifier'
 import { validateResponse } from '@/lib/ai/validator'
+
+/** Fetch the user's DCA schedules + open/queued orders and render the answer. */
+async function fetchScheduledActivityAnswer(userId: string): Promise<string> {
+  const supabase = createServerClient();
+  const [dcaRes, orderRes] = await Promise.all([
+    (supabase as any).from('strategies')
+      .select('id, symbol, config, is_active, next_run_at')
+      .eq('user_id', userId).eq('type', 'dca')
+      .order('created_at', { ascending: true }),
+    (supabase as any).from('orders')
+      .select('id, symbol, side, qty, notional, status, created_at')
+      .eq('user_id', userId)
+      .in('status', ['submitted', 'open', 'partially_filled'])
+      .order('created_at', { ascending: false }),
+  ]);
+  const dcas = ((dcaRes.data || []) as any[]).map((d: any) => ({
+    symbol: d.symbol,
+    amount: typeof d.config?.amount === 'number' ? d.config.amount : null,
+    frequency: d.config?.frequency || null,
+    dayOfWeek: d.config?.dayOfWeek,
+    dayOfMonth: d.config?.dayOfMonth,
+    endDate: d.config?.endDate || null,
+    nextRunAt: d.next_run_at || null,
+    isActive: !!d.is_active,
+  }));
+  const orders = ((orderRes.data || []) as any[]).map((o: any) => ({
+    symbol: o.symbol,
+    side: o.side,
+    qty: o.qty != null ? Number(o.qty) : null,
+    notional: o.notional != null ? Number(o.notional) : null,
+    status: o.status,
+    createdAt: o.created_at || null,
+  }));
+  return buildScheduledActivityAnswer(dcas, orders);
+}
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -1103,6 +1138,18 @@ export async function POST(req: Request) {
       }
     }
 
+    // ── Deterministic scheduled-activity router (DCA + open orders) ──
+    // "what are my scheduled buys", "any open orders", "show my DCA" are
+    // read-only queries the classifier sometimes mislabels as portfolio
+    // construction ("buys" reads like a build verb). Answer from the DB
+    // deterministically BEFORE the classifier can mis-route them.
+    if (mode !== 'alerts' && detectScheduledActivityIntent(lastMessage)) {
+      if (userId && userId !== 'anonymous') {
+        console.log('[chat] 🧭 scheduled-activity → deterministic answer');
+        return textSSEResponse(await fetchScheduledActivityAnswer(userId));
+      }
+    }
+
     // ── Deterministic CONFIRM GATE (plan-then-confirm) ──
     // Handles the user's reply to a pending-action preview. NEVER the LLM — this
     // is the safety rail between "the model proposed something" and "a side
@@ -1357,6 +1404,14 @@ export async function POST(req: Request) {
         }
         // No portfolio loaded → let the model prompt the user to connect a broker.
         console.log('[chat] 🧭 account_state with no portfolio → fall through to model');
+      }
+
+      if (classification.category === 'scheduled_activity') {
+        if (userId && userId !== 'anonymous') {
+          console.log('[chat] 🧭 scheduled_activity via classifier → deterministic answer');
+          return textSSEResponse(await fetchScheduledActivityAnswer(userId));
+        }
+        console.log('[chat] 🧭 scheduled_activity anonymous → fall through to model');
       }
     }
 
