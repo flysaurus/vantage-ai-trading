@@ -95,14 +95,46 @@ export interface RebalancePlan {
   lines: RebalanceLine[];
   totalBuy: number;
   totalSell: number;
+  /** True when the plan is a cash-only (buy-only, no sells) deployment. */
+  cashOnly?: boolean;
 }
 
 /** Compute proposed rebalance trades (dollar deltas) from holdings → style targets. */
-export function computeRebalancePlan(portfolio: PortfolioSnapshot | null, style: string): RebalancePlan {
+export function computeRebalancePlan(
+  portfolio: PortfolioSnapshot | null,
+  style: string,
+  opts?: { cashOnly?: boolean },
+): RebalancePlan {
   const { targets, styleName, description } = getInvestorStyleTargets(style);
   const equity = portfolio?.equity ?? 0;
   const cash = portfolio?.cash ?? 0;
   const positions = portfolio?.positions ?? [];
+
+  // Cash-only mode: deploy ONLY the available cash across the target ETFs by
+  // their style weight. Buy-only — no sells, existing positions untouched. The
+  // style's CASH bucket is the portion that stays in cash (not an order).
+  if (opts?.cashOnly) {
+    const budget = cash;
+    const lines: RebalanceLine[] = targets
+      .filter((t) => t.symbol.toUpperCase() !== 'CASH')
+      .map((t) => {
+        const targetValue = budget * t.targetPercent / 100;
+        const action: 'buy' | 'hold' = targetValue >= 1 ? 'buy' : 'hold';
+        return {
+          symbol: t.symbol,
+          name: t.name,
+          targetPercent: t.targetPercent,
+          currentValue: 0,
+          targetValue,
+          delta: targetValue,
+          qty: 0,
+          action,
+        };
+      })
+      .filter((l) => l.action === 'buy');
+    const totalBuy = lines.reduce((s, l) => s + l.delta, 0);
+    return { styleName, description, equity, cash, lines, totalBuy, totalSell: 0, cashOnly: true };
+  }
 
   const lines: RebalanceLine[] = targets.map((t) => {
     const targetValue = equity * t.targetPercent / 100;
@@ -182,6 +214,31 @@ export function detectRebalanceFollowUp(
   return /rebalance\s+plan\s+to|ready\s+to\s+rebalance/i.test(prevAssistant);
 }
 
+/** Detect a "cash only" rebalance request — deploy available cash, no sells. */
+export function detectCashOnlyRebalance(message: string): boolean {
+  const m = message.trim();
+  if (!m || m.length > 240) return false;
+  if (!/\brebalance\b/i.test(m)) return false;
+  return /\b(?:cash\s*[- ]?only|available\s+cash|only\s+cash|with\s+(?:my\s+)?cash|just\s+(?:the\s+)?cash)\b/i.test(m);
+}
+
+/**
+ * True when the current turn is a cash-only rebalance context: either the user
+ * literally said "cash only", or the assistant just showed a cash-only plan
+ * (so a bare "execute the rebalance" carries the cash-only mode forward).
+ */
+export function isCashOnlyRebalanceContext(
+  messages: Array<{ role: string; content: string }>,
+): boolean {
+  if (!Array.isArray(messages) || messages.length === 0) return false;
+  const last = (messages[messages.length - 1]?.content ?? '').trim();
+  if (detectCashOnlyRebalance(last)) return true;
+  const prevAssistant = [...messages]
+    .reverse()
+    .find((m) => m.role === 'assistant' || m.role === 'ai')?.content ?? '';
+  return /cash[- ]?only/i.test(prevAssistant);
+}
+
 export interface RebalanceLeg {
   symbol: string;
   side: 'BUY' | 'SELL';
@@ -242,6 +299,17 @@ function buildRebalanceTable(
 /** Preview text shown when the user says "execute the rebalance" (pre-confirm). */
 export function formatRebalanceExecutionPreview(plan: RebalancePlan): string {
   const { table, totalBuy, totalSell, count } = buildRebalanceTable(plan, false);
+  if (plan.cashOnly) {
+    return [
+      `Ready to execute the **cash-only** rebalance to **${plan.styleName}** — ${count} buy${count === 1 ? '' : 's'}:`,
+      '',
+      table,
+      '',
+      `**Total:** buy ${usd(totalBuy)}.`,
+      '',
+      `⚠️ Nothing has run yet. Reply "confirm" to place these trades, or "cancel" to abort.`,
+    ].join('\n');
+  }
   return [
     `Ready to rebalance to **${plan.styleName}** — ${count} trade${count === 1 ? '' : 's'}:`,
     '',
@@ -292,9 +360,25 @@ export function formatInvalidStyleAnswer(requested: string): string {
 
 export function formatRebalancePlanAnswer(plan: RebalancePlan): string {
   if (plan.lines.length === 0) {
-    return `Your portfolio is already aligned with the **${plan.styleName}** targets — no rebalancing trades needed.`;
+    return plan.cashOnly
+      ? `You have no available cash to deploy right now. Once your pending orders fill or you add cash, say "rebalance using cash only" again.`
+      : `Your portfolio is already aligned with the **${plan.styleName}** targets — no rebalancing trades needed.`;
   }
   const { table, totalBuy, totalSell, count } = buildRebalanceTable(plan, true);
+  if (plan.cashOnly) {
+    const remaining = Math.max(0, plan.cash - totalBuy);
+    return [
+      `Here's the **cash-only** rebalance plan to **${plan.styleName}** — deploy your available cash across the target ETFs (no sells, existing positions untouched):`,
+      '',
+      `Available cash: ${usd(plan.cash)}`,
+      '',
+      table,
+      '',
+      `**Summary:** ${count} buy${count === 1 ? '' : 's'} — ${usd(totalBuy)} to deploy · ${usd(remaining)} stays in cash.`,
+      '',
+      `⚠️ I haven't executed anything. Say "execute the rebalance" to place these buys.`,
+    ].join('\n');
+  }
   const cashLine = plan.lines.find((l) => l.symbol.toUpperCase() === 'CASH');
 
   const parts: string[] = [
