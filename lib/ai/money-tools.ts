@@ -81,7 +81,7 @@ export const MONEY_TOOLS: Anthropic.Tool[] = [
       dayOfWeek: { type: 'string', description: 'For weekly/biweekly: mon..fri.' },
       dayOfMonth: { type: 'string', description: "For monthly: '1' | '15' | 'last'." },
       startDate: { type: 'string', description: 'Start date (YYYY-MM-DD).' },
-      endDate: { type: 'string', description: 'Optional end date (YYYY-MM-DD).' },
+      endDate: { type: 'string', description: 'End date (YYYY-MM-DD). Omit ONLY if the user explicitly chose "ongoing / no end date". Ask the user for a duration before omitting.' },
     }),
   },
   {
