@@ -15,7 +15,7 @@ import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
 import { detectAppHelpIntent, buildAppHelpAnswer } from '@/lib/ai/app-help'
-import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
+import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
@@ -1041,19 +1041,21 @@ export async function POST(req: Request) {
       timezone: timezone || 'America/New_York',
     }
 
-    // Fresh investor style from DB overrides the stale client body. The client
-    // caches `user.investorStyle`, so immediately after "change my style to X"
-    // the NEXT request still sends the OLD style. The DB is the source of truth,
-    // so a "rebalance" follow-up targets the style the user just switched to.
+    // Fresh profile (investor style + risk tolerance) from DB overrides the
+    // stale client body. The client caches `user.investorStyle` / `user.riskTolerance`,
+    // so immediately after "change my style to X" or "change to aggressive" the
+    // NEXT request still sends the OLD value. The DB is the source of truth, so a
+    // "rebalance" follow-up targets the profile the user just switched to.
     if (userId && userId !== 'anonymous') {
       try {
         const supabase = createServerClient();
         const { data: userRow } = await (supabase as any)
           .from('users')
-          .select('investor_style')
+          .select('investor_style, risk_tolerance')
           .eq('id', userId)
           .maybeSingle();
         if (userRow?.investor_style) profile.investorStyle = userRow.investor_style;
+        if (userRow?.risk_tolerance) profile.riskTolerance = userRow.risk_tolerance.charAt(0).toUpperCase() + userRow.risk_tolerance.slice(1);
       } catch (e) {
         console.error('[chat] fresh profile fetch failed (non-fatal):', e);
       }
@@ -1222,6 +1224,21 @@ export async function POST(req: Request) {
           } catch (e) {
             console.error('[chat] style change failed:', e);
           }
+        }
+
+        if (action.type === 'change_risk') {
+          try {
+            if (userId && userId !== 'anonymous') {
+              await (supabase as any)
+                .from('users')
+                .update({ risk_tolerance: action.risk.toLowerCase() })
+                .eq('id', userId);
+              console.log(`[chat] 🎚️ risk changed → ${action.risk} (user ${userId.slice(0, 8)})`);
+            }
+          } catch (e) {
+            console.error('[chat] risk change failed:', e);
+          }
+          return textSSEResponse(formatRiskChangeAnswer(action.risk));
         }
 
         if (action.type === 'change_style') {

@@ -7,8 +7,11 @@
 
 import { getStyleConfig, getAllStyleLabels } from '@/lib/investor-style-defaults';
 import { getInvestorStyleTargets, resolveRebalanceTargets, type AssetClass } from '@/lib/investor-style-targets';
+import { getRiskTolerancePrompt } from '@/lib/ai/userProfile';
 
 const VALID_STYLES = ['buffett', 'lynch', 'livermore', 'soros', 'munger'];
+
+export type RiskLevel = 'Aggressive' | 'Conservative' | 'Moderate';
 
 export interface PortfolioSnapshot {
   equity: number;
@@ -27,7 +30,8 @@ export type AccountAction =
   | { type: 'invalid_style'; requested: string }
   | { type: 'rebalance'; style: string | null }
   | { type: 'change_and_rebalance'; style: string }
-  | { type: 'change_style_ask' };
+  | { type: 'change_style_ask' }
+  | { type: 'change_risk'; risk: RiskLevel };
 
 /** Normalize a spoken style name ("Lynch", "warren buffett") → key ("lynch"). */
 export function normalizeStyle(input: string): string | null {
@@ -59,6 +63,16 @@ export function detectAccountAction(message: string): AccountAction | null {
   const rawStyle = styleMatch ? styleMatch[1] : null;
   const style = rawStyle ? normalizeStyle(rawStyle) : null;
 
+  // Risk-tolerance change: "change to aggressive", "change my risk to
+  // conservative", "make me more aggressive", "change it to aggressive style".
+  // A risk word like "aggressive" is NOT an investor style — it must map to
+  // risk tolerance (and must NOT be reported as an invalid style).
+  const hasChangeVerb = /\b(change|set|switch|make|turn|update|adjust|become)\b/i.test(m);
+  const riskLevel = detectRiskLevel(m);
+  const hasRiskChange = hasChangeVerb && riskLevel != null && !rebalanceMatch && !style;
+
+  if (hasRiskChange && !hypothetical) return { type: 'change_risk', risk: riskLevel! };
+
   // Rebalance target style: "rebalance ... to/into/as X"
   let rebStyle: string | null = null;
   if (rebalanceMatch) {
@@ -78,6 +92,17 @@ export function detectAccountAction(message: string): AccountAction | null {
   if (hasChange && !hypothetical) return { type: 'change_style', style: style! };
   if (hasRebalance && !hypothetical) return { type: 'rebalance', style: rebStyle };
   if (styleChangeAskMatch && !hypothetical) return { type: 'change_style_ask' };
+  return null;
+}
+
+/** Map a risk-level word/phrase → canonical risk tolerance, or null. */
+function detectRiskLevel(m: string): RiskLevel | null {
+  const match = /\b(aggressive|conservative|moderate|balanced|high[\s-]?risk|low[\s-]?risk|risk[\s-]?averse|risk[\s-]?taking|risky|cautious|safe)\b/i.exec(m);
+  if (!match) return null;
+  const w = match[1].toLowerCase().replace(/[\s-]+/g, ' ');
+  if (/\b(aggressive|risky|risk taking|high risk)\b/.test(w)) return 'Aggressive';
+  if (/\b(conservative|risk averse|cautious|safe|low risk)\b/.test(w)) return 'Conservative';
+  if (/\b(moderate|balanced)\b/.test(w)) return 'Moderate';
   return null;
 }
 
@@ -508,6 +533,17 @@ export function formatStyleChangeAnswer(style: string, risk: string): string {
 
 export function formatInvalidStyleAnswer(requested: string): string {
   return `I can't set your style to "${requested}" — the available styles are Buffett (Value), Lynch (Growth), Livermore (Momentum), Munger (Dividend), and Soros (Macro). Try "change my style to Lynch".`;
+}
+
+/** Risk-tolerance change confirmation (deterministic, grounded in the risk lens). */
+export function formatRiskChangeAnswer(risk: RiskLevel): string {
+  return [
+    `✅ Your risk tolerance is now **${risk}**.`,
+    '',
+    getRiskTolerancePrompt(risk),
+    '',
+    `This now drives how I size positions and frame risk across Vantage. Want me to rebalance your portfolio to match? Just say "rebalance".`,
+  ].join('\n');
 }
 
 /** Ask which style to switch to (when the user said "change my style" with no target). */
