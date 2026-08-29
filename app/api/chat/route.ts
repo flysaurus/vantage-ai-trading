@@ -14,7 +14,7 @@ import { resolveTickers } from '@/lib/ticker-resolver';
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
-import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, isCashOnlyRebalanceContext, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
+import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, formatRebalanceBudgetPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
@@ -1116,18 +1116,23 @@ export async function POST(req: Request) {
       if (!userId || userId === 'anonymous') {
         return textSSEResponse('You need to be signed in to execute trades.');
       }
-      const cashOnly = isCashOnlyRebalanceContext(messages);
-      const plan = computeRebalancePlan(portfolioSnapshot, targetStyle, cashOnly ? { cashOnly: true } : undefined);
+      const scope = detectScopedRebalanceMode(messages);
+      const plan = computeRebalancePlan(portfolioSnapshot, targetStyle, {
+        cashOnly: scope.cashOnly,
+        customAmount: scope.customAmount ?? undefined,
+      });
       const legs = rebalancePlanToLegs(plan);
       if (legs.length === 0) {
-        return textSSEResponse(cashOnly
+        return textSSEResponse(scope.cashOnly
           ? 'You have no available cash to deploy right now. Once your pending orders fill or you add cash, say "rebalance using cash only" again.'
-          : `Your portfolio is already aligned with the **${plan.styleName}** targets — no rebalancing trades needed.`);
+          : scope.customAmount != null
+            ? 'That amount is too small to split into buys — try a larger amount.'
+            : `Your portfolio is already aligned with the **${plan.styleName}** targets — no rebalancing trades needed.`);
       }
       const action = await createPendingAction(supabase, userId, {
         actionType: 'rebalance_execute',
         payload: { style: targetStyle, legs },
-        summary: `${cashOnly ? 'Cash-only rebalance' : 'Rebalance'} to ${plan.styleName} (${legs.length} trades)`,
+        summary: `${scope.cashOnly ? 'Cash-only rebalance' : scope.customAmount != null ? 'Custom rebalance' : 'Rebalance'} to ${plan.styleName} (${legs.length} trades)`,
         amountUsd: null,
         confirmToken: null,
       });
@@ -1184,8 +1189,23 @@ export async function POST(req: Request) {
           );
         }
 
-        const cashOnly = detectCashOnlyRebalance(lastMessage);
-        const plan = computeRebalancePlan(portfolioSnapshot, targetStyle, cashOnly ? { cashOnly: true } : undefined);
+        if (action.type === 'rebalance') {
+          if (detectCashOnlyRebalance(lastMessage)) {
+            const plan = computeRebalancePlan(portfolioSnapshot, targetStyle, { cashOnly: true });
+            return textSSEResponse(formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' });
+          }
+          const customAmount = detectCustomAmountRebalance(lastMessage);
+          if (customAmount != null) {
+            const plan = computeRebalancePlan(portfolioSnapshot, targetStyle, { customAmount });
+            return textSSEResponse(formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' });
+          }
+          if (detectFullPortfolioRebalance(lastMessage)) {
+            const plan = computeRebalancePlan(portfolioSnapshot, targetStyle);
+            return textSSEResponse(formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' });
+          }
+          return textSSEResponse(formatRebalanceBudgetPrompt(portfolioSnapshot, targetStyle), { kind: 'rebalance_budget' });
+        }
+        const plan = computeRebalancePlan(portfolioSnapshot, targetStyle);
         const prefix = action.type === 'change_and_rebalance'
           ? `✅ Your investor style is now **${styleLabel(action.style)}**.
 

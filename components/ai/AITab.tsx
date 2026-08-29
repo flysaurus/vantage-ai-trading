@@ -253,11 +253,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [showBudgetWarning, setShowBudgetWarning] = useState(false);
 
   // ── Rebalance action buttons ──
-  // When the deterministic rebalance path emits a plan or execution preview, it
-  // tags the SSE with `data.action = { kind: 'rebalance_plan' | 'rebalance_confirm' }`.
-  // We surface inline buttons (Execute / Confirm / Cancel) under that AI message so
-  // Em can drive the flow by clicking instead of typing phrases.
-  const [rebalanceAction, setRebalanceAction] = useState<{ kind: 'rebalance_plan' | 'rebalance_confirm'; msgId: string } | null>(null);
+  // When the deterministic rebalance path emits a plan, execution preview, or
+  // budget prompt, it tags the SSE with `data.action = { kind: ... }`.
+  // Kinds:
+  //   rebalance_plan     → ▶ Execute rebalance
+  //   rebalance_confirm  → ✓ Confirm / ✕ Cancel
+  //   rebalance_budget   → 💵 available cash / 📊 full portfolio / ✏️ custom
+  //   rebalance_custom   → inline $ amount input + deploy
+  const [rebalanceAction, setRebalanceAction] = useState<{ kind: 'rebalance_plan' | 'rebalance_confirm' | 'rebalance_budget' | 'rebalance_custom'; msgId: string } | null>(null);
+  const [customAmountValue, setCustomAmountValue] = useState('');
 
   // ── TL;DR toggle state (set of collapsed message indices) ──
   const [collapsedTLDRs, setCollapsedTLDRs] = useState<Set<number>>(new Set());
@@ -1100,6 +1104,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     setMessages(newMessages);
     setInput('');
     setRebalanceAction(null); // clear any staged rebalance buttons while the new turn runs
+    setCustomAmountValue('');
     setLoading(true); loadingRef.current = true;
 
     // Send last 10 messages to cap context window, but ALWAYS include
@@ -2040,69 +2045,118 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 );
               })()}
               {/* Rebalance inline action buttons (Execute / Confirm / Cancel) */}
-              {showRebalanceButtons && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
-                  {rebalanceAction!.kind === 'rebalance_plan' ? (
-                    <button
-                      onClick={() => sendMessage('execute the rebalance', 'chat')}
-                      disabled={loading}
-                      style={{
-                        background: '#22d3ee',
-                        color: '#0b1220',
-                        border: 'none',
-                        borderRadius: '8px',
-                        padding: '8px 16px',
-                        fontSize: '13px',
-                        fontWeight: 700,
-                        cursor: loading ? 'not-allowed' : 'pointer',
-                        fontFamily: 'inherit',
-                        opacity: loading ? 0.6 : 1,
-                      }}
-                    >
-                      ▶ Execute rebalance
+              {showRebalanceButtons && (() => {
+                const kind = rebalanceAction!.kind;
+                const solid = (bg: string) => ({
+                  background: bg,
+                  color: '#0b1220',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '8px 16px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  fontFamily: 'inherit',
+                  opacity: loading ? 0.6 : 1,
+                });
+                const ghost = {
+                  background: 'transparent',
+                  color: 'rgba(255,255,255,0.7)',
+                  border: '1px solid rgba(255,255,255,0.22)',
+                  borderRadius: '8px',
+                  padding: '8px 16px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  fontFamily: 'inherit',
+                  opacity: loading ? 0.6 : 1,
+                };
+
+                // Budget selection prompt (rebalance with no explicit scope)
+                if (kind === 'rebalance_budget') {
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                      <button onClick={() => sendMessage('rebalance using available cash only', 'chat')} disabled={loading} style={solid('#22d3ee')}>
+                        💵 Available cash only
+                      </button>
+                      <button onClick={() => sendMessage('rebalance with my full portfolio', 'chat')} disabled={loading} style={solid('#34d399')}>
+                        📊 Full portfolio
+                      </button>
+                      <button
+                        onClick={() => { setCustomAmountValue(''); setRebalanceAction({ kind: 'rebalance_custom', msgId: msg.id! }); }}
+                        disabled={loading}
+                        style={ghost}
+                      >
+                        ✏️ Custom amount
+                      </button>
+                    </div>
+                  );
+                }
+
+                // Custom amount input (after "✏️ Custom amount")
+                if (kind === 'rebalance_custom') {
+                  const deploy = () => {
+                    const v = customAmountValue.trim().replace(/^\$/, '');
+                    if (!v) return;
+                    setCustomAmountValue('');
+                    sendMessage(`rebalance with $${v}`, 'chat');
+                  };
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="$ amount (e.g. 5000)"
+                        value={customAmountValue}
+                        onChange={(e) => setCustomAmountValue(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') deploy(); }}
+                        disabled={loading}
+                        style={{
+                          flex: '1 1 160px',
+                          minWidth: '140px',
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid rgba(255,255,255,0.18)',
+                          borderRadius: '8px',
+                          padding: '8px 12px',
+                          fontSize: '13px',
+                          color: '#ffffff',
+                          fontFamily: 'inherit',
+                          outline: 'none',
+                        }}
+                      />
+                      <button onClick={deploy} disabled={loading || !customAmountValue.trim()} style={solid('#34d399')}>
+                        ✓ Deploy
+                      </button>
+                      <button onClick={() => { setCustomAmountValue(''); setRebalanceAction({ kind: 'rebalance_budget', msgId: msg.id! }); }} disabled={loading} style={ghost}>
+                        ✕ Back
+                      </button>
+                    </div>
+                  );
+                }
+
+                // Plan shown → execute
+                if (kind === 'rebalance_plan') {
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                      <button onClick={() => sendMessage('execute the rebalance', 'chat')} disabled={loading} style={solid('#22d3ee')}>
+                        ▶ Execute rebalance
+                      </button>
+                    </div>
+                  );
+                }
+
+                // Execution preview → confirm / cancel
+                return (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                    <button onClick={() => sendMessage('confirm', 'chat')} disabled={loading} style={solid('#34d399')}>
+                      ✓ Confirm
                     </button>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => sendMessage('confirm', 'chat')}
-                        disabled={loading}
-                        style={{
-                          background: '#34d399',
-                          color: '#0b1220',
-                          border: 'none',
-                          borderRadius: '8px',
-                          padding: '8px 16px',
-                          fontSize: '13px',
-                          fontWeight: 700,
-                          cursor: loading ? 'not-allowed' : 'pointer',
-                          fontFamily: 'inherit',
-                          opacity: loading ? 0.6 : 1,
-                        }}
-                      >
-                        ✓ Confirm
-                      </button>
-                      <button
-                        onClick={() => sendMessage('cancel', 'chat')}
-                        disabled={loading}
-                        style={{
-                          background: 'transparent',
-                          color: 'rgba(255,255,255,0.7)',
-                          border: '1px solid rgba(255,255,255,0.22)',
-                          borderRadius: '8px',
-                          padding: '8px 16px',
-                          fontSize: '13px',
-                          fontWeight: 600,
-                          cursor: loading ? 'not-allowed' : 'pointer',
-                          fontFamily: 'inherit',
-                          opacity: loading ? 0.6 : 1,
-                        }}
-                      >
-                        ✕ Cancel
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
+                    <button onClick={() => sendMessage('cancel', 'chat')} disabled={loading} style={ghost}>
+                      ✕ Cancel
+                    </button>
+                  </div>
+                );
+              })()}
               {/* Inline trade buttons (Demo/Gold only) */}
               {(() => {
                 if (tier === 'silver') return null;
