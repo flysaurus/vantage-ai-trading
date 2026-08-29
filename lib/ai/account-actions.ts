@@ -76,7 +76,7 @@ export function detectAccountAction(message: string): AccountAction | null {
 
   if (hasChange && hasRebalance && !hypothetical) return { type: 'change_and_rebalance', style: style! };
   if (hasChange && !hypothetical) return { type: 'change_style', style: style! };
-  if (hasRebalance) return { type: 'rebalance', style: rebStyle };
+  if (hasRebalance && !hypothetical) return { type: 'rebalance', style: rebStyle };
   if (styleChangeAskMatch && !hypothetical) return { type: 'change_style_ask' };
   return null;
 }

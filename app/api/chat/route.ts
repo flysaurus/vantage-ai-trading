@@ -14,6 +14,7 @@ import { resolveTickers } from '@/lib/ticker-resolver';
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
+import { detectAppHelpIntent, buildAppHelpAnswer } from '@/lib/ai/app-help'
 import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
@@ -1082,6 +1083,21 @@ export async function POST(req: Request) {
       if (profileKind) {
         console.log(`[chat] 🧭 profile question (${profileKind}) → deterministic answer`);
         return textSSEResponse(buildProfileAnswer(profile, profileKind));
+      }
+    }
+
+    // ── Deterministic app-help router (grounded — no model call) ──
+    // "what can you do?", "help", "how do I rebalance/set up DCA/change my
+    // style/connect my broker/set alerts/add funds" are app-usage questions the
+    // model previously answered vaguely or mis-routed (e.g. "how do I rebalance"
+    // fired a real rebalance plan). Answer them from a stable, accurate menu.
+    // Placed AFTER profile questions and BEFORE the confirm gate / account
+    // actions so a "how do I X" question never mutates state or stages a plan.
+    if (mode !== 'alerts') {
+      const helpKind = detectAppHelpIntent(lastMessage);
+      if (helpKind) {
+        console.log(`[chat] 🧭 app-help (${helpKind}) → deterministic answer`);
+        return textSSEResponse(buildAppHelpAnswer(helpKind));
       }
     }
 
