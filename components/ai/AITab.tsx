@@ -1567,21 +1567,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
 
   // ── AI Noticed items (fetched from API — already set via useEffect) ──
 
-  // ── Suggested chips (trimmed to 2 per reference) ──
-  const suggestionChips: string[] = (() => {
-    const chips: string[] = [];
-    const pos = positions;
-
-    const largest = pos.reduce((a, b) => (a.marketValue || 0) > (b.marketValue || 0) ? a : b, pos[0]);
-    if (largest) {
-      chips.push(`Should I trim ${largest.symbol} given recent outperformance?`);
-    }
-    if (pos.length > 0) {
-      chips.push(`What would deploying half my cash into ${pos[0].symbol} look like?`);
-    }
-    return chips.slice(0, 2);
-  })();
-
   // ── Explore bottom sheet ──
   const [showExplore, setShowExplore] = useState(false);
 
@@ -2878,38 +2863,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               </>
             )}
 
-            {/* ── Quick Prompts (suggested chips) ── */}
-            <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: '#22d3ee', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
-              Quick Prompts
-            </div>
-            {suggestionChips.map((chip) => (
-              <div
-                key={chip}
-                onClick={() => {
-                  setShowExplore(false);
-                  sendToChat(chip);
-                }}
-                style={{
-                  background: GLASS_BG_LIGHTER,
-                  border: `1px solid ${BORDER_MUTED}`,
-                  borderRadius: '999px',
-                  padding: '10px 16px',
-                  marginBottom: '8px',
-                  fontSize: '12px',
-                  color: 'rgba(255,255,255,0.8)',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {chip}
-              </div>
-            ))}
-
-            {/* Divider */}
-            <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)', margin: '4px 0 8px' }} />
-
             {/* ── Quick Tools ── */}
             <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: '#22d3ee', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
               Quick Tools
@@ -2919,6 +2872,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               {[
                 { label: 'Market Pulse', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); handleMarketPulse(e); } },
                 { label: 'Strategy Ideas', live: false, onClick: () => { setShowExplore(false); sendToChat('Based on my current portfolio and market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas.'); } },
+                { label: 'Rebalance', live: false, onClick: () => { setShowExplore(false); sendToChat('rebalance'); } },
+                { label: 'DCA', live: false, onClick: () => { setShowExplore(false); sendToChat('Set up a dollar-cost averaging (DCA) plan'); } },
                 { label: 'Tax Check', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); sendToChat('Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.', e); } },
                 { label: 'Alerts', live: false, onClick: () => { setShowExplore(false); sendMessage('Scan my portfolio for urgent alerts', 'alerts'); wasAtBottomRef.current = true; scrollToBottom(true); } },
               ].map((action) => (
