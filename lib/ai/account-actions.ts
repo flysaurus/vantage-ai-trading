@@ -82,14 +82,14 @@ export function detectAccountAction(message: string): AccountAction | null {
   const style = rawStyle ? normalizeStyle(rawStyle) : null;
 
   // Risk-tolerance change. A risk word ("aggressive") only maps to RISK when the
-  // message explicitly mentions risk OR uses a "more/less" comparative — a bare
-  // "make it aggressive" / "change it to conservative" refers to the investor
-  // STYLE (the reference from "what's my style"), not risk tolerance.
+  // message explicitly mentions risk OR uses a "more/less" comparative OUTSIDE the
+  // "change … to X" form. "change to more aggressive" is a STYLE request (X is a
+  // style target), while "make me more aggressive" / "change my risk to X" stay risk.
   const hasChangeVerb = /\b(change|set|switch|make|turn|update|adjust|become)\b/i.test(m);
   const riskLevel = detectRiskLevel(m);
   const explicitRisk = /\b(risk|tolerance|risk\s+tolerance|risk\s+profile|risk\s+level|risk\s+appetite)\b/i.test(m);
   const comparativeRisk = /\b(more|less)\b/i.test(m);
-  const hasRiskChange = hasChangeVerb && riskLevel != null && !rebalanceMatch && !style && (explicitRisk || comparativeRisk);
+  const hasRiskChange = hasChangeVerb && riskLevel != null && !rebalanceMatch && !style && (explicitRisk || (comparativeRisk && !styleMatch));
 
   if (hasRiskChange && !hypothetical) return { type: 'change_risk', risk: riskLevel! };
 
@@ -553,6 +553,10 @@ export function formatStyleChangeAnswer(style: string, risk: string): string {
 }
 
 export function formatInvalidStyleAnswer(requested: string): string {
+  const riskish = /\b(aggressive|conservative|moderate|balanced|risk|more|less)\b/i.test(requested);
+  if (riskish) {
+    return `That's a risk level, not a style — but I can switch your investor style. Pick one below (Livermore Momentum and Soros Macro are the most aggressive):`;
+  }
   return `"${requested}" isn't one of the predefined investor styles — pick one below and I'll update your profile.`;
 }
 

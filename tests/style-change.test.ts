@@ -91,6 +91,8 @@ describe('detectAccountAction — style synonyms + "change it to" form', () => {
     ['make my style aggressive', 'aggressive'],
     ['change it to conservative', 'conservative'],
     ['change it to aggressive style', 'aggressive style'],
+    ['change to more aggressive', 'more aggressive'],
+    ['change to less conservative', 'less conservative'],
   ])('routes bare risk-word target %s → invalid_style (buttons, not risk)', (msg, requested) => {
     expect(detectAccountAction(msg)).toEqual({ type: 'invalid_style', requested });
   });

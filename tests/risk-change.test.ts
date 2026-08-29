@@ -20,6 +20,8 @@ describe('detectAccountAction — risk-tolerance change', () => {
     ['set my risk level to moderate', 'Moderate'],
     ['switch my risk profile to aggressive', 'Aggressive'],
     ['update my risk tolerance to low risk', 'Conservative'],
+    ['change to low risk', 'Conservative'],
+    ['change to high risk', 'Aggressive'],
   ])('maps %s → change_risk(%s)', (msg, risk) => {
     expect(detectAccountAction(msg)).toEqual({ type: 'change_risk', risk });
   });
@@ -28,6 +30,7 @@ describe('detectAccountAction — risk-tolerance change', () => {
     expect(detectAccountAction('make it aggressive')).not.toEqual(expect.objectContaining({ type: 'change_risk' }));
     expect(detectAccountAction('change it to conservative')).not.toEqual(expect.objectContaining({ type: 'change_risk' }));
     expect(detectAccountAction('change to aggressive')).not.toEqual(expect.objectContaining({ type: 'change_risk' }));
+    expect(detectAccountAction('change to more aggressive')).not.toEqual(expect.objectContaining({ type: 'change_risk' }));
   });
 
   it('does NOT treat a hypothetical risk question as a mutation', () => {
