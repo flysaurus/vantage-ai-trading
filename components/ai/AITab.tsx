@@ -1120,11 +1120,14 @@ export function AITab({ messages, setMessages }: AITabProps) {
     // Single-shot: reset the Deep Dive toggle once a deep send is committed
     if (mode === 'deep') setDeepMode(false);
 
-    // 45s client-side timeout — aborts cleanly BEFORE Vercel's ~60s SSE kill so
-    // we can surface an honest "taking longer than expected" instead of Safari's
-    // opaque "Load failed" on a dropped stream.
+    // 90s client-side timeout — aborts cleanly BEFORE Vercel's 300s function
+    // maxDuration so we can surface an honest "taking longer than expected"
+    // instead of an opaque dropped-stream error. The full pipeline (classifier →
+    // search → ticker resolution → live market data → model + tool turns) can
+    // legitimately exceed 45s on a cold start or with a live broker portfolio,
+    // so 45s was too aggressive for slow-but-progressing responses.
     const abortController = new AbortController();
-    const abortTimeout = setTimeout(() => abortController.abort(), 45000);
+    const abortTimeout = setTimeout(() => abortController.abort(), 90000);
 
     try {
       const res = await apiPost('/api/chat', {
