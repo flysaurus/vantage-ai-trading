@@ -52,13 +52,18 @@ export async function GET(req: NextRequest) {
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
-  // ── Look up SnapTrade user ──
+  // ── Look up the pending SnapTrade connection ──
+  // A user can have multiple broker rows (one per brokerage_slug). Pick the
+  // MOST RECENTLY initiated pending row deterministically (never `.maybeSingle()`
+  // over the whole set, which breaks when 2+ brokers exist).
   const { data: conn } = await supabase
     .from('broker_connections')
     .select('*')
     .eq('user_id', authUser.id)
     .eq('connection_type', 'snaptrade')
     .eq('status', 'pending')
+    .order('updated_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (!conn?.snaptrade_user_id || !conn?.snaptrade_user_secret_encrypted) {
@@ -101,13 +106,36 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Use the most recent connection (the one just created)
-    const latest = connections.reduce((a, b) =>
+    // ── Match the newly created connection to the broker being connected ──
+    // A user can hold multiple SnapTrade connections (Alpaca Paper + Robinhood,
+    // etc.). Blindly picking the globally-newest connection is the exact bug that
+    // overwrote the Alpaca Paper row with a Robinhood read connection: it must
+    // match the pending row's brokerage_slug.
+    const targetSlug = (conn.brokerage_slug || '').toUpperCase();
+    const matches = connections.filter(
+      (c) => (c.brokerage?.slug || '').toUpperCase() === targetSlug,
+    );
+    if (matches.length === 0) {
+      console.error(
+        `[connections/callback] No connection found for broker slug "${targetSlug}" after OAuth; available slugs: ${
+          connections.map((c) => c.brokerage?.slug).join(', ')
+        }`,
+      );
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || '/';
+      return NextResponse.redirect(
+        new URL(
+          `/broker-setup?error=${encodeURIComponent('Connection did not match the requested broker. Please try again.')}`,
+          appUrl,
+        ),
+      );
+    }
+    // Most recent matching connection (the one just created for this broker)
+    const latest = matches.reduce((a, b) =>
       new Date(a.created_date) > new Date(b.created_date) ? a : b,
     );
 
     // ── Verify trading capability (from actual connection, not assumption) ──
-    const brokerSlug = conn.brokerage_slug || latest.brokerage.slug;
+    const brokerSlug = latest.brokerage.slug || conn.brokerage_slug;
     const brokers = await getAllowedBrokerages();
     const brokerProfile = brokers.find(b => b.slug.toUpperCase() === brokerSlug.toUpperCase());
     const tradingEnabled = brokerProfile?.allowsTrading ?? false;
