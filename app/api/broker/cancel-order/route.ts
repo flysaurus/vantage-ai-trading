@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
   let snaptradeUserId: string;
   let snaptradeUserSecret: string;
   let connectionId: string;
+  let brokerConnectionId: string;
   let brokerSlug: string;
   let tradingEnabled = false;
 
@@ -75,6 +76,7 @@ export async function POST(req: NextRequest) {
     snaptradeUserId = creds.snaptradeUserId;
     snaptradeUserSecret = creds.snaptradeUserSecret;
     connectionId = creds.connectionId;
+    brokerConnectionId = creds.brokerConnectionId;
     brokerSlug = creds.brokerSlug;
     tradingEnabled = creds.tradingEnabled;
   } catch (err) {
@@ -220,6 +222,7 @@ export async function POST(req: NextRequest) {
           side: dbSide === 'sell' ? 'SELL' : 'BUY',
           orderId: brokerageOrderId,
           isLive: true,
+          connectionId: brokerConnectionId,
           cancelReason: 'user_cancelled',
           orderUnit: dbOrderUnit,
           requestedAmount: dbRequestedAmount,
@@ -317,6 +320,7 @@ export async function POST(req: NextRequest) {
           fillTotal: shares * fillPrice,
           orderId: brokerageOrderId,
           isLive: true,
+          connectionId: brokerConnectionId,
           orderUnit: dbOrderUnit,
           requestedAmount: dbRequestedAmount,
           requestedQty: dbRequestedQty,

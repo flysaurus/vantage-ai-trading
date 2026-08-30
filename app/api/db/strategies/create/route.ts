@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
+import { accountScopeColumns } from '@/lib/account-scope';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
@@ -12,11 +13,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const body = await req.json().catch(() => null);
     if (!body) return NextResponse.json({ error: 'Missing request body' }, { status: 400 });
 
-    const { userId, name, description, investorStyle, targetAllocation, stocks } = body as Record<string, any>;
+    const { userId, name, description, investorStyle, targetAllocation, stocks, accountId } = body as Record<string, any>;
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
     if (!name?.trim()) return NextResponse.json({ error: 'name required' }, { status: 400 });
     if (userId !== authUserId) return NextResponse.json({ error: 'Cannot create strategies for other users' }, { status: 403 });
 
+    const scopeCols = accountScopeColumns(accountId);
     const { data, error } = await (supabase as any)
       .from('strategies').insert({
         user_id: userId, name: name.trim(),
@@ -24,6 +26,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         investor_style: investorStyle || null,
         target_allocation: targetAllocation || {},
         stocks: stocks || [],
+        connection_id: scopeCols.connection_id,
+        is_demo: scopeCols.is_demo,
       }).select('id, name, description, investor_style, target_allocation, stocks, created_at').single();
 
     if (error) return NextResponse.json({ error: 'Failed to create strategy', detail: error.message }, { status: 500 });

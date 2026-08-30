@@ -72,6 +72,8 @@ interface BaseEvent extends RequestedFields {
   orderId: string;
   isLive: boolean;
   userName?: string;
+  /** broker_connections.id for live orders — scopes the bell notification. */
+  connectionId?: string | null;
 }
 
 export type OrderEmailEvent =
@@ -134,6 +136,8 @@ export interface BasketOrderEvent {
   isLive: boolean;
   userName?: string;
   orderIds?: string[];
+  /** broker_connections.id for live baskets — scopes the bell notification. */
+  connectionId?: string | null;
 }
 
 // ─── 1. Placed ───────────────────────────────────────────────

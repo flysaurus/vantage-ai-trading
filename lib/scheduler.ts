@@ -365,7 +365,7 @@ async function placeDcaOrder(
     await notifyOrderNotification(
       supabase,
       userId,
-      { kind: 'placed', brokerName, symbol: symbol.toUpperCase(), side: 'BUY', type: 'market', estimatedTotal, orderId: orderIdForEmail, isLive: true, ...requestedFields },
+      { kind: 'placed', brokerName, symbol: symbol.toUpperCase(), side: 'BUY', type: 'market', estimatedTotal, orderId: orderIdForEmail, isLive: true, connectionId: creds.brokerConnectionId, ...requestedFields },
     );
 
     const fillShares = result.filledShares || placedShares || 0;
@@ -381,7 +381,7 @@ async function placeDcaOrder(
       await notifyOrderNotification(
         supabase,
         userId,
-        { kind: 'filled', brokerName, symbol: symbol.toUpperCase(), side: 'BUY', fillQty: fillShares, fillPrice, fillTotal: totalCost, orderId: orderIdForEmail, isLive: true, ...requestedFields },
+        { kind: 'filled', brokerName, symbol: symbol.toUpperCase(), side: 'BUY', fillQty: fillShares, fillPrice, fillTotal: totalCost, orderId: orderIdForEmail, isLive: true, connectionId: creds.brokerConnectionId, ...requestedFields },
       );
     }
   }

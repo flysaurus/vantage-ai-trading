@@ -366,6 +366,7 @@ export async function POST(req: NextRequest) {
         fillTotal: (leg.fillPrice ?? 0) * (leg.filledShares ?? 0),
       })),
       isLive: true,
+      connectionId: brokerConnectionId,
       orderIds: legs
         .map((leg) => leg.orderId)
         .filter((id): id is string => !!id),

@@ -37,6 +37,7 @@ export async function createWatchlist(params: {
   name: string;
   description?: string;
   isDefault?: boolean;
+  accountId?: string;
 }): Promise<Watchlist | null> {
   try {
     const res = await apiFetch(`${API_BASE}/create`, {
@@ -58,11 +59,11 @@ export async function createWatchlist(params: {
 /**
  * Fetches all watchlists for a user.
  */
-export async function getWatchlists(userId: string): Promise<Watchlist[]> {
+export async function getWatchlists(userId: string, accountId?: string): Promise<Watchlist[]> {
   try {
-    const res = await apiFetch(
-      `${API_BASE}/get-all?userId=${encodeURIComponent(userId)}`
-    );
+    let url = `${API_BASE}/get-all?userId=${encodeURIComponent(userId)}`;
+    if (accountId) url += `&accountId=${encodeURIComponent(accountId)}`;
+    const res = await apiFetch(url);
     if (!res.ok) {
       console.warn('[watchlists] get-all failed:', res.status);
       return [];
@@ -80,12 +81,13 @@ export async function getWatchlists(userId: string): Promise<Watchlist[]> {
  */
 export async function addStockToWatchlist(
   watchlistId: string,
-  symbol: string
+  symbol: string,
+  accountId?: string
 ): Promise<{ id: string; stocks: WatchlistStock[]; updatedAt: string } | null> {
   try {
     const res = await apiFetch(`${API_BASE}/add-stock`, {
       method: 'POST',
-      body: JSON.stringify({ watchlistId, symbol }),
+      body: JSON.stringify({ watchlistId, symbol, accountId }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -104,12 +106,13 @@ export async function addStockToWatchlist(
  */
 export async function removeStockFromWatchlist(
   watchlistId: string,
-  symbol: string
+  symbol: string,
+  accountId?: string
 ): Promise<{ id: string; stocks: WatchlistStock[]; updatedAt: string } | null> {
   try {
     const res = await apiFetch(`${API_BASE}/remove-stock`, {
       method: 'POST',
-      body: JSON.stringify({ watchlistId, symbol }),
+      body: JSON.stringify({ watchlistId, symbol, accountId }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -128,12 +131,13 @@ export async function removeStockFromWatchlist(
  */
 export async function updateWatchlist(
   watchlistId: string,
-  params: { name: string; description?: string }
+  params: { name: string; description?: string },
+  accountId?: string
 ): Promise<{ id: string; name: string; description: string | null; updatedAt: string } | null> {
   try {
     const res = await apiFetch(`${API_BASE}/update`, {
       method: 'POST',
-      body: JSON.stringify({ watchlistId, ...params }),
+      body: JSON.stringify({ watchlistId, ...params, accountId }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -150,11 +154,11 @@ export async function updateWatchlist(
 /**
  * Deletes an entire watchlist.
  */
-export async function deleteWatchlist(watchlistId: string): Promise<boolean> {
+export async function deleteWatchlist(watchlistId: string, accountId?: string): Promise<boolean> {
   try {
     const res = await apiFetch(`${API_BASE}/delete`, {
       method: 'POST',
-      body: JSON.stringify({ watchlistId }),
+      body: JSON.stringify({ watchlistId, accountId }),
     });
     return res.ok;
   } catch (err) {

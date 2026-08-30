@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
+import { accountScopeColumns } from '@/lib/account-scope';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
@@ -18,12 +19,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Missing request body' }, { status: 400 });
     }
 
-    const { userId, symbol, alertType, targetValue, notificationChannels } = body as {
+    const { userId, symbol, alertType, targetValue, notificationChannels, accountId } = body as {
       userId?: string;
       symbol?: string;
       alertType?: string;
       targetValue?: number;
       notificationChannels?: string[];
+      accountId?: string;
     };
 
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
@@ -40,6 +42,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const channels = notificationChannels?.length ? notificationChannels : ['in_app'];
+    const scopeCols = accountScopeColumns(accountId);
 
     // Production DB uses 'type' and 'threshold' column names
     const insertPayload: Record<string, any> = {
@@ -48,6 +51,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       type: alertType,
       threshold: targetValue,
       is_active: true,
+      connection_id: scopeCols.connection_id,
+      is_demo: scopeCols.is_demo,
     };
     if (channels.length > 1) {
       insertPayload.notification_channels = channels;

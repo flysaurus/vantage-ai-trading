@@ -7,6 +7,7 @@ import {
   getAlerts, createAlert, updateAlert, deleteAlert,
   type Alert, type AlertType, type NotificationChannel,
 } from '@/lib/supabase/alerts';
+import { getStoredActiveAccountId } from '@/lib/account-scope';
 import {
   Plus, Bell, BellOff, Trash2, RefreshCcw,
   TrendingUp, TrendingDown, Activity, X,
@@ -43,6 +44,7 @@ const ALERT_TYPES: { value: AlertType; label: string; hint: string }[] = [
 export default function PriceAlertsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
+  const accountId = getStoredActiveAccountId();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,14 +62,14 @@ export default function PriceAlertsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getAlerts(user.id as string);
+      const data = await getAlerts(user.id as string, undefined, accountId);
       setAlerts(data);
     } catch {
       setError('Failed to load alerts');
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, accountId]);
 
   useEffect(() => { if (user) loadAlerts(); }, [loadAlerts, user]);
 
@@ -76,7 +78,7 @@ export default function PriceAlertsPage() {
     const newActive = !alert.isActive;
     // Optimistic update
     setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, isActive: newActive } : a));
-    const result = await updateAlert(alert.id, { isActive: newActive });
+    const result = await updateAlert(alert.id, { isActive: newActive }, accountId);
     if (!result) {
       // Revert on failure
       setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, isActive: alert.isActive } : a));
@@ -87,7 +89,7 @@ export default function PriceAlertsPage() {
   const handleDelete = async () => {
     if (!deleting) return;
     setAlerts(prev => prev.filter(a => a.id !== deleting.id));
-    const ok = await deleteAlert(deleting.id);
+    const ok = await deleteAlert(deleting.id, accountId);
     if (!ok) {
       setAlerts(prev => [...prev, deleting]);
     }
@@ -108,6 +110,7 @@ export default function PriceAlertsPage() {
         alertType,
         targetValue,
         notificationChannels: channels,
+        accountId,
       });
       if (result) {
         if (result.error) {

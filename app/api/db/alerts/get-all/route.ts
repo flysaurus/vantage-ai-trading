@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
+import { parseAccountScope, applyAccountScopeFilter } from '@/lib/account-scope';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,17 +19,22 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const { searchParams } = req.nextUrl;
     const targetUserId = searchParams.get('userId') || authUserId;
     const isActiveParam = searchParams.get('isActive');
+    const accountId = searchParams.get('accountId') || null;
 
     if (targetUserId !== authUserId) {
       return NextResponse.json({ error: 'Cannot fetch other users alerts' }, { status: 403 });
     }
 
+    // Account segregation: omitted accountId → live-only (is_demo=false).
+    const scope = parseAccountScope(accountId);
+
     // Production DB uses 'type' and 'threshold' column names
     let query = (supabase as any)
       .from('alerts')
       .select('id, user_id, symbol, type, threshold, is_active, notification_channels, triggered_at, created_at')
-      .eq('user_id', targetUserId)
-      .order('created_at', { ascending: false });
+      .eq('user_id', targetUserId);
+    query = scope ? applyAccountScopeFilter(query, scope) : query.eq('is_demo', false);
+    query = query.order('created_at', { ascending: false });
 
     if (isActiveParam === 'true') {
       query = query.eq('is_active', true);

@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
+import { parseAccountScope, applyAccountScopeFilter } from '@/lib/account-scope';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,17 +18,24 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     const { searchParams } = req.nextUrl;
     const targetUserId = searchParams.get('userId') || authUserId;
+    const accountId = searchParams.get('accountId') || null;
 
     if (targetUserId !== authUserId) {
       return NextResponse.json({ error: 'Cannot fetch other users watchlists' }, { status: 403 });
     }
 
-    const { data, error } = await (supabase as any)
+    // Account segregation: omitted accountId → live-only (is_demo=false).
+    const scope = parseAccountScope(accountId);
+    let query = (supabase as any)
       .from('watchlists')
       .select('id, user_id, name, description, stocks, is_default, created_at, updated_at')
-      .eq('user_id', targetUserId)
+      .eq('user_id', targetUserId);
+    query = scope ? applyAccountScopeFilter(query, scope) : query.eq('is_demo', false);
+    query = query
       .order('is_default', { ascending: false })
       .order('created_at', { ascending: false });
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('[watchlists/get-all] Query failed:', error.message);

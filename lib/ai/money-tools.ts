@@ -226,13 +226,17 @@ export async function executeMoneyTool(
       case 'previewWatchlistAdd': {
         const symbol = cleanSymbol(input?.symbol);
         if (!symbol) return fail('A valid ticker symbol is required.');
-        return storePending('watchlist_add', { symbol }, `Add ${symbol} to your watchlist.`, null, symbol);
+        const payload: Record<string, unknown> = { symbol };
+        if (ctx.accountId) payload.accountId = ctx.accountId;
+        return storePending('watchlist_add', payload, `Add ${symbol} to your watchlist.`, null, symbol);
       }
 
       case 'previewWatchlistRemove': {
         const symbol = cleanSymbol(input?.symbol);
         if (!symbol) return fail('A valid ticker symbol is required.');
-        return storePending('watchlist_remove', { symbol }, `Remove ${symbol} from your watchlist.`, null, symbol);
+        const payload: Record<string, unknown> = { symbol };
+        if (ctx.accountId) payload.accountId = ctx.accountId;
+        return storePending('watchlist_remove', payload, `Remove ${symbol} from your watchlist.`, null, symbol);
       }
 
       case 'previewAlertCreate': {
@@ -244,9 +248,11 @@ export async function executeMoneyTool(
         if (!targetValue || targetValue <= 0) return fail('targetValue must be positive.');
         const label = alertType.replace(/_/g, ' ');
         const suffix = alertType === 'percent_change' ? '%' : '';
+        const payload: Record<string, unknown> = { symbol, alertType, targetValue, notificationChannels: ['in_app'] };
+        if (ctx.accountId) payload.accountId = ctx.accountId;
         return storePending(
           'alert_create',
-          { symbol, alertType, targetValue, notificationChannels: ['in_app'] },
+          payload,
           `Create an alert for ${symbol} when price is ${label} ${targetValue}${suffix}.`,
           null,
           symbol,
@@ -265,13 +271,16 @@ export async function executeMoneyTool(
         const payload: Record<string, unknown> = { alertId };
         if (input?.isActive !== undefined) payload.isActive = !!input.isActive;
         if (input?.targetValue !== undefined) payload.targetValue = Number(input.targetValue);
+        if (ctx.accountId) payload.accountId = ctx.accountId;
         return storePending('alert_update', payload, 'Update your alert.', null, null);
       }
 
       case 'previewAlertDelete': {
         const alertId = String(input?.alertId ?? '').trim();
         if (!alertId) return fail('alertId is required (from listAlerts).');
-        return storePending('alert_delete', { alertId }, 'Delete this alert.', null, null);
+        const payload: Record<string, unknown> = { alertId };
+        if (ctx.accountId) payload.accountId = ctx.accountId;
+        return storePending('alert_delete', payload, 'Delete this alert.', null, null);
       }
 
       case 'previewDcaCreate': {

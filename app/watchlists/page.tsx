@@ -8,6 +8,7 @@ import {
   addStockToWatchlist, removeStockFromWatchlist,
   type Watchlist,
 } from '@/lib/supabase/watchlists';
+import { getStoredActiveAccountId } from '@/lib/account-scope';
 import {
   ArrowLeft, Plus, Edit3, Trash2, X, Search,
   ChevronRight, ChevronDown, Star, TrendingUp, TrendingDown,
@@ -26,6 +27,7 @@ interface StockQuote {
 export default function WatchlistsPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
+  const accountId = getStoredActiveAccountId();
   const [watchlists, setWatchlists] = useState<Watchlist[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,14 +67,14 @@ export default function WatchlistsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getWatchlists(user.id as string);
+      const data = await getWatchlists(user.id as string, accountId);
       setWatchlists(data);
     } catch {
       setError('Failed to load watchlists');
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, accountId]);
 
   useEffect(() => { loadWatchlists(); }, [loadWatchlists]);
 
@@ -127,15 +129,15 @@ export default function WatchlistsPage() {
     if (!user || !name.trim()) return;
     setCreating(true);
     setCreateError(null);
-    const result = await createWatchlist({ userId: user.id as string, name: name.trim(), description: description.trim() || undefined });
+    const result = await createWatchlist({ userId: user.id as string, name: name.trim(), description: description.trim() || undefined, accountId });
     if (result) {
       // Add initial stocks if provided
       if (initialStocks.length > 0) {
         for (const sym of initialStocks) {
-          await addStockToWatchlist(result.id, sym);
+          await addStockToWatchlist(result.id, sym, accountId);
         }
         // Reload the watchlist to get full stocks array
-        const updated = await getWatchlists(user.id as string);
+        const updated = await getWatchlists(user.id as string, accountId);
         setWatchlists(updated);
       } else {
         setWatchlists(prev => [result, ...prev]);
@@ -155,7 +157,7 @@ export default function WatchlistsPage() {
     if (!editing || !name.trim()) return;
     setSaving(true);
     setEditingError(null);
-    const result = await updateWatchlist(editing.id, { name: name.trim(), description: description.trim() || undefined });
+    const result = await updateWatchlist(editing.id, { name: name.trim(), description: description.trim() || undefined }, accountId);
     if (result) {
       setWatchlists(prev => prev.map(w => w.id === editing.id ? { ...w, name: result.name, description: result.description, updatedAt: result.updatedAt } : w));
       setEditing(null);
@@ -167,7 +169,7 @@ export default function WatchlistsPage() {
 
   const handleDelete = async () => {
     if (!deleting) return;
-    const ok = await deleteWatchlist(deleting.id);
+    const ok = await deleteWatchlist(deleting.id, accountId);
     if (ok) {
       setWatchlists(prev => prev.filter(w => w.id !== deleting.id));
       if (expandedId === deleting.id) setExpandedId(null);
@@ -179,7 +181,7 @@ export default function WatchlistsPage() {
     if (!expandedId || !addingSymbol.trim()) return;
     setAddError(null);
     const sym = addingSymbol.trim().toUpperCase();
-    const result = await addStockToWatchlist(expandedId, sym);
+    const result = await addStockToWatchlist(expandedId, sym, accountId);
     if (result) {
       setWatchlists(prev => prev.map(w => w.id === expandedId ? { ...w, stocks: result.stocks, updatedAt: result.updatedAt } : w));
       setAddingSymbol('');
@@ -192,7 +194,7 @@ export default function WatchlistsPage() {
 
   const handleRemoveStock = async (symbol: string) => {
     if (!expandedId) return;
-    const result = await removeStockFromWatchlist(expandedId, symbol);
+    const result = await removeStockFromWatchlist(expandedId, symbol, accountId);
     if (result) {
       setWatchlists(prev => prev.map(w => w.id === expandedId ? { ...w, stocks: result.stocks, updatedAt: result.updatedAt } : w));
       setQuotes(prev => { const n = { ...prev }; delete n[symbol]; return n; });

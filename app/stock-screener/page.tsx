@@ -10,6 +10,7 @@ import {
   Filter, RefreshCcw, SlidersHorizontal, X,
 } from 'lucide-react';
 import { createWatchlist, getWatchlists, addStockToWatchlist } from '@/lib/supabase/watchlists';
+import { getStoredActiveAccountId } from '@/lib/account-scope';
 
 // ─── Types ────────────────────────────────────────────────────
 interface ScreenerResult {
@@ -88,6 +89,7 @@ function fmtChange(n: number | null): { text: string; color: string } {
 export default function StockScreenerPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
+  const accountId = getStoredActiveAccountId();
   const [results, setResults] = useState<ScreenerResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -172,15 +174,15 @@ export default function StockScreenerPage() {
 
     try {
       // Find or create a "Screener Picks" watchlist
-      let lists = await getWatchlists(user.id as string);
+      let lists = await getWatchlists(user.id as string, accountId);
       let target = lists.find(l => l.name === 'Screener Picks');
       if (!target) {
-        const created = await createWatchlist({ userId: user.id as string, name: 'Screener Picks', description: 'From stock screener' });
+        const created = await createWatchlist({ userId: user.id as string, name: 'Screener Picks', description: 'From stock screener', accountId });
         if (!created) throw new Error('Failed');
         target = created;
       }
 
-      const result = await addStockToWatchlist(target.id, symbol);
+      const result = await addStockToWatchlist(target.id, symbol, accountId);
       if (result) {
         setAddStatus('added');
         setStatusSymbol(symbol);

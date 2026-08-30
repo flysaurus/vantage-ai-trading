@@ -7,6 +7,7 @@ import { Search, Bell, Settings, X } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import { useTabStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
+import { useAccounts } from '@/context/AccountContext';
 
 interface Notification {
   id: string;
@@ -47,6 +48,7 @@ function shortenLabel(label: string): string {
 export function Header() {
   const { setTab } = useTabStore();
   const router = useRouter();
+  const { activeAccountId } = useAccounts();
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -56,27 +58,27 @@ export function Header() {
 
   const fetchUnread = useCallback(async () => {
     try {
-      const res = await await apiGet('/api/notifications/unread');
+      const res = await apiGet(`/api/notifications/unread?accountId=${encodeURIComponent(activeAccountId)}`);
       if (res.ok) {
         const data = await res.json();
         setUnreadCount(data.count || 0);
       }
     } catch { /* ignore */ }
-  }, []);
+  }, [activeAccountId]);
 
   const fetchList = useCallback(async () => {
     try {
-      const res = await await apiGet('/api/notifications/list');
+      const res = await apiGet(`/api/notifications/list?accountId=${encodeURIComponent(activeAccountId)}`);
       if (res.ok) {
         const data = await res.json();
         setNotifications(data.notifications || []);
       }
     } catch { /* ignore */ }
-  }, []);
+  }, [activeAccountId]);
 
   const markAllRead = async () => {
     try {
-      await apiPost('/api/notifications/mark-read', { all: true });
+      await apiPost('/api/notifications/mark-read', { all: true, accountId: activeAccountId });
       setUnreadCount(0);
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     } catch { /* ignore */ }

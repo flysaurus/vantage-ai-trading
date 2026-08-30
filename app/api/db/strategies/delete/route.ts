@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
+import { accountScopeMatches } from '@/lib/account-scope';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
@@ -12,12 +13,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const body = await req.json().catch(() => null);
     if (!body) return NextResponse.json({ error: 'Missing request body' }, { status: 400 });
 
-    const { strategyId } = body as { strategyId?: string };
+    const { strategyId, accountId } = body as { strategyId?: string; accountId?: string };
     if (!strategyId) return NextResponse.json({ error: 'strategyId required' }, { status: 400 });
 
-    const { data: existing } = await (supabase as any).from('strategies').select('id, user_id').eq('id', strategyId).maybeSingle();
+    const { data: existing } = await (supabase as any).from('strategies').select('id, user_id, connection_id, is_demo').eq('id', strategyId).maybeSingle();
     if (!existing) return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });
     if (existing.user_id !== authUserId) return NextResponse.json({ error: 'Cannot delete other users strategies' }, { status: 403 });
+    if (!accountScopeMatches(accountId, existing)) return NextResponse.json({ error: 'Strategy not found for this account' }, { status: 404 });
 
     const { error } = await (supabase as any).from('strategies').delete().eq('id', strategyId);
     if (error) return NextResponse.json({ error: 'Failed to delete strategy', detail: error.message }, { status: 500 });

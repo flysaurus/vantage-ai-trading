@@ -152,6 +152,8 @@ export async function notifyOrderNotification(
 
     const { error } = await supabase.from('recent_notifications').insert({
       user_id: userId,
+      connection_id: event.connectionId ?? null,
+      is_demo: false,
       type,
       title,
       message,
@@ -257,10 +259,13 @@ export async function notifyBasketNotification(
     };
 
     // Drop any existing alert for THIS basket before writing the updated state.
+    // Scoped to the same connection so a same-named basket on another broker
+    // is never deduped away.
     const { data: existingBaskets } = await supabase
       .from('recent_notifications')
       .select('id, type, title')
       .eq('user_id', userId)
+      .eq('connection_id', event.connectionId ?? null)
       .like('type', 'basket%');
 
     const dupeIds: string[] = (existingBaskets || [])
@@ -284,6 +289,8 @@ export async function notifyBasketNotification(
     const { error } = await supabase.from('recent_notifications').insert({
       ...row,
       user_id: userId,
+      connection_id: event.connectionId ?? null,
+      is_demo: false,
     });
     if (error) {
       console.error('[order-notification] Basket insert failed:', error.message);

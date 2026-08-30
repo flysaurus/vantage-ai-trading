@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
+import { accountScopeMatches } from '@/lib/account-scope';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
@@ -18,10 +19,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Missing request body' }, { status: 400 });
     }
 
-    const { alertId, isActive, targetValue } = body as {
+    const { alertId, isActive, targetValue, accountId } = body as {
       alertId?: string;
       isActive?: boolean;
       targetValue?: number;
+      accountId?: string;
     };
 
     if (!alertId) {
@@ -37,7 +39,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Verify ownership
     const { data: existing } = await (supabase as any)
       .from('alerts')
-      .select('id, user_id')
+      .select('id, user_id, connection_id, is_demo')
       .eq('id', alertId)
       .maybeSingle();
 
@@ -46,6 +48,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
     if (existing.user_id !== authUserId) {
       return NextResponse.json({ error: 'Cannot update other users alerts' }, { status: 403 });
+    }
+    if (!accountScopeMatches(accountId, existing)) {
+      return NextResponse.json({ error: 'Alert not found for this account' }, { status: 404 });
     }
 
     // Build update — production DB has no updated_at column

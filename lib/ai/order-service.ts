@@ -255,6 +255,7 @@ export async function placeSingleTrade(args: PlaceSingleTradeArgs): Promise<Exec
       estimatedTotal,
       orderId: orderIdForEmail,
       isLive: true,
+      connectionId: brokerConnectionId,
       ...requestedFields,
     });
 
@@ -284,6 +285,7 @@ export async function placeSingleTrade(args: PlaceSingleTradeArgs): Promise<Exec
         fillTotal: totalCost,
         orderId: orderIdForEmail,
         isLive: true,
+        connectionId: brokerConnectionId,
         ...requestedFields,
       });
     }
@@ -507,6 +509,7 @@ export async function placeBasketTrade(args: PlaceBasketArgs): Promise<ExecResul
         fillTotal: (leg.fillPrice ?? 0) * (leg.filledShares ?? 0),
       })),
       isLive: true,
+      connectionId: brokerConnectionId,
       orderIds: legs.map((leg) => leg.orderId).filter((id): id is string => !!id),
     };
     await Promise.allSettled([

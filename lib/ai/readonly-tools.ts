@@ -162,12 +162,12 @@ export async function executeReadonlyTool(
 
       case 'listAlerts': {
         if (!isAuthed) return JSON.stringify({ alerts: [], note: 'No authenticated user.' });
-        const { data, error } = await (supabase as any)
+        let alertsQuery = (supabase as any)
           .from('alerts')
           .select('id, symbol, type, threshold, is_active, triggered_at, created_at')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(50);
+          .eq('user_id', userId);
+        alertsQuery = acctScope ? applyAccountScopeFilter(alertsQuery, acctScope) : alertsQuery.eq('is_demo', false);
+        const { data, error } = await alertsQuery.order('created_at', { ascending: false }).limit(50);
         if (error) return JSON.stringify({ error: error.message });
         return JSON.stringify({
           alerts: (data || []).map((a: any) => ({
@@ -179,12 +179,12 @@ export async function executeReadonlyTool(
 
       case 'listWatchlist': {
         if (!isAuthed) return JSON.stringify({ watchlists: [], note: 'No authenticated user.' });
-        const { data, error } = await (supabase as any)
+        let wlQuery = (supabase as any)
           .from('watchlists')
           .select('id, name, stocks, updated_at')
-          .eq('user_id', userId)
-          .order('updated_at', { ascending: false })
-          .limit(10);
+          .eq('user_id', userId);
+        wlQuery = acctScope ? applyAccountScopeFilter(wlQuery, acctScope) : wlQuery.eq('is_demo', false);
+        const { data, error } = await wlQuery.order('updated_at', { ascending: false }).limit(10);
         if (error) return JSON.stringify({ error: error.message });
         return JSON.stringify({
           watchlists: (data || []).map((w: any) => ({

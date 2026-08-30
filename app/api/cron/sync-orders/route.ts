@@ -143,7 +143,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // fill status this run so we can emit ONE consolidated basket-level
   // notification instead of N per-leg bells. Keyed by basket_id; stores the
   // owning user + broker name for the post-loop grouped emission.
-  const basketFillBatches = new Map<string, { userId: string; brokerName: string }>();
+  const basketFillBatches = new Map<string, { userId: string; brokerName: string; connectionId: string | null }>();
 
   for (const group of groups.values()) {
     const userId = group.userId;
@@ -256,6 +256,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               side: o.side?.toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
               orderId: brokerOrderId,
               isLive: true,
+              connectionId: o.connection_id ?? null,
               cancelReason: 'stale_guard',
               orderUnit: o.order_unit ?? null,
               requestedAmount: o.requested_amount ?? null,
@@ -380,7 +381,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           });
 
           if (o.basket_id) {
-            basketFillBatches.set(o.basket_id, { userId, brokerName });
+            basketFillBatches.set(o.basket_id, { userId, brokerName, connectionId: o.connection_id ?? null });
           } else {
             await notifyOrderNotification(supabase, userId, {
               kind: 'filled',
@@ -392,6 +393,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               fillTotal: totalCost,
               orderId: o.brokerage_order_id,
               isLive: true,
+              connectionId: o.connection_id ?? null,
               ...requested,
             });
           }
@@ -415,7 +417,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           });
 
           if (o.basket_id) {
-            basketFillBatches.set(o.basket_id, { userId, brokerName });
+            basketFillBatches.set(o.basket_id, { userId, brokerName, connectionId: o.connection_id ?? null });
           } else {
             await notifyOrderNotification(supabase, userId, {
               kind: 'partially_filled',
@@ -428,6 +430,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               remainingQty,
               orderId: o.brokerage_order_id,
               isLive: true,
+              connectionId: o.connection_id ?? null,
               ...requested,
             });
           }
@@ -450,6 +453,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             side: live.side,
             orderId: o.brokerage_order_id,
             isLive: true,
+            connectionId: o.connection_id ?? null,
             cancelReason: 'external',
             ...requested,
           });
@@ -476,6 +480,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             side: live.side,
             orderId: o.brokerage_order_id,
             isLive: true,
+            connectionId: o.connection_id ?? null,
             ...requested,
           });
         }
@@ -536,6 +541,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         event,
         positions,
         isLive: true,
+        connectionId: info.connectionId,
       });
     }
   }

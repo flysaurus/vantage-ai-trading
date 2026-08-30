@@ -37,6 +37,7 @@ export async function createAlert(params: {
   alertType: AlertType;
   targetValue: number;
   notificationChannels?: NotificationChannel[];
+  accountId?: string;
 }): Promise<(Alert & { error?: string }) | null> {
   try {
     const res = await apiFetch(`${API_BASE}/create`, {
@@ -62,12 +63,14 @@ export async function createAlert(params: {
 export async function getAlerts(
   userId: string,
   isActive?: boolean,
+  accountId?: string,
 ): Promise<Alert[]> {
   try {
     let url = `${API_BASE}/get-all?userId=${encodeURIComponent(userId)}`;
     if (isActive !== undefined) {
       url += `&isActive=${isActive}`;
     }
+    if (accountId) url += `&accountId=${encodeURIComponent(accountId)}`;
     const res = await apiFetch(url);
     if (!res.ok) {
       console.warn('[alerts] get-all failed:', res.status);
@@ -87,11 +90,12 @@ export async function getAlerts(
 export async function updateAlert(
   alertId: string,
   params: { isActive?: boolean; targetValue?: number },
+  accountId?: string,
 ): Promise<{ id: string; alertType: string; targetValue: number; isActive: boolean; updatedAt: string } | null> {
   try {
     const res = await apiFetch(`${API_BASE}/update`, {
       method: 'POST',
-      body: JSON.stringify({ alertId, ...params }),
+      body: JSON.stringify({ alertId, ...params, accountId }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -108,11 +112,11 @@ export async function updateAlert(
 /**
  * Deletes an alert by ID.
  */
-export async function deleteAlert(alertId: string): Promise<boolean> {
+export async function deleteAlert(alertId: string, accountId?: string): Promise<boolean> {
   try {
     const res = await apiFetch(`${API_BASE}/delete`, {
       method: 'POST',
-      body: JSON.stringify({ alertId }),
+      body: JSON.stringify({ alertId, accountId }),
     });
     return res.ok;
   } catch (err) {

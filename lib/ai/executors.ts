@@ -17,7 +17,7 @@
 import { calculateNextRun } from '@/lib/scheduler';
 import { placeSingleTrade, placeBasketTrade } from '@/lib/ai/order-service';
 import type { PendingAction } from '@/lib/ai/pending-actions';
-import { parseAccountScope } from '@/lib/account-scope';
+import { parseAccountScope, applyAccountScopeFilter, accountScopeColumns, accountScopeMatches } from '@/lib/account-scope';
 
 export interface ExecResult {
   ok: boolean;
@@ -48,10 +48,17 @@ function dcaScopeMismatch(payload: Record<string, unknown>, row: any): boolean {
 
 // ── Watchlist helpers ────────────────────────────────────────────────────────
 
+/** Apply an account-scope filter; omitted accountId → live-only (is_demo=false). */
+function scopeFilter(query: any, accountId: string | null | undefined): any {
+  const scope = parseAccountScope(accountId);
+  return scope ? applyAccountScopeFilter(query, scope) : query.eq('is_demo', false);
+}
+
 async function resolveWatchlist(
   supabase: any,
   userId: string,
   watchlistId?: string | null,
+  accountId?: string | null,
 ): Promise<{ id: string } | { error: string }> {
   if (watchlistId) {
     const { data } = await (supabase as any)
@@ -61,24 +68,32 @@ async function resolveWatchlist(
       .maybeSingle();
     if (!data) return { error: 'Watchlist not found' };
     if (data.user_id !== userId) return { error: 'Cannot modify other users watchlists' };
+    // Account scope check on the explicit id.
+    const { data: scoped } = await (supabase as any)
+      .from('watchlists')
+      .select('id, connection_id, is_demo')
+      .eq('id', watchlistId)
+      .maybeSingle();
+    if (scoped && !accountScopeMatches(accountId, scoped)) return { error: 'Watchlist not found for this account' };
     return { id: data.id };
   }
-  // No id given → prefer the default watchlist, else the most-recent one.
-  const { data: dflt } = await (supabase as any)
-    .from('watchlists')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('is_default', true)
-    .limit(1)
-    .maybeSingle();
+  // No id given → prefer the default watchlist, else the most-recent one (in scope).
+  const { data: dflt } = await scopeFilter(
+    (supabase as any)
+      .from('watchlists')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('is_default', true),
+    accountId,
+  ).limit(1).maybeSingle();
   if (dflt) return { id: dflt.id };
-  const { data: first } = await (supabase as any)
-    .from('watchlists')
-    .select('id')
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data: first } = await scopeFilter(
+    (supabase as any)
+      .from('watchlists')
+      .select('id')
+      .eq('user_id', userId),
+    accountId,
+  ).order('updated_at', { ascending: false }).limit(1).maybeSingle();
   if (first) return { id: first.id };
   return { error: 'No watchlist found — create one first' };
 }
@@ -90,7 +105,7 @@ async function execWatchlistAdd(
 ): Promise<ExecResult> {
   const symbol = (payload.symbol as string || '').trim().toUpperCase();
   if (!symbol) return { ok: false, message: 'Missing symbol.' };
-  const wl = await resolveWatchlist(supabase, userId, payload.watchlistId as string | undefined);
+  const wl = await resolveWatchlist(supabase, userId, payload.watchlistId as string | undefined, payload.accountId as string | undefined);
   if ('error' in wl) return { ok: false, message: wl.error };
 
   const { data: existing } = await (supabase as any)
@@ -115,7 +130,7 @@ async function execWatchlistRemove(
 ): Promise<ExecResult> {
   const symbol = (payload.symbol as string || '').trim().toUpperCase();
   if (!symbol) return { ok: false, message: 'Missing symbol.' };
-  const wl = await resolveWatchlist(supabase, userId, payload.watchlistId as string | undefined);
+  const wl = await resolveWatchlist(supabase, userId, payload.watchlistId as string | undefined, payload.accountId as string | undefined);
   if ('error' in wl) return { ok: false, message: wl.error };
 
   const { data: existing } = await (supabase as any)
@@ -147,6 +162,7 @@ async function execAlertCreate(
   }
   if (!targetValue || targetValue <= 0) return { ok: false, message: 'Target value must be positive.' };
 
+  const scopeCols = accountScopeColumns(payload.accountId as string | null | undefined);
   const { error } = await (supabase as any).from('alerts').insert({
     user_id: userId,
     symbol,
@@ -154,6 +170,8 @@ async function execAlertCreate(
     threshold: targetValue,
     is_active: true,
     notification_channels: channels,
+    connection_id: scopeCols.connection_id,
+    is_demo: scopeCols.is_demo,
   });
   if (error) return { ok: false, message: `Failed to create alert: ${error.message}` };
   return { ok: true, message: `✅ Alert created for ${symbol} (${alertType.replace(/_/g, ' ')} at ${targetValue}).` };
@@ -167,9 +185,10 @@ async function execAlertUpdate(
   const alertId = payload.alertId as string;
   if (!alertId) return { ok: false, message: 'Missing alert id.' };
   const { data: existing } = await (supabase as any)
-    .from('alerts').select('id, user_id').eq('id', alertId).maybeSingle();
+    .from('alerts').select('id, user_id, connection_id, is_demo').eq('id', alertId).maybeSingle();
   if (!existing) return { ok: false, message: 'Alert not found.' };
   if (existing.user_id !== userId) return { ok: false, message: 'Cannot update other users alerts.' };
+  if (!accountScopeMatches(payload.accountId as string | null | undefined, existing)) return { ok: false, message: 'Alert not found for this account.' };
 
   const updates: Record<string, unknown> = {};
   if (payload.isActive !== undefined) updates.is_active = !!payload.isActive;
@@ -192,9 +211,10 @@ async function execAlertDelete(
   const alertId = payload.alertId as string;
   if (!alertId) return { ok: false, message: 'Missing alert id.' };
   const { data: existing } = await (supabase as any)
-    .from('alerts').select('id, user_id').eq('id', alertId).maybeSingle();
+    .from('alerts').select('id, user_id, connection_id, is_demo').eq('id', alertId).maybeSingle();
   if (!existing) return { ok: false, message: 'Alert not found.' };
   if (existing.user_id !== userId) return { ok: false, message: 'Cannot delete other users alerts.' };
+  if (!accountScopeMatches(payload.accountId as string | null | undefined, existing)) return { ok: false, message: 'Alert not found for this account.' };
   const { error } = await (supabase as any).from('alerts').delete().eq('id', alertId);
   if (error) return { ok: false, message: `Failed to delete alert: ${error.message}` };
   return { ok: true, message: '✅ Alert deleted.' };

@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
+import { parseAccountScope, applyAccountScopeFilter, accountScopeColumns } from '@/lib/account-scope';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
@@ -18,11 +19,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Missing request body' }, { status: 400 });
     }
 
-    const { userId, name, description, isDefault } = body as {
+    const { userId, name, description, isDefault, accountId } = body as {
       userId?: string;
       name?: string;
       description?: string;
       isDefault?: boolean;
+      accountId?: string;
     };
 
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
@@ -31,13 +33,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Cannot create watchlists for other users' }, { status: 403 });
     }
 
-    // If setting as default, reset other defaults first
+    // Account segregation: resolve the acting account scope (omitted → live default).
+    const scope = parseAccountScope(accountId);
+    const scopeCols = accountScopeColumns(accountId);
+
+    // If setting as default, reset other defaults first (within the same account).
     if (isDefault) {
-      await (supabase as any)
+      let resetQuery = (supabase as any)
         .from('watchlists')
         .update({ is_default: false, updated_at: new Date().toISOString() })
         .eq('user_id', userId)
         .eq('is_default', true);
+      if (scope) resetQuery = applyAccountScopeFilter(resetQuery, scope);
+      await resetQuery;
     }
 
     const { data, error } = await (supabase as any)
@@ -48,6 +56,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         description: description?.trim() || null,
         stocks: [],
         is_default: isDefault || false,
+        connection_id: scopeCols.connection_id,
+        is_demo: scopeCols.is_demo,
       })
       .select('id, user_id, name, description, stocks, is_default, created_at')
       .single();

@@ -349,6 +349,7 @@ export async function POST(req: NextRequest) {
           estimatedTotal,
           orderId: orderIdForEmail,
           isLive: true,
+          connectionId: brokerConnectionId,
           ...requestedFields,
         },
       );
@@ -389,6 +390,7 @@ export async function POST(req: NextRequest) {
             fillTotal: totalCost,
             orderId: orderIdForEmail,
             isLive: true,
+            connectionId: brokerConnectionId,
             ...requestedFields,
           },
         );
@@ -427,6 +429,7 @@ export async function POST(req: NextRequest) {
             remainingQty,
             orderId: orderIdForEmail,
             isLive: true,
+            connectionId: brokerConnectionId,
             ...requestedFields,
           },
         );
@@ -459,6 +462,7 @@ export async function POST(req: NextRequest) {
           reason: result.message,
           orderId: orderIdForEmail,
           isLive: true,
+          connectionId: brokerConnectionId,
           ...requestedFields,
         },
       );

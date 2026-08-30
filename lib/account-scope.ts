@@ -61,3 +61,47 @@ export function applyAccountScopeFilter(query: any, scope: AccountScope): any {
   }
   return query;
 }
+
+/**
+ * Build the insert columns for an account-scoped write.
+ * null/unrecognized accountId → live default (is_demo=false, connection_id=null).
+ */
+export function accountScopeColumns(
+  accountId?: string | null,
+): { connection_id: string | null; is_demo: boolean } {
+  const scope = parseAccountScope(accountId);
+  if (!scope) return { connection_id: null, is_demo: false };
+  return { connection_id: scope.connectionId, is_demo: scope.isDemo };
+}
+
+/**
+ * True when a row's scope matches the supplied accountId. An omitted/null
+ * accountId returns true (legacy callers keep their old user-level behavior,
+ * no cross-account check beyond the existing user_id ownership check).
+ */
+export function accountScopeMatches(
+  accountId: string | null | undefined,
+  row: { is_demo?: boolean | null; connection_id?: string | null },
+): boolean {
+  const scope = parseAccountScope(accountId);
+  if (!scope) return true;
+  const rowDemo = row?.is_demo === true;
+  const rowConn = (row?.connection_id as string | null | undefined) ?? null;
+  if (scope.isDemo) return rowDemo;
+  if (scope.connectionId) return rowConn === scope.connectionId;
+  return !rowDemo;
+}
+
+/**
+ * Client-side helper: read the explicit active-account choice from localStorage.
+ * Returns undefined when nothing is stored (callers then omit accountId, and the
+ * server defaults to live-only). Mirrors AccountContext's 'vantage:activeAccount' key.
+ */
+export function getStoredActiveAccountId(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    return localStorage.getItem('vantage:activeAccount') || undefined;
+  } catch {
+    return undefined;
+  }
+}

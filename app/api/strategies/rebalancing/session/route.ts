@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
+import { parseAccountScope, applyAccountScopeFilter, accountScopeColumns } from '@/lib/account-scope';
 
 const { v4: uuidv4 } = require('uuid');
 
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest) {
   const userId = authUser!.id;
 
     const body = await request.json();
-    const { trades, source = 'ai_chat', expiresIn = 3600 } = body;
+    const { trades, source = 'ai_chat', expiresIn = 3600, accountId } = body;
 
     if (!trades || !Array.isArray(trades) || trades.length === 0) {
       return NextResponse.json({ error: 'Trades array required' }, { status: 400 });
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
 
     const sessionId = uuidv4();
     const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+    const scopeCols = accountScopeColumns(accountId);
 
     const supabase = createServerClient();
     const { error: dbErr } = await (supabase as any)
@@ -40,6 +42,8 @@ export async function POST(request: NextRequest) {
         status: 'pending',
         created_at: new Date().toISOString(),
         expires_at: expiresAt,
+        connection_id: scopeCols.connection_id,
+        is_demo: scopeCols.is_demo,
       });
 
     if (dbErr) {
@@ -63,6 +67,8 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const accountId = searchParams.get('accountId') || null;
+    const scope = parseAccountScope(accountId);
     console.log('[session API] GET called — sessionId:', id, 'userId:', userId);
     if (!id) {
       console.log('[session API] Missing session id');
@@ -70,12 +76,13 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = createServerClient();
-    const { data, error: dbErr } = await (supabase as any)
+    let query = (supabase as any)
       .from('rebalance_sessions')
       .select('*')
       .eq('id', id)
-      .eq('user_id', userId)
-      .single();
+      .eq('user_id', userId);
+    query = scope ? applyAccountScopeFilter(query, scope) : query.eq('is_demo', false);
+    const { data, error: dbErr } = await query.single();
 
     if (dbErr || !data) {
       console.log('[session API] Session not found — dbErr:', dbErr, 'data:', data);
