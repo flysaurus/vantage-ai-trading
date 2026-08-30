@@ -1,6 +1,6 @@
 // ─── Inactivity Warning — Modal + Auto-Sign-Out ───────────────
 // Shows a personalized warning overlay 2 minutes before session
-// expires (default: at 28 min of inactivity, sign-out at 30 min).
+// expires (at 8 min of inactivity, sign-out at 10 min).
 //
 // Mounted globally in app/layout.tsx, only activates when user
 // is authenticated (Supabase session present).

@@ -2,7 +2,7 @@
 // After INACTIVITY_WARNING_MS of inactivity → shows warning modal
 // After INACTIVITY_LOGOUT_MS (2 min countdown) → force signs out
 //
-// Defaults: 28 min warning / 30 min logout. Overridable for testing via
+// Defaults: 8 min warning / 10 min logout. Overridable for testing via
 // NEXT_PUBLIC_INACTIVITY_WARNING_MS / NEXT_PUBLIC_INACTIVITY_LOGOUT_MS (ms).
 //
 // Usage: const { showWarning, countdown, resetActivity, signOutNow } = useInactivity();
@@ -12,8 +12,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
-const INACTIVITY_WARNING_MS = Number(process.env.NEXT_PUBLIC_INACTIVITY_WARNING_MS) || 28 * 60 * 1000;
-const INACTIVITY_LOGOUT_MS = Number(process.env.NEXT_PUBLIC_INACTIVITY_LOGOUT_MS) || 30 * 60 * 1000;
+const INACTIVITY_WARNING_MS = Number(process.env.NEXT_PUBLIC_INACTIVITY_WARNING_MS) || 8 * 60 * 1000;
+const INACTIVITY_LOGOUT_MS = Number(process.env.NEXT_PUBLIC_INACTIVITY_LOGOUT_MS) || 10 * 60 * 1000;
 const COUNTDOWN_SECONDS = 120; // 2 minutes
 
 interface UseInactivityReturn {
