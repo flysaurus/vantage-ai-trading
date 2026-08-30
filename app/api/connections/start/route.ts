@@ -64,11 +64,13 @@ export async function POST(req: NextRequest) {
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
-  const { data: existingConn } = await supabase
+  const { data: snapUserConn } = await supabase
     .from('broker_connections')
-    .select('snaptrade_user_id, snaptrade_user_secret_encrypted, id')
+    .select('snaptrade_user_id, snaptrade_user_secret_encrypted')
     .eq('user_id', authUser.id)
     .eq('connection_type', 'snaptrade')
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle();
 
   // ── Get/create SnapTrade user ──
@@ -77,8 +79,8 @@ export async function POST(req: NextRequest) {
   try {
     const result = await getOrCreateSnapTradeUser(
       authUser.id,
-      existingConn?.snaptrade_user_id,
-      existingConn?.snaptrade_user_secret_encrypted,
+      snapUserConn?.snaptrade_user_id,
+      snapUserConn?.snaptrade_user_secret_encrypted,
     );
     snapUserId = result.userId;
     snapUserSecret = result.userSecret;
@@ -94,17 +96,26 @@ export async function POST(req: NextRequest) {
   const encryptedSecret = encryptUserSecret(authUser.id, snapUserSecret);
   const now = new Date().toISOString();
 
-  if (existingConn?.id) {
+  // Upsert by (user_id, brokerage_slug) — each broker gets its own row; never
+  // clobber an existing connected broker with a different slug.
+  const { data: existingBySlug } = await supabase
+    .from('broker_connections')
+    .select('id')
+    .eq('user_id', authUser.id)
+    .eq('connection_type', 'snaptrade')
+    .eq('brokerage_slug', brokerageSlug.toUpperCase())
+    .maybeSingle();
+
+  if (existingBySlug?.id) {
     await supabase
       .from('broker_connections')
       .update({
         snaptrade_user_id: snapUserId,
         snaptrade_user_secret_encrypted: encryptedSecret,
-        brokerage_slug: brokerageSlug.toUpperCase(),
         status: 'pending',
         updated_at: now,
       })
-      .eq('id', existingConn.id);
+      .eq('id', existingBySlug.id);
   } else {
     await supabase
       .from('broker_connections')
