@@ -53,6 +53,8 @@ export interface PlaceSingleTradeArgs {
   stopPrice?: number | null;
   timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok';
   currentPrice?: number | null;
+  /** broker_connections.id to scope the trade to a specific live account (multi-broker). */
+  connectionId?: string | null;
   /**
    * Skip the Finnhub symbol-validity gate (Gate 1). Set true ONLY for
    * deterministic broker-sourced legs (e.g. rebalance sells of real held
@@ -75,6 +77,7 @@ export async function placeSingleTrade(args: PlaceSingleTradeArgs): Promise<Exec
   const timeInForce = args.timeInForce || 'day';
   const currentPrice = args.currentPrice ?? undefined;
   const skipSymbolGate = args.skipSymbolGate === true;
+  const requestedConnectionId = args.connectionId ?? null;
 
   if (!symbol) return { ok: false, message: 'Missing symbol.' };
   if (!['BUY', 'SELL'].includes(side)) return { ok: false, message: 'Invalid side.' };
@@ -111,7 +114,7 @@ export async function placeSingleTrade(args: PlaceSingleTradeArgs): Promise<Exec
   let tradingEnabled: boolean;
 
   try {
-    const creds = await resolveSnapTradeCredentials(userId);
+    const creds = await resolveSnapTradeCredentials(userId, requestedConnectionId);
     snaptradeUserId = creds.snaptradeUserId;
     snaptradeUserSecret = creds.snaptradeUserSecret;
     connectionId = creds.connectionId;
@@ -310,6 +313,8 @@ export interface PlaceBasketArgs {
   basketEmoji?: string;
   stocks: Array<{ symbol: string; dollarAmount: number; allocationPct?: number; fallbackPrice?: number }>;
   totalBudget?: number;
+  /** broker_connections.id to scope the basket to a specific live account (multi-broker). */
+  connectionId?: string | null;
 }
 
 function formatBasketDateET(d: Date): string {
@@ -343,7 +348,7 @@ export async function placeBasketTrade(args: PlaceBasketArgs): Promise<ExecResul
   let tradingEnabled: boolean;
 
   try {
-    const creds = await resolveSnapTradeCredentials(userId);
+    const creds = await resolveSnapTradeCredentials(userId, args.connectionId ?? null);
     snaptradeUserId = creds.snaptradeUserId;
     snaptradeUserSecret = creds.snaptradeUserSecret;
     connectionId = creds.connectionId;

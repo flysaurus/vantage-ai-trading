@@ -332,6 +332,7 @@ export async function executeMoneyTool(
         if (input?.dayOfMonth !== undefined) payload.dayOfMonth = input.dayOfMonth;
         if (input?.startDate !== undefined) payload.startDate = input.startDate;
         if (input?.endDate !== undefined) payload.endDate = input.endDate;
+        if (ctx.accountId) payload.accountId = ctx.accountId;
 
         const amountUsd = payload.amount != null ? Number(payload.amount) : null;
         const confirmToken = (payload.symbol as string) || null;
@@ -341,7 +342,9 @@ export async function executeMoneyTool(
       case 'previewDcaDelete': {
         const scheduleId = String(input?.scheduleId ?? '').trim();
         if (!scheduleId) return fail('scheduleId is required (from listDcaSchedules).');
-        return storePending('dca_delete', { scheduleId }, 'Cancel (deactivate) this DCA schedule.', null, null);
+        const delPayload: Record<string, unknown> = { scheduleId };
+        if (ctx.accountId) delPayload.accountId = ctx.accountId;
+        return storePending('dca_delete', delPayload, 'Cancel (deactivate) this DCA schedule.', null, null);
       }
 
       case 'previewBuyStock': {
@@ -362,6 +365,7 @@ export async function executeMoneyTool(
         if (dollarAmount != null) payload.dollarAmount = dollarAmount;
         if (shares != null) payload.shares = shares;
         if (input?.limitPrice != null) payload.limitPrice = Number(input.limitPrice);
+        if (ctx.accountId) payload.accountId = ctx.accountId;
         const summary = dollarAmount != null
           ? `Buy ${fmtMoney(dollarAmount)} of ${symbol}.`
           : `Buy ${shares} share${shares === 1 ? '' : 's'} of ${symbol}.`;
@@ -385,6 +389,7 @@ export async function executeMoneyTool(
         if (shares != null) payload.shares = shares;
         if (dollarAmount != null) payload.dollarAmount = dollarAmount;
         if (input?.limitPrice != null) payload.limitPrice = Number(input.limitPrice);
+        if (ctx.accountId) payload.accountId = ctx.accountId;
         const summary = shares != null
           ? `Sell ${shares} share${shares === 1 ? '' : 's'} of ${symbol}.`
           : `Sell ${fmtMoney(dollarAmount as number)} of ${symbol}.`;
@@ -407,6 +412,7 @@ export async function executeMoneyTool(
         const total = stocks.reduce((sum: number, s: any) => sum + s.dollarAmount, 0);
         const basketName = input?.basketName ? String(input.basketName).trim() : 'Basket';
         const payload: Record<string, unknown> = { basketName, stocks };
+        if (ctx.accountId) payload.accountId = ctx.accountId;
         const summary = `Buy a basket (${basketName}) — ${stocks.length} position${stocks.length === 1 ? '' : 's'}, ${fmtMoney(total)} total.`;
         return storePending('basket_execute', payload, summary, total, null);
       }

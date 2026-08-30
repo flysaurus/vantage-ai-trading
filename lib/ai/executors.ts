@@ -28,6 +28,24 @@ const VALID_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly'];
 const VALID_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri'];
 const VALID_DATES = ['1', '15', 'last'];
 
+/** Resolve the live-broker connection scope from a pending-action payload. */
+function orderScopeFromPayload(payload: Record<string, unknown>): { connectionId: string | null; isDemo: boolean } {
+  const scope = parseAccountScope(payload.accountId as string | null | undefined);
+  if (!scope) return { connectionId: null, isDemo: false };
+  return { connectionId: scope.connectionId, isDemo: scope.isDemo };
+}
+
+/** True when a strategies row lives under a different account than the payload's scope. */
+function dcaScopeMismatch(payload: Record<string, unknown>, row: any): boolean {
+  const scope = parseAccountScope(payload.accountId as string | null | undefined);
+  if (!scope) return false; // legacy payload w/o accountId → skip scope check
+  const rowDemo = row?.is_demo === true;
+  const rowConn = (row?.connection_id as string | null | undefined) ?? null;
+  if (scope.isDemo) return !rowDemo;
+  if (scope.connectionId) return rowConn !== scope.connectionId;
+  return rowDemo;
+}
+
 // ── Watchlist helpers ────────────────────────────────────────────────────────
 
 async function resolveWatchlist(
@@ -247,9 +265,10 @@ async function execDcaUpdate(
   const scheduleId = payload.scheduleId as string;
   if (!scheduleId) return { ok: false, message: 'Missing schedule id.' };
   const { data: existing } = await (supabase as any)
-    .from('strategies').select('id, user_id, symbol, config').eq('id', scheduleId).eq('type', 'dca').maybeSingle();
+    .from('strategies').select('id, user_id, symbol, config, connection_id, is_demo').eq('id', scheduleId).eq('type', 'dca').maybeSingle();
   if (!existing) return { ok: false, message: 'Schedule not found.' };
   if (existing.user_id !== userId) return { ok: false, message: 'Cannot update other users schedules.' };
+  if (dcaScopeMismatch(payload, existing)) return { ok: false, message: 'That schedule belongs to a different account.' };
 
   // Partial merge: apply only the fields the user changed; carry over the rest
   // from the existing schedule. symbol is a top-level column, not in config.
@@ -294,9 +313,10 @@ async function execDcaDelete(
   const scheduleId = payload.scheduleId as string;
   if (!scheduleId) return { ok: false, message: 'Missing schedule id.' };
   const { data: existing } = await (supabase as any)
-    .from('strategies').select('id, user_id').eq('id', scheduleId).eq('type', 'dca').maybeSingle();
+    .from('strategies').select('id, user_id, connection_id, is_demo').eq('id', scheduleId).eq('type', 'dca').maybeSingle();
   if (!existing) return { ok: false, message: 'Schedule not found.' };
   if (existing.user_id !== userId) return { ok: false, message: 'Cannot cancel other users schedules.' };
+  if (dcaScopeMismatch(payload, existing)) return { ok: false, message: 'That schedule belongs to a different account.' };
   const { error } = await (supabase as any)
     .from('strategies').update({ is_active: false }).eq('id', scheduleId);
   if (error) return { ok: false, message: `Failed to cancel DCA: ${error.message}` };
@@ -310,6 +330,8 @@ async function execBuyStock(
   userId: string,
   payload: Record<string, unknown>,
 ): Promise<ExecResult> {
+  const scope = orderScopeFromPayload(payload);
+  if (scope.isDemo) return { ok: false, message: 'Demo mode — connect a live broker to place real trades.' };
   return placeSingleTrade({
     supabase,
     userId,
@@ -319,6 +341,7 @@ async function execBuyStock(
     dollarAmount: payload.dollarAmount != null ? Number(payload.dollarAmount) : null,
     orderType: (payload.orderType as any) || 'market',
     limitPrice: payload.limitPrice != null ? Number(payload.limitPrice) : null,
+    connectionId: scope.connectionId,
   });
 }
 
@@ -327,6 +350,8 @@ async function execSellStock(
   userId: string,
   payload: Record<string, unknown>,
 ): Promise<ExecResult> {
+  const scope = orderScopeFromPayload(payload);
+  if (scope.isDemo) return { ok: false, message: 'Demo mode — connect a live broker to place real trades.' };
   return placeSingleTrade({
     supabase,
     userId,
@@ -336,6 +361,7 @@ async function execSellStock(
     dollarAmount: payload.dollarAmount != null ? Number(payload.dollarAmount) : null,
     orderType: (payload.orderType as any) || 'market',
     limitPrice: payload.limitPrice != null ? Number(payload.limitPrice) : null,
+    connectionId: scope.connectionId,
   });
 }
 
@@ -344,6 +370,8 @@ async function execBasketExecute(
   userId: string,
   payload: Record<string, unknown>,
 ): Promise<ExecResult> {
+  const scope = orderScopeFromPayload(payload);
+  if (scope.isDemo) return { ok: false, message: 'Demo mode — connect a live broker to place real trades.' };
   const stocks = (payload.stocks as any[]) || [];
   return placeBasketTrade({
     supabase,
@@ -353,6 +381,7 @@ async function execBasketExecute(
       symbol: String(s?.symbol || '').toUpperCase(),
       dollarAmount: Number(s?.dollarAmount) || 0,
     })),
+    connectionId: scope.connectionId,
   });
 }
 
@@ -366,6 +395,8 @@ async function execRebalance(
   userId: string,
   payload: Record<string, unknown>,
 ): Promise<ExecResult> {
+  const scope = orderScopeFromPayload(payload);
+  if (scope.isDemo) return { ok: false, message: 'Demo mode — connect a live broker to place real trades.' };
   const legs = Array.isArray(payload.legs) ? (payload.legs as any[]) : [];
   if (legs.length === 0) return { ok: false, message: 'No rebalance trades were stored.' };
 
@@ -401,6 +432,7 @@ async function execRebalance(
       shares: hasQty ? sellShares : null,
       dollarAmount: hasQty ? null : dollarAmount,
       orderType: 'market',
+      connectionId: scope.connectionId,
       // Rebalance legs are deterministic (style targets + broker positions),
       // not LLM-proposed — safe to skip the Finnhub symbol gate so real held
       // ETFs the broker recognizes (CPER, etc.) sell without being blocked.
