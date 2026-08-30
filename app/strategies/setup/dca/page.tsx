@@ -76,7 +76,7 @@ export default function DcaSetupPage() {
   // "Your Positions" + a wrong buying-power limit). Fetch real positions/accounts
   // directly instead; never fall back to demo holdings.
   const [holdings, setHoldings] = useState<{ symbol: string; qty: number }[]>([]);
-  const [buyingPower, setBuyingPower] = useState(0);
+  const [availableCash, setAvailableCash] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,11 +102,11 @@ export default function DcaSetupPage() {
           const accounts = (data as any)?.accounts;
           if (Array.isArray(accounts)) {
             const live = accounts.find((a: any) => a && !a.isDemo);
-            if (live && live.buyingPower != null) setBuyingPower(Number(live.buyingPower) || 0);
+            if (live && live.cash != null) setAvailableCash(Number(live.cash) || 0);
           }
         }
       } catch {
-        // Keep defaults (empty holdings, buyingPower 0).
+        // Keep defaults (empty holdings, availableCash null).
       }
     })();
     return () => { cancelled = true; };
@@ -188,7 +188,7 @@ export default function DcaSetupPage() {
     setAmount(cleaned);
     const n = parseFloat(cleaned);
     if (cleaned && (isNaN(n) || n < 1)) setAmountError('Minimum $1');
-    else if (buyingPower > 0 && n > buyingPower * 0.5) setAmountError('Exceeds 50% of buying power');
+    else if (availableCash != null && n > availableCash) setAmountError(`Exceeds available cash (${fmtCurrency(availableCash)})`);
     else setAmountError('');
   };
 
@@ -198,6 +198,7 @@ export default function DcaSetupPage() {
     setQuantity(cleaned);
     const n = parseFloat(cleaned);
     if (cleaned && (isNaN(n) || n <= 0)) setQuantityError('Enter at least 1 share');
+    else if (availableCash != null && stockDetails?.price != null && n * stockDetails.price > availableCash) setQuantityError(`Exceeds available cash (${fmtCurrency(availableCash)})`);
     else if (!Number.isInteger(n) && cleaned.includes('.')) {
       // Allow fractional shares (e.g. 1.5) — but flag as fractional
       if (n < 0.01) setQuantityError('Minimum 0.01 shares');
@@ -375,6 +376,14 @@ export default function DcaSetupPage() {
 
       {/* ─── Section 2: Investment Amount ───────────── */}
       <Section icon={<DollarSign size={12} />} label="How much per investment?">
+        {/* Available cash readout */}
+        {availableCash != null && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.22)', borderRadius: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>Available cash</span>
+            <span style={{ fontSize: 14, fontWeight: 800, color: '#06b6d4' }}>{fmtCurrency(availableCash)}</span>
+          </div>
+        )}
+
         {/* Amount vs Shares toggle */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
           {(['amount', 'shares'] as const).map(mode => (
@@ -390,7 +399,7 @@ export default function DcaSetupPage() {
             {amountError && <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>{amountError}</div>}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
               {AMOUNT_CHIPS.map(c => (
-                <button key={c} onClick={() => { setAmount(c.toString()); setAmountError(''); }} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid #334155', background: amount === c.toString() ? '#06b6d4' : '#1e293b', color: amount === c.toString() ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button key={c} onClick={() => handleAmount(c.toString())} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid #334155', background: amount === c.toString() ? '#06b6d4' : '#1e293b', color: amount === c.toString() ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
                   ${c}
                 </button>
               ))}
@@ -407,7 +416,7 @@ export default function DcaSetupPage() {
             {quantityError && <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>{quantityError}</div>}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
               {[1, 5, 10, 25, 50].map(n => (
-                <button key={n} onClick={() => { setQuantity(n.toString()); setQuantityError(''); }} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid #334155', background: quantity === n.toString() ? '#06b6d4' : '#1e293b', color: quantity === n.toString() ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button key={n} onClick={() => handleQuantity(n.toString())} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid #334155', background: quantity === n.toString() ? '#06b6d4' : '#1e293b', color: quantity === n.toString() ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
                   {n} shares
                 </button>
               ))}
@@ -497,9 +506,9 @@ export default function DcaSetupPage() {
           {isSharesMode && estCost && <PreviewRow label="Est. cost per order" value={`${estCost} @ ${fmtCurrency(price)}/share`} />}
           {totalInvested && <PreviewRow label={`Total invested (${monthsRunning}mo)`} value={totalInvested} />}
           {!runIndefinitely && endDate && estOrders > 0 && <PreviewRow label="Orders scheduled" value={estOrders.toString()} />}
-          {buyingPower > 0 && isAmountMode && parseFloat(amount) > buyingPower * 0.1 && (
-            <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 6, fontSize: 11, color: '#fbbf24', fontWeight: 600 }}>
-              ⚠️ Amount exceeds 10% of buying power (${buyingPower.toFixed(2)})
+          {availableCash != null && isAmountMode && parseFloat(amount) > availableCash && (
+            <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, fontSize: 11, color: '#f87171', fontWeight: 600 }}>
+              ⚠️ Amount exceeds available cash (${fmtCurrency(availableCash)})
             </div>
           )}
         </div>

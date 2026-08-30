@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 import { calculateNextRun } from '@/lib/scheduler';
+import { getBrokerCashForUser } from '@/lib/broker/get-account-cash';
 
 const VALID_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly'];
 const VALID_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri'];
@@ -68,6 +69,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (!startDate || isNaN(Date.parse(startDate))) {
       return NextResponse.json({ error: 'Valid start date required' }, { status: 400 });
+    }
+
+    // ─── Cash guard: reject a per-period amount above settled cash ──
+    // amount is always the dollar cost per period (shares mode is converted
+    // to dollars on the client). Non-fatal on fetch failure — the broker
+    // rejects a true shortfall at execution time.
+    try {
+      const available = await getBrokerCashForUser(userId);
+      if (available != null && amount > available) {
+        return NextResponse.json(
+          { error: `Insufficient cash. Available: $${available.toFixed(2)}, requested: $${amount.toFixed(2)}` },
+          { status: 400 },
+        );
+      }
+    } catch (err) {
+      console.warn('[strategies/dca/create] cash guard skipped:', err);
     }
 
     const config: Record<string, any> = {
