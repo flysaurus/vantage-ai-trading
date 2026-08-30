@@ -297,8 +297,11 @@ export default function DcaSetupPage() {
         setEditingSchedule(null);
       } else {
         // Land on the Invest tab, not the account-select screen (which re-shows
-        // whenever MainApp remounts on a bare router.back()).
-        try { localStorage.setItem('vantage:skipAccountSelect', 'true'); } catch {}
+        // whenever MainApp remounts on a bare router.back()). Use a ONE-TIME
+        // session flag (consumed once by MainApp) instead of the persistent
+        // 'vantage:skipAccountSelect' key — that global key was permanently
+        // disabling account selection on every future login.
+        try { sessionStorage.setItem('vantage:skipAccountSelectOnce', '1'); } catch {}
         setTimeout(() => router.replace('/?tab=invest'), 1200);
       }
     } catch {

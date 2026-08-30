@@ -211,6 +211,12 @@ function AppShell() {
       window.history.replaceState({}, '', '/');
       return;
     }
+    // One-time suppression (e.g. DCA create navigates back to '/') — consumed
+    // exactly once so it never disables account selection on future logins.
+    if (typeof window !== 'undefined' && sessionStorage.getItem('vantage:skipAccountSelectOnce')) {
+      sessionStorage.removeItem('vantage:skipAccountSelectOnce');
+      return;
+    }
     // First login: show once unless user previously opted out
     if (typeof window !== 'undefined' && !localStorage.getItem('vantage:skipAccountSelect')) {
       setShowAccountSelect(true);
