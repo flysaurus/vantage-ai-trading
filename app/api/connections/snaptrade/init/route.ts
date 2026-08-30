@@ -1,226 +1,210 @@
 // ─── POST /api/connections/snaptrade/init ───────────────────
-// Initiate SnapTrade OAuth flow for a specific broker.
+// Initiate SnapTrade OAuth flow for a broker.
 //
-// Flow:
-//   1. Client POSTs { broker_id: 'fidelity' | 'schwab' | ... }
-//   2. Server calls SnapTrade API to get an OAuth redirect URL
-//   3. Returns { redirect_url } — client navigates user there
-//   4. User authorizes on broker's site → redirected to our callback
+// Accepts either:
+//   { broker_id: 'fidelity' }        (friendly id — legacy frontend callers)
+//   { brokerage_slug: 'FIDELITY' }   (canonical SnapTrade slug)
 //
-// SnapTrade API ref: https://docs.snaptrade.com/reference/create-link
+// The friendly id is resolved to a real SnapTrade slug via a local alias map
+// plus getAllowedBrokerages() fuzzy fallback (never a blind .toUpperCase()).
+//
+// This route was previously broken: it hit `/snap_trade/registerUser` and
+// `/snap_trade/login` (wrong paths — SnapTrade uses camelCase `/snapTrade/...`)
+// and sent clientId/consumerKey as headers instead of the required
+// `Signature` HMAC + `clientId`/`timestamp` query params. SnapTrade answered
+// those malformed calls with 405 Method Not Allowed — the exact "SnapTrade
+// returned error 405" Em hit. It now delegates to the same correct client
+// (`getOrCreateSnapTradeUser` + `generateConnectionPortalUrl`) as
+// `/api/connections/start`.
 
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { encryptUserSecret } from '@/lib/snaptrade/client';
+import {
+  getOrCreateSnapTradeUser,
+  generateConnectionPortalUrl,
+  encryptUserSecret,
+} from '@/lib/snaptrade/client';
+import { getAllowedBrokerages } from '@/lib/snaptrade/auth';
 
-const SNAPTRADE_API = 'https://api.snaptrade.com/api/v1';
-
-const BROKER_NAMES: Record<string, string> = {
-  fidelity: 'Fidelity',
-  robinhood: 'Robinhood',
-  schwab: 'Charles Schwab',
-  vanguard: 'Vanguard',
-  etrade: 'E*TRADE',
-  tdameritrade: 'TD Ameritrade',
-  webull: 'Webull',
-  coinbase: 'Coinbase',
+// Friendly id → canonical SnapTrade slug. Mirrors lib/broker-name.ts.
+const BROKER_ALIASES: Record<string, string> = {
+  fidelity: 'FIDELITY',
+  robinhood: 'ROBINHOOD',
+  schwab: 'SCHWAB',
+  charles_schwab: 'SCHWAB',
+  cschwab: 'SCHWAB',
+  vanguard: 'VANGUARD',
+  etrade: 'ETRADE',
+  tdameritrade: 'TDAMERITRADE',
+  tda: 'TDAMERITRADE',
+  webull: 'WEBULL',
+  coinbase: 'COINBASE',
+  alpaca: 'ALPACA',
+  'alpaca-paper': 'ALPACA-PAPER',
+  alpaca_paper: 'ALPACA-PAPER',
+  tastytrade: 'TASTYTRADE',
+  ibkr: 'INTERACTIVEBROKERS',
+  interactivebrokers: 'INTERACTIVEBROKERS',
+  tradestation: 'TRADESTATION',
+  ally: 'ALLY',
+  public: 'PUBLIC',
+  moomoo: 'MOOMOO',
 };
 
-function getSnapTradeHeaders() {
-  const clientId = process.env.SNAPTRADE_CLIENT_ID;
-  const consumerKey = process.env.SNAPTRADE_CONSUMER_KEY;
+/** Resolve a friendly broker id to a canonical SnapTrade slug (fuzzy fallback). */
 
-  if (!clientId || !consumerKey) {
-    throw new Error('SnapTrade credentials not configured');
-  }
-
-  return {
-    'Content-Type': 'application/json',
-    'clientId': clientId,
-    'consumerKey': consumerKey,
-  };
-}
+// NOTE: resolution is inlined in POST below; BROKER_ALIASES covers the known
+// friendly ids, and anything else falls back to getAllowedBrokerages().
 
 export async function POST(req: NextRequest) {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
 
-  let body: { broker_id?: string };
+  let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const rawId = (body.brokerage_slug as string) || (body.broker_id as string);
+  if (!rawId || typeof rawId !== 'string' || !rawId.trim()) {
     return NextResponse.json(
-      { error: 'Invalid JSON body' },
+      { error: 'broker_id (or brokerage_slug) is required' },
       { status: 400 },
     );
   }
 
-  const brokerId = body.broker_id;
-  if (!brokerId || !BROKER_NAMES[brokerId]) {
-    return NextResponse.json(
-      { error: 'Invalid broker_id', valid: Object.keys(BROKER_NAMES) },
-      { status: 400 },
-    );
-  }
-
-  const brokerName = BROKER_NAMES[brokerId];
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
-  const callbackUrl = `${appUrl}/api/connections/snaptrade/callback`;
-
-  // ── Try SnapTrade API ──────────────────────────────────────
-  // Hoist these so they're available in both try and catch blocks
-  let snapTradeUserId = authUser.id;
-  let snapTradeUserSecret = authUser.id;
-  let encryptedSecret: string | null = encryptUserSecret(authUser.id, authUser.id); // fallback (dev mock)
-
-  try {
-    const headers = getSnapTradeHeaders();
-
-    // Step 1: Register user with SnapTrade (idempotent)
-    const userRes = await fetch(`${SNAPTRADE_API}/snap_trade/registerUser`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ userId: authUser.id }),
-    });
-
-    // Capture SnapTrade credentials from registerUser response
-    if (userRes.ok) {
-      try {
-        const userData = await userRes.json();
-        snapTradeUserId = userData.userId || authUser.id;
-        snapTradeUserSecret = userData.userSecret || authUser.id;
-      } catch {
-        // Keep fallback values
+  // If a canonical slug was passed, use it directly; else resolve the friendly id.
+  let brokerSlug: string | null = BROKER_ALIASES[rawId.trim().toLowerCase()] || null;
+  if (!brokerSlug) {
+    try {
+      const brokers = await getAllowedBrokerages();
+      const upper = rawId.trim().toUpperCase();
+      const bySlug = brokers.find((b) => b.slug.toUpperCase() === upper);
+      brokerSlug = bySlug?.slug || null;
+      if (!brokerSlug) {
+        const key = rawId.trim().toLowerCase();
+        const byName = brokers.find((b) => b.name.toUpperCase().includes(key.toUpperCase()));
+        brokerSlug = byName?.slug || null;
       }
-    }
-
-    // Store the user secret (AES-256-GCM, per-user key — never plaintext)
-    encryptedSecret = encryptUserSecret(authUser.id, snapTradeUserSecret);
-
-    // Step 2: Get login link URI
-    const linkRes = await fetch(`${SNAPTRADE_API}/snap_trade/login`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        userId: snapTradeUserId,
-        userSecret: snapTradeUserSecret,
-        broker: brokerId.toUpperCase(),
-        immediateRedirect: true,
-      }),
-    });
-
-    if (!linkRes.ok) {
-      const errText = await linkRes.text().catch(() => '');
-      console.error('[SnapTrade Init] Login link failed:', linkRes.status, errText);
+    } catch (err) {
+      console.error('[snaptrade/init] broker resolution failed:', err);
       return NextResponse.json(
-        { error: `SnapTrade returned error ${linkRes.status}` },
+        { error: 'Failed to validate brokerage. Try again.' },
         { status: 502 },
       );
     }
+  }
 
-    const linkData = await linkRes.json();
-
-    // Step 3: Record pending connection in our DB
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } },
+  if (!brokerSlug) {
+    return NextResponse.json(
+      { error: `Unknown brokerage: ${rawId}` },
+      { status: 400 },
     );
+  }
 
-    const { error: connErr } = await supabase
-      .from('broker_connections')
-      .upsert(
-        {
-          user_id: authUser.id,
-          connection_type: 'snaptrade',
-          snaptrade_broker_id: brokerId,
-          snaptrade_user_id: snapTradeUserId,
-          snaptrade_user_secret_encrypted: encryptedSecret,
-          status: 'pending',
-          trading_enabled: true, // Will be updated in callback
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id' },
-      );
-
-    if (connErr) {
-      console.error('[SnapTrade Init] DB error:', connErr);
+  // Resolve display name + trading capability from SnapTrade.
+  let brokerName = brokerSlug;
+  let allowsTrading = false;
+  try {
+    const brokers = await getAllowedBrokerages();
+    const broker = brokers.find((b) => b.slug.toUpperCase() === brokerSlug!.toUpperCase());
+    if (broker) {
+      brokerName = broker.displayName;
+      allowsTrading = broker.allowsTrading;
     }
+  } catch {
+    // Non-fatal — name/trading flag fall back to slug/defaults.
+  }
 
-    // Update users table connection_type + status
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
+  const callbackUrl = `${appUrl}/api/connections/callback`;
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+
+  const { data: existingConn } = await supabase
+    .from('broker_connections')
+    .select('snaptrade_user_id, snaptrade_user_secret_encrypted, id')
+    .eq('user_id', authUser.id)
+    .eq('connection_type', 'snaptrade')
+    .maybeSingle();
+
+  // Get/create the SnapTrade user + decrypt the secret.
+  let snapUserId: string;
+  let snapUserSecret: string;
+  try {
+    const result = await getOrCreateSnapTradeUser(
+      authUser.id,
+      existingConn?.snaptrade_user_id,
+      existingConn?.snaptrade_user_secret_encrypted,
+    );
+    snapUserId = result.userId;
+    snapUserSecret = result.userSecret;
+  } catch (err) {
+    console.error('[snaptrade/init] SnapTrade user setup failed:', err);
+    return NextResponse.json(
+      { error: 'Failed to set up SnapTrade user. Please try again.' },
+      { status: 502 },
+    );
+  }
+
+  const encryptedSecret = encryptUserSecret(authUser.id, snapUserSecret);
+  const now = new Date().toISOString();
+
+  if (existingConn?.id) {
     await supabase
-      .from('users')
+      .from('broker_connections')
       .update({
-        connection_type: 'snaptrade',
-        connection_status: 'pending',
-        connection_initiated_at: new Date().toISOString(),
+        snaptrade_user_id: snapUserId,
+        snaptrade_user_secret_encrypted: encryptedSecret,
+        brokerage_slug: brokerSlug,
+        status: 'pending',
+        updated_at: now,
       })
-      .eq('id', authUser.id);
+      .eq('id', existingConn.id);
+  } else {
+    await supabase
+      .from('broker_connections')
+      .insert({
+        user_id: authUser.id,
+        connection_type: 'snaptrade',
+        snaptrade_user_id: snapUserId,
+        snaptrade_user_secret_encrypted: encryptedSecret,
+        brokerage_slug: brokerSlug,
+        status: 'pending',
+      });
+  }
+
+  // Generate the SnapTrade Connection Portal URL.
+  try {
+    const portalUrl = await generateConnectionPortalUrl(
+      snapUserId,
+      snapUserSecret,
+      brokerSlug,
+      callbackUrl,
+      'trade-if-available',
+    );
 
     return NextResponse.json({
       success: true,
-      redirect_url: linkData.redirectURI || linkData.uri || null,
-      broker_id: brokerId,
+      redirect_url: portalUrl,
+      redirectUri: portalUrl,
+      broker_id: brokerSlug.toLowerCase(),
+      broker_slug: brokerSlug,
       broker_name: brokerName,
+      allows_trading: allowsTrading,
     });
-  } catch (err: unknown) {
-    // ── SnapTrade API unavailable — return mock redirect ───
-    // This lets the frontend flow work end-to-end while SnapTrade
-    // credentials are being configured. The callback route handles
-    // both real and development-mode flows.
-    const isDev = process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV !== 'production';
-
-    if (isDev) {
-      const redirectUrl = `${appUrl}/api/connections/snaptrade/callback?mode=dev&broker=${brokerId}&userId=${authUser.id}&success=true`;
-
-      // Still record the pending connection
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        { auth: { autoRefreshToken: false, persistSession: false } },
-      );
-
-      await supabase
-        .from('broker_connections')
-        .upsert(
-          {
-            user_id: authUser.id,
-            connection_type: 'snaptrade',
-            snaptrade_broker_id: brokerId,
-            snaptrade_user_id: authUser.id,
-            snaptrade_user_secret_encrypted: encryptedSecret,
-            status: 'pending',
-            trading_enabled: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' },
-        );
-
-      await supabase
-        .from('users')
-        .update({
-          connection_type: 'snaptrade',
-          connection_status: 'pending',
-          connection_initiated_at: new Date().toISOString(),
-        })
-        .eq('id', authUser.id);
-
-      return NextResponse.json({
-        success: true,
-        redirect_url: redirectUrl,
-        broker_id: brokerId,
-        broker_name: brokerName,
-        note: 'Development mode — SnapTrade API not configured',
-      });
-    }
-
-    console.error('[SnapTrade Init] Failed:', err);
+  } catch (err) {
+    console.error('[snaptrade/init] Portal URL generation failed:', err);
     return NextResponse.json(
-      { error: 'Failed to initiate SnapTrade connection. Please try again later.' },
-      { status: 500 },
+      { error: 'Failed to generate connection portal. Please try again.' },
+      { status: 502 },
     );
   }
 }

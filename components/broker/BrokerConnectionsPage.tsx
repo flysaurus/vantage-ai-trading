@@ -15,10 +15,11 @@
 
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { ChevronLeft, Check, RefreshCw, ExternalLink, Unlink } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import { useBroker } from '@/components/providers/BrokerProvider';
+import type { BrokerInfo } from '@/lib/snaptrade/auth';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -32,6 +33,8 @@ interface BrokerRow {
   id: string;
   name: string;
   logo: string;
+  /** Optional real logo image URL (SnapTrade) — wins over emoji when present */
+  logoUrl?: string;
   /** 'trading' | 'readonly' — which section it belongs to */
   capability: 'trading' | 'readonly';
   /** Subtitle line shown below name */
@@ -352,6 +355,7 @@ function SectionHeader({
 
 function BrokerListRow({
   logo,
+  logoUrl,
   name,
   capability,
   capabilityLabel,
@@ -360,6 +364,7 @@ function BrokerListRow({
   loading,
 }: {
   logo: string;
+  logoUrl?: string;
   name: string;
   capability: 'trading' | 'readonly';
   capabilityLabel: string;
@@ -413,9 +418,21 @@ function BrokerListRow({
           justifyContent: 'center',
           fontSize: '17px',
           flexShrink: 0,
+          overflow: 'hidden',
         }}
       >
-        {logo}
+        {logoUrl ? (
+          <img
+            src={logoUrl}
+            alt={name}
+            style={{ width: '70%', height: '70%', objectFit: 'contain' }}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          logo
+        )}
       </div>
 
       {/* Info */}
@@ -620,6 +637,39 @@ export function BrokerConnectionsPage({
   const [loadingBroker, setLoadingBroker] = useState<string | null>(null);
   const [toast, setToast] = useState('');
 
+  // ── Dynamic broker list (all SnapTrade brokers) ─────────
+  const [brokerList, setBrokerList] = useState<{
+    trading: BrokerInfo[];
+    readOnly: BrokerInfo[];
+  }>({ trading: [], readOnly: [] });
+  const [brokerListLoading, setBrokerListLoading] = useState(true);
+  const [brokerListError, setBrokerListError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/connections/snaptrade-brokerages', { credentials: 'include' })
+      .then((r) => {
+        if (!r.ok) throw new Error('failed');
+        return r.json();
+      })
+      .then((d) => {
+        if (cancelled) return;
+        setBrokerList({
+          trading: Array.isArray(d.trading) ? d.trading : [],
+          readOnly: Array.isArray(d.readOnly) ? d.readOnly : [],
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setBrokerListError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setBrokerListLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // ── Snaptrade init handler ───────────────────────────────
   const handleSnaptradeConnect = useCallback(async (brokerId: string) => {
     setLoadingBroker(brokerId);
@@ -653,11 +703,6 @@ export function BrokerConnectionsPage({
     }
   }, []);
 
-  // ── Coming soon handler ─────────────────────────────────
-  const handleComingSoon = useCallback((name: string) => {
-    setToast(`${name} is coming soon — we'll notify you when ready.`);
-  }, []);
-
   // ── Format balance ──────────────────────────────────────
   const balance = accountPreview?.equity
     ? `$${accountPreview.equity.toLocaleString('en-US', {
@@ -671,66 +716,39 @@ export function BrokerConnectionsPage({
     ? getBrokerName(brokerId)
     : '';
 
-  // ── Build broker lists grouped by capability (filter out connected broker) ──
-  const allTradingBrokers: BrokerRow[] = [
-    {
-      id: 'alpaca',
-      name: 'Alpaca',
-      logo: '🦙',
-      capability: 'trading',
-      capabilityLabel: 'Trading available',
-      action: () => handleSnaptradeConnect('alpaca'),
-    },
-    {
-      id: 'tastytrade',
-      name: 'tastytrade',
-      logo: '🍜',
-      capability: 'trading',
-      capabilityLabel: 'Trading · Options & futures',
-      action: () => handleComingSoon('tastytrade'),
-    },
-  ];
+  // ── Build broker lists grouped by capability (dynamic, filter connected) ──
+  const tradingBrokers: BrokerRow[] = useMemo(
+    () =>
+      brokerList.trading
+        .filter((b) => b.slug.toLowerCase() !== brokerId?.toLowerCase())
+        .map((b) => ({
+          id: b.slug,
+          name: b.displayName || b.name,
+          logo: getBrokerLogo(b.slug.toLowerCase()),
+          logoUrl: b.logoUrl,
+          capability: 'trading' as const,
+          capabilityLabel: 'Trading available',
+          beta: b.releaseStage === 'BETA',
+          action: () => handleSnaptradeConnect(b.slug),
+        })),
+    [brokerList.trading, brokerId, handleSnaptradeConnect],
+  );
 
-  const tradingBrokers = allTradingBrokers.filter(b => b.id !== brokerId);
-
-  const allReadonlyBrokers: BrokerRow[] = [
-    {
-      id: 'fidelity',
-      name: 'Fidelity',
-      logo: '🏦',
-      capability: 'readonly',
-      capabilityLabel: 'View only — no trading',
-      action: () => handleSnaptradeConnect('fidelity'),
-    },
-    {
-      id: 'robinhood',
-      name: 'Robinhood',
-      logo: '🟢',
-      capability: 'readonly',
-      capabilityLabel: 'View only — no trading',
-      action: () => handleSnaptradeConnect('robinhood'),
-    },
-    {
-      id: 'schwab',
-      name: 'Charles Schwab',
-      logo: '📊',
-      capability: 'readonly',
-      capabilityLabel: 'View only — no trading',
-      action: () => handleSnaptradeConnect('schwab'),
-    },
-    {
-      id: 'vanguard',
-      name: 'Vanguard',
-      logo: '🚢',
-      capability: 'readonly',
-      capabilityLabel: 'View only — no trading',
-      action: () => handleSnaptradeConnect('vanguard'),
-    },
-  ];
-
-  const readonlyBrokers = allReadonlyBrokers.filter(b => b.id !== brokerId);
-
-  const comingSoonBrands = ['IBKR', 'Chase', 'Webull', 'Coinbase'];
+  const readonlyBrokers: BrokerRow[] = useMemo(
+    () =>
+      brokerList.readOnly
+        .filter((b) => b.slug.toLowerCase() !== brokerId?.toLowerCase())
+        .map((b) => ({
+          id: b.slug,
+          name: b.displayName || b.name,
+          logo: getBrokerLogo(b.slug.toLowerCase()),
+          logoUrl: b.logoUrl,
+          capability: 'readonly' as const,
+          capabilityLabel: 'View only — no trading',
+          action: () => handleSnaptradeConnect(b.slug),
+        })),
+    [brokerList.readOnly, brokerId, handleSnaptradeConnect],
+  );
 
   const isLoading = loadingBroker !== null;
 
@@ -921,9 +939,11 @@ export function BrokerConnectionsPage({
         <BrokerListRow
           key={b.id}
           logo={b.logo}
+          logoUrl={b.logoUrl}
           name={b.name}
           capability={b.capability}
           capabilityLabel={b.capabilityLabel}
+          beta={b.beta}
           onClick={b.action}
           loading={loadingBroker === b.id}
         />
@@ -940,6 +960,7 @@ export function BrokerConnectionsPage({
         <BrokerListRow
           key={b.id}
           logo={b.logo}
+          logoUrl={b.logoUrl}
           name={b.name}
           capability={b.capability}
           capabilityLabel={b.capabilityLabel}
@@ -948,8 +969,32 @@ export function BrokerConnectionsPage({
         />
       ))}
 
-      {/* ═══ COMING SOON ═══ */}
-      <ComingSoonSection brands={comingSoonBrands} />
+      {/* ═══ Broker list states (loading / error / empty) ═══ */}
+      {brokerListLoading && (
+        <p
+          style={{
+            margin: '12px 20px',
+            fontSize: '13px',
+            color: 'var(--text-secondary)',
+            fontFamily: 'var(--font-sans)',
+          }}
+        >
+          Loading available brokers…
+        </p>
+      )}
+
+      {!brokerListLoading && brokerListError && (
+        <p
+          style={{
+            margin: '12px 20px',
+            fontSize: '13px',
+            color: '#f0b73f',
+            fontFamily: 'var(--font-sans)',
+          }}
+        >
+          Couldn&apos;t load the broker list. Please refresh to retry.
+        </p>
+      )}
 
       <div style={{ height: '30px', flexShrink: 0 }} />
     </div>
