@@ -85,9 +85,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     for (const r of rawResults) {
       const sym = r.symbol || r.displaySymbol || '';
       if (!sym || seen.has(sym)) continue;
-      // Common Stock, ETF, ADR, REIT — US-listed (aligns with validate-markers.ts resolveCompanyTicker)
+      // Common Stock, ETF/ETP, ADR, REIT — US-listed (aligns with validate-markers.ts resolveCompanyTicker).
+      // Finnhub returns ETFs as type "ETP" (not "ETF"), so both are allowed.
       const t = r.type || '';
-      if (t !== 'Common Stock' && t !== 'ETF' && t !== 'ADR' && t !== 'REIT') continue;
+      if (t !== 'Common Stock' && t !== 'ETF' && t !== 'ETP' && t !== 'ADR' && t !== 'REIT') continue;
       if (!isUSStock(sym)) continue;
       seen.add(sym);
       filtered.push({

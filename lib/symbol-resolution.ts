@@ -20,7 +20,8 @@ const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const CACHE_HEALTH_THRESHOLD = 5000;       // minimum expected US symbols
 const US_TICKER_RE = /^[A-Z]{1,5}(?:\.[A-Z])?$/;
-const ALLOWED_TYPES = new Set(['common stock', 'adr', 'etf', 'reit']);
+// Finnhub returns ETFs as type "ETP" (not "ETF"), so "etp" is required here too.
+const ALLOWED_TYPES = new Set(['common stock', 'adr', 'etf', 'etp', 'reit']);
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -794,8 +795,18 @@ export async function searchSymbolsByName(
       for (const word of words) {
         if (nameLower.includes(word)) matchedWords++;
       }
-      if (matchedWords === 0) continue;
-      score = matchedWords * 15;
+      if (matchedWords === 0) {
+        // No name match — but still allow a direct ticker-symbol match (e.g. the
+        // user typed "VOO" while the ETF name "Vanguard S&P 500 ETF" doesn't
+        // contain it). Otherwise ETF ticker queries would fall through empty.
+        if (symbol.toLowerCase().startsWith(q)) {
+          score = 50;
+        } else {
+          continue;
+        }
+      } else {
+        score = matchedWords * 15;
+      }
     }
 
     if (symbol.toLowerCase().startsWith(q)) {

@@ -365,8 +365,8 @@ export default function DcaSetupPage() {
         <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>Automate recurring investments</p>
       </div>
 
-      {/* ─── Section 1: Stock Selection ─────────────── */}
-      <Section icon={<Layers size={12} />} label="Stock Selection">
+      {/* ─── Section 1: Stock/ETF Selection ─────────── */}
+      <Section icon={<Layers size={12} />} label="Stock/ETF Selection">
         <SymbolSearch value={selectedSymbol} onChange={handleSymbolSelect} placeholder="Search for a stock or ETF..." positions={holdings.map(p => p.symbol)} />
         {loadingStock && <Spinner label={`Loading ${selectedSymbol}...`} />}
         {stockError && <ErrorBox message={stockError} />}
