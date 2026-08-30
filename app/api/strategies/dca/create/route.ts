@@ -103,6 +103,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Valid start date required' }, { status: 400 });
     }
 
+    if (!endDate || isNaN(Date.parse(endDate))) {
+      return NextResponse.json({ error: 'End date is required' }, { status: 400 });
+    }
+
+    if (startDate && endDate < startDate) {
+      return NextResponse.json({ error: 'End date must be on or after start date' }, { status: 400 });
+    }
+
     // ─── Cash guard: reject a per-period amount above settled cash ──
     // amount is always the dollar cost per period (shares mode is converted
     // to dollars on the client). Non-fatal on fetch failure — the broker
@@ -130,12 +138,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (dayOfWeek) config.dayOfWeek = dayOfWeek;
     if (dayOfMonth) config.dayOfMonth = dayOfMonth;
-    if (endDate) {
-      if (isNaN(Date.parse(endDate))) {
-        return NextResponse.json({ error: 'Invalid end date' }, { status: 400 });
-      }
-      config.endDate = endDate;
-    }
+    config.endDate = endDate;
 
     const { data, error } = await (supabase as any)
       .from('strategies')

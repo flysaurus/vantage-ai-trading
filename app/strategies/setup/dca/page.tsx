@@ -132,7 +132,6 @@ export default function DcaSetupPage() {
 
   // Section 4
   const [startDate, setStartDate] = useState(todayStr());
-  const [runIndefinitely, setRunIndefinitely] = useState(true);
   const [endDate, setEndDate] = useState('');
 
   // Section 6
@@ -224,13 +223,7 @@ export default function DcaSetupPage() {
     setDayOfWeek(c.dayOfWeek || null);
     setDayOfMonth(c.dayOfMonth || null);
     setStartDate(c.startDate || todayStr());
-    if (c.endDate) {
-      setRunIndefinitely(false);
-      setEndDate(c.endDate);
-    } else {
-      setRunIndefinitely(true);
-      setEndDate('');
-    }
+    setEndDate(c.endDate || '');
     // Scroll to top
     window.scrollTo(0, 0);
   };
@@ -251,7 +244,7 @@ export default function DcaSetupPage() {
     try {
       const parsedAmount = investBy === 'amount' ? parseFloat(amount) : 0;
       const parsedQty = investBy === 'shares' ? parseFloat(quantity) : 0;
-      if (!selectedSymbol || (!parsedAmount && !parsedQty) || !frequency || !startDate) {
+      if (!selectedSymbol || (!parsedAmount && !parsedQty) || !frequency || !startDate || !endDate) {
         setSubmitting(false);
         return;
       }
@@ -269,7 +262,7 @@ export default function DcaSetupPage() {
       }
       if ((frequency === 'weekly' || frequency === 'biweekly') && dayOfWeek) body.dayOfWeek = dayOfWeek;
       if (frequency === 'monthly' && dayOfMonth) body.dayOfMonth = dayOfMonth;
-      if (!runIndefinitely && endDate) body.endDate = endDate;
+      body.endDate = endDate;
 
       const isUpdate = !!editingSchedule;
       const url = isUpdate ? '/api/strategies/dca/update' : '/api/strategies/dca/create';
@@ -320,9 +313,9 @@ export default function DcaSetupPage() {
   const estCost = price && parseFloat(quantity) && isSharesMode ? `$${(parseFloat(quantity) * price).toFixed(2)}` : null;
 
   const monthsRunning = (() => {
+    if (!endDate) return 1;
     const start = new Date(startDate + 'T00:00:00');
-    const endRaw = runIndefinitely ? null : endDate;
-    const end = endRaw ? new Date(endRaw + 'T00:00:00') : new Date(start.getTime() + 365 * 24 * 60 * 60 * 1000); // default: 1 year
+    const end = new Date(endDate + 'T00:00:00');
     return Math.max(1, Math.round((end.getTime() - start.getTime()) / (30.44 * 24 * 60 * 60 * 1000)));
   })();
 
@@ -340,7 +333,7 @@ export default function DcaSetupPage() {
 
   const estOrders = getEstimatedOrderCount(frequency, monthsRunning);
 
-  const canSubmit = selectedSymbol && ((isAmountMode && parseFloat(amount) >= 1 && !amountError) || (isSharesMode && parseFloat(quantity) >= 0.01 && !quantityError)) && frequency && startDate;
+  const canSubmit = selectedSymbol && ((isAmountMode && parseFloat(amount) >= 1 && !amountError) || (isSharesMode && parseFloat(quantity) >= 0.01 && !quantityError)) && frequency && startDate && endDate;
 
   const position = holdings.find(p => p.symbol === selectedSymbol);
   const changeColor = (stockDetails?.changePercent ?? 0) >= 0 ? '#4ade80' : '#f87171';
@@ -479,24 +472,15 @@ export default function DcaSetupPage() {
           <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} min={todayStr()} style={{ width: '100%', padding: '10px 12px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9', fontSize: 13, outline: 'none', fontFamily: 'inherit', colorScheme: 'dark' }} />
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-          <button onClick={() => setRunIndefinitely(!runIndefinitely)} style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${runIndefinitely ? '#06b6d4' : '#475569'}`, background: runIndefinitely ? '#06b6d4' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            {runIndefinitely && <span style={{ color: '#0f172a', fontSize: 12, lineHeight: 1 }}>✓</span>}
-          </button>
-          <span style={{ fontSize: 13, color: '#e2e8f0' }}>Run indefinitely</span>
+        <div>
+          <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 4, fontWeight: 600 }}>End date <span style={{ color: '#06b6d4' }}>*</span></div>
+          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={startDate} style={{ width: '100%', padding: '10px 12px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9', fontSize: 13, outline: 'none', fontFamily: 'inherit', colorScheme: 'dark' }} />
+          {endDate && estOrders > 0 && (
+            <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
+              Estimated orders: <strong style={{ color: '#e2e8f0' }}>{estOrders}</strong>
+            </div>
+          )}
         </div>
-
-        {!runIndefinitely && (
-          <>
-            <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 4, fontWeight: 600 }}>End date</div>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={startDate} style={{ width: '100%', padding: '10px 12px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9', fontSize: 13, outline: 'none', fontFamily: 'inherit', colorScheme: 'dark' }} />
-            {endDate && estOrders > 0 && (
-              <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
-                Estimated orders: <strong style={{ color: '#e2e8f0' }}>{estOrders}</strong>
-              </div>
-            )}
-          </>
-        )}
       </Section>
 
       {/* ─── Section 5: Preview ──────────────────────── */}
@@ -508,7 +492,7 @@ export default function DcaSetupPage() {
           {isAmountMode && estShares && <PreviewRow label="Est. shares per order" value={`${estShares} @ ${fmtCurrency(price)}`} />}
           {isSharesMode && estCost && <PreviewRow label="Est. cost per order" value={`${estCost} @ ${fmtCurrency(price)}/share`} />}
           {totalInvested && <PreviewRow label={`Total invested (${monthsRunning}mo)`} value={totalInvested} />}
-          {!runIndefinitely && endDate && estOrders > 0 && <PreviewRow label="Orders scheduled" value={estOrders.toString()} />}
+          {endDate && estOrders > 0 && <PreviewRow label="Orders scheduled" value={estOrders.toString()} />}
           {availableCash != null && isAmountMode && parseFloat(amount) > availableCash && (
             <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, fontSize: 11, color: '#f87171', fontWeight: 600 }}>
               ⚠️ Amount exceeds available cash (${fmtCurrency(availableCash)})
@@ -553,7 +537,7 @@ export default function DcaSetupPage() {
           <button onClick={handleSubmit} disabled={!canSubmit || submitting} style={{ flex: 1, padding: 14, borderRadius: 10, border: 'none', background: canSubmit && !submitting ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155', color: canSubmit && !submitting ? '#0f172a' : '#64748b', fontSize: 15, fontWeight: 700, cursor: canSubmit && !submitting ? 'pointer' : 'not-allowed', fontFamily: 'inherit', transition: 'all 0.2s ease' }}>
             {submitting ? 'Saving...' : editingSchedule ? 'Update DCA' : 'Schedule DCA'}
           </button>
-          <button onClick={() => { if (editingSchedule) { setEditingSchedule(null); setSelectedSymbol(''); setAmount(''); setQuantity(''); setFrequency(null); setDayOfWeek(null); setDayOfMonth(null); setStartDate(todayStr()); setRunIndefinitely(true); setEndDate(''); setStockDetails(null); } else { router.back(); } }} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+          <button onClick={() => { if (editingSchedule) { setEditingSchedule(null); setSelectedSymbol(''); setAmount(''); setQuantity(''); setFrequency(null); setDayOfWeek(null); setDayOfMonth(null); setStartDate(todayStr()); setEndDate(''); setStockDetails(null); } else { router.back(); } }} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             {editingSchedule ? 'Cancel Edit' : 'Cancel'}
           </button>
         </div>

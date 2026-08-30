@@ -231,16 +231,18 @@ async function execDcaCreate(
   const amount = Number(payload.amount);
   const frequency = payload.frequency as string;
   const startDate = payload.startDate as string;
+  const endDate = payload.endDate as string;
   if (!symbol) return { ok: false, message: 'Missing symbol.' };
   if (!amount || amount < 1) return { ok: false, message: 'Amount must be at least $1.' };
   if (!VALID_FREQUENCIES.includes(frequency)) return { ok: false, message: 'Invalid frequency.' };
   if (!startDate || isNaN(Date.parse(startDate))) return { ok: false, message: 'Valid start date required.' };
+  if (!endDate || isNaN(Date.parse(endDate))) return { ok: false, message: 'Valid end date required.' };
 
   const config: Record<string, any> = { amount, frequency, startDate, investBy: payload.investBy || 'amount' };
   if (payload.investBy === 'shares' && payload.quantity) config.quantity = Number(payload.quantity);
   if (payload.dayOfWeek && VALID_DAYS.includes(payload.dayOfWeek as string)) config.dayOfWeek = payload.dayOfWeek;
   if (payload.dayOfMonth && VALID_DATES.includes(payload.dayOfMonth as string)) config.dayOfMonth = payload.dayOfMonth;
-  if (payload.endDate) config.endDate = payload.endDate;
+  config.endDate = endDate;
 
   // Account scope: write the strategy row under the account the user acted on
   // (demo → is_demo=true/connection_id=null and the scheduler never executes it;

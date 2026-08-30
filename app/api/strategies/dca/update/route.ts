@@ -43,12 +43,14 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
     if (!amount || typeof amount !== 'number' || amount < 1) return NextResponse.json({ error: 'Amount must be at least $1' }, { status: 400 });
     if (!frequency || !VALID_FREQUENCIES.includes(frequency)) return NextResponse.json({ error: `Frequency must be one of: ${VALID_FREQUENCIES.join(', ')}` }, { status: 400 });
     if (!startDate || isNaN(Date.parse(startDate))) return NextResponse.json({ error: 'Valid start date required' }, { status: 400 });
+    if (!endDate || isNaN(Date.parse(endDate))) return NextResponse.json({ error: 'End date is required' }, { status: 400 });
+    if (startDate && endDate < startDate) return NextResponse.json({ error: 'End date must be on or after start date' }, { status: 400 });
 
     const config: Record<string, any> = { amount, frequency, startDate, investBy: investBy || 'amount' };
     if (investBy === 'shares' && quantity) config.quantity = quantity;
     if (dayOfWeek) config.dayOfWeek = dayOfWeek;
     if (dayOfMonth) config.dayOfMonth = dayOfMonth;
-    if (endDate) config.endDate = endDate;
+    config.endDate = endDate;
 
     const { data, error } = await (supabase as any)
       .from('strategies')

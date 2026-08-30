@@ -83,7 +83,7 @@ export const MONEY_TOOLS: Anthropic.Tool[] = [
       dayOfWeek: { type: 'string', description: 'For weekly/biweekly: mon..fri.' },
       dayOfMonth: { type: 'string', description: "For monthly: '1' | '15' | 'last'." },
       startDate: { type: 'string', description: 'Start date (YYYY-MM-DD).' },
-      endDate: { type: 'string', description: 'End date (YYYY-MM-DD). Omit ONLY if the user explicitly chose "ongoing / no end date". Ask the user for a duration before omitting.' },
+      endDate: { type: 'string', description: 'End date (YYYY-MM-DD). Required — every DCA schedule must have an end date.' },
     }),
   },
   {
@@ -305,10 +305,9 @@ export async function executeMoneyTool(
           if (!VALID_DATES.includes(input.dayOfMonth)) return fail("dayOfMonth must be '1', '15', or 'last'.");
           payload.dayOfMonth = input.dayOfMonth;
         }
-        if (input?.endDate) {
-          if (isNaN(Date.parse(input.endDate))) return fail('endDate must be a valid date (YYYY-MM-DD).');
-          payload.endDate = input.endDate;
-        }
+        if (!input?.endDate) return fail('endDate is required (YYYY-MM-DD) — DCA schedules need an end date.');
+        if (isNaN(Date.parse(input.endDate))) return fail('endDate must be a valid date (YYYY-MM-DD).');
+        payload.endDate = input.endDate;
 
         const freqLabel = frequency === 'biweekly' ? 'every 2 weeks' : frequency;
         return storePending(
