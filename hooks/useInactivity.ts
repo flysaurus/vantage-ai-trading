@@ -16,6 +16,37 @@ const INACTIVITY_WARNING_MS = Number(process.env.NEXT_PUBLIC_INACTIVITY_WARNING_
 const INACTIVITY_LOGOUT_MS = Number(process.env.NEXT_PUBLIC_INACTIVITY_LOGOUT_MS) || 10 * 60 * 1000;
 const COUNTDOWN_SECONDS = 120; // 2 minutes
 
+// Durable last-activity timestamp (localStorage) so the idle clock survives
+// tab close / reload / OS sleep. Without this, a reload resets the clock and
+// the auto-sign-out never fires for a session left open overnight.
+const LAST_ACTIVITY_KEY = 'vantage:lastActivity';
+
+function readStoredLastActivity(): number | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(LAST_ACTIVITY_KEY);
+    if (!raw) return null;
+    const ts = Number(raw);
+    return Number.isFinite(ts) && ts > 0 ? ts : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistLastActivity(ts: number): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(LAST_ACTIVITY_KEY, String(ts));
+  } catch {}
+}
+
+function clearStoredLastActivity(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(LAST_ACTIVITY_KEY);
+  } catch {}
+}
+
 interface UseInactivityReturn {
   showWarning: boolean;
   countdown: number; // seconds remaining, 120 → 0
@@ -27,7 +58,13 @@ export function useInactivity(): UseInactivityReturn {
   const [showWarning, setShowWarning] = useState(false);
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [isAuthed, setIsAuthed] = useState(false);
-  const lastActivityRef = useRef(Date.now());
+  // Initialize from the durable timestamp (if any) so a reload within the
+  // idle window keeps the correct remaining time, and a reload past the
+  // window is caught by the auth-state gate below.
+  const lastActivityRef = useRef<number>(0);
+  if (lastActivityRef.current === 0) {
+    lastActivityRef.current = readStoredLastActivity() ?? Date.now();
+  }
   const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -51,6 +88,7 @@ export function useInactivity(): UseInactivityReturn {
       await supabase.auth.signOut();
     } catch {}
     try { sessionStorage.clear(); } catch {}
+    clearStoredLastActivity();
     window.location.href = '/';
   }, [clearTimers]);
 
@@ -88,17 +126,46 @@ export function useInactivity(): UseInactivityReturn {
   useEffect(() => {
     let mounted = true;
     const supabase = getSupabaseBrowserClient();
+
+    const applyAuthState = (event: string, session: { user: unknown } | null) => {
+      if (!session) {
+        if (event === 'SIGNED_OUT') clearStoredLastActivity();
+        lastActivityRef.current = Date.now();
+        if (mounted) setIsAuthed(false);
+        return;
+      }
+
+      // Fresh sign-in → reset the idle clock so a login immediately after a
+      // stale/cleared timestamp isn't force-signed-out.
+      if (event === 'SIGNED_IN') {
+        lastActivityRef.current = Date.now();
+        persistLastActivity(Date.now());
+      }
+
+      // Restoring an existing session (INITIAL_SESSION / TOKEN_REFRESHED /
+      // USER_UPDATED): if the persisted last-activity is already past the
+      // idle window, sign out BEFORE arming the clock — otherwise the
+      // activity listeners would reset the clock on load and the timeout
+      // would never fire for a session left open overnight.
+      if (event !== 'SIGNED_IN' && Date.now() - lastActivityRef.current >= INACTIVITY_LOGOUT_MS) {
+        performSignOut();
+        return;
+      }
+
+      if (mounted) setIsAuthed(true);
+    };
+
     supabase.auth.getSession().then(({ data }) => {
-      if (mounted) setIsAuthed(!!data.session);
+      if (mounted) applyAuthState('INITIAL_SESSION', data.session);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (mounted) setIsAuthed(!!session);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (mounted) applyAuthState(event, session);
     });
     return () => {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [performSignOut]);
 
   useEffect(() => {
     if (isAuthed) {
@@ -162,6 +229,7 @@ export function useInactivity(): UseInactivityReturn {
       const now = Date.now();
       if (now - lastTimerRestartRef.current < 5000) return;
       lastTimerRestartRef.current = now;
+      persistLastActivity(lastActivityRef.current);
 
       // If warning is already showing, dismiss it and restart
       if (showWarningRef.current) {
@@ -186,7 +254,10 @@ export function useInactivity(): UseInactivityReturn {
     if (!isAuthed) return;
 
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'hidden') {
+        // Persist so the idle clock survives tab close / OS sleep.
+        persistLastActivity(lastActivityRef.current);
+      } else if (document.visibilityState === 'visible') {
         // When user returns to tab, check if they've been gone too long
         const elapsed = Date.now() - lastActivityRef.current;
         if (elapsed >= INACTIVITY_LOGOUT_MS) {
@@ -199,6 +270,15 @@ export function useInactivity(): UseInactivityReturn {
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [performSignOut, startTimers, isAuthed]);
+
+  // Persist on page hide/unload (tab close / navigation) so a close doesn't
+  // reset the idle clock on next load.
+  useEffect(() => {
+    if (!isAuthed) return;
+    const persist = () => persistLastActivity(lastActivityRef.current);
+    window.addEventListener('pagehide', persist);
+    return () => window.removeEventListener('pagehide', persist);
+  }, [isAuthed]);
 
   return { showWarning, countdown, resetActivity, signOutNow };
 }
