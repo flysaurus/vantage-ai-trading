@@ -1140,6 +1140,19 @@ export async function POST(req: Request) {
       }
     }
 
+    // ── Deterministic DCA setup router ──
+    // "set up a DCA plan" / "create a recurring buy" / "start a weekly DCA" are
+    // CREATION commands. Route them to the structured DCA setup form (symbol
+    // search, amount, frequency, end-date calendar) instead of the model asking
+    // free-text questions one at a time.
+    if (mode !== 'alerts' && isDcaCreationCommand(lastMessage)) {
+      console.log('[chat] 🧭 dca_setup → open structured setup form');
+      return textSSEResponse(
+        "Let's set up your dollar-cost averaging plan — pick the symbol, amount, frequency, and end date in the form.",
+        { kind: 'dca_setup' },
+      );
+    }
+
     // ── Deterministic scheduled-activity router (DCA + open orders) ──
     // "what are my scheduled buys", "any open orders", "show my DCA" are
     // read-only queries the classifier sometimes mislabels as portfolio

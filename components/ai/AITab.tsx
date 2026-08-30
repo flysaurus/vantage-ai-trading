@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -189,6 +190,7 @@ const PLACEHOLDERS = [
 ];
 
 export function AITab({ messages, setMessages }: AITabProps) {
+  const router = useRouter();
   const { account: liveAccount, executeTrade, brokerMeta } = useLivePortfolio();
   const { isConnected } = useBroker();
   // Canonical account source of truth. brokerMeta is derived (and goes null/stale
@@ -260,7 +262,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   //   rebalance_confirm  → ✓ Confirm / ✕ Cancel
   //   rebalance_budget   → 💵 available cash / 📊 full portfolio / ✏️ custom
   //   rebalance_custom   → inline $ amount input + deploy
-  const [rebalanceAction, setRebalanceAction] = useState<{ kind: 'rebalance_plan' | 'rebalance_confirm' | 'rebalance_budget' | 'rebalance_custom' | 'rebalance_asset' | 'confirm_pending' | 'style_pick' | 'style_changed' | 'risk_changed'; msgId: string } | null>(null);
+  const [rebalanceAction, setRebalanceAction] = useState<{ kind: 'rebalance_plan' | 'rebalance_confirm' | 'rebalance_budget' | 'rebalance_custom' | 'rebalance_asset' | 'confirm_pending' | 'style_pick' | 'style_changed' | 'risk_changed' | 'dca_setup'; msgId: string } | null>(null);
   const [customAmountValue, setCustomAmountValue] = useState('');
 
   // ── TL;DR toggle state (set of collapsed message indices) ──
@@ -2068,6 +2070,18 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   fontFamily: 'inherit',
                   opacity: loading ? 0.6 : 1,
                 };
+
+                // DCA setup → open the structured form (symbol search, amount,
+                // frequency buttons, end-date calendar).
+                if (kind === 'dca_setup') {
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                      <button onClick={() => router.push('/strategies/setup/dca')} disabled={loading} style={solid('#22d3ee')}>
+                        📅 Open DCA setup form
+                      </button>
+                    </div>
+                  );
+                }
 
                 // Style picker ("change my style" with no target) → choose a style
                 if (kind === 'style_pick') {

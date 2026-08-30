@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest';
 import {
   detectScheduledActivityIntent,
   buildScheduledActivityAnswer,
+  isDcaCreationCommand,
 } from '../lib/ai/account-actions';
 
 describe('detectScheduledActivityIntent — positive', () => {
@@ -61,6 +62,31 @@ describe('detectScheduledActivityIntent — negative (must NOT intercept)', () =
     'add a daily DCA on VOO',
   ])('does NOT match: %s', (m) => {
     expect(detectScheduledActivityIntent(m)).toBe(false);
+  });
+});
+
+describe('isDcaCreationCommand', () => {
+  it.each([
+    'Set up a dollar-cost averaging (DCA) plan',
+    'set up a DCA plan',
+    'create a recurring buy',
+    'start a weekly DCA',
+    'schedule a monthly investment',
+    'add a daily DCA on VOO',
+  ])('is a creation command: %s', (m) => {
+    expect(isDcaCreationCommand(m)).toBe(true);
+  });
+
+  it.each([
+    'what are my scheduled buys',
+    'show my DCA',
+    'do I have any dollar cost averaging',
+    'any open orders',
+    'what is a DCA',
+    'cancel my pending DCA on AAPL',
+    'how much did my DCA earn so far',
+  ])('is NOT a creation command: %s', (m) => {
+    expect(isDcaCreationCommand(m)).toBe(false);
   });
 });
 
