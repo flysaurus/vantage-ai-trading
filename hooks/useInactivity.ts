@@ -1,6 +1,9 @@
 // ─── useInactivity — Auto-logout after inactivity ─────────────
-// After 8 minutes of inactivity → shows warning modal
-// After 10 minutes (2 min countdown) → force signs out
+// After INACTIVITY_WARNING_MS of inactivity → shows warning modal
+// After INACTIVITY_LOGOUT_MS (2 min countdown) → force signs out
+//
+// Defaults: 28 min warning / 30 min logout. Overridable for testing via
+// NEXT_PUBLIC_INACTIVITY_WARNING_MS / NEXT_PUBLIC_INACTIVITY_LOGOUT_MS (ms).
 //
 // Usage: const { showWarning, countdown, resetActivity, signOutNow } = useInactivity();
 
@@ -9,8 +12,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
-const INACTIVITY_WARNING_MS = 28 * 60 * 1000; // 28 minutes
-const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000; // 30 minutes
+const INACTIVITY_WARNING_MS = Number(process.env.NEXT_PUBLIC_INACTIVITY_WARNING_MS) || 28 * 60 * 1000;
+const INACTIVITY_LOGOUT_MS = Number(process.env.NEXT_PUBLIC_INACTIVITY_LOGOUT_MS) || 30 * 60 * 1000;
 const COUNTDOWN_SECONDS = 120; // 2 minutes
 
 interface UseInactivityReturn {
@@ -23,6 +26,7 @@ interface UseInactivityReturn {
 export function useInactivity(): UseInactivityReturn {
   const [showWarning, setShowWarning] = useState(false);
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [isAuthed, setIsAuthed] = useState(false);
   const lastActivityRef = useRef(Date.now());
   const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -76,6 +80,32 @@ export function useInactivity(): UseInactivityReturn {
   useEffect(() => { startTimersRef.current = startTimers; }, [startTimers]);
   useEffect(() => { showWarningRef.current = showWarning; }, [showWarning]);
 
+  // Auth-state gate — replaces the fragile `document.cookie.includes('sb-')`
+  // check (which silently fails if the Supabase session cookie is HttpOnly, or
+  // if the user signs in via SPA navigation without a hard reload).
+  // onAuthStateChange fires INITIAL_SESSION from cookies on mount, so isAuthed
+  // resolves correctly whether the user is already signed in or signs in later.
+  useEffect(() => {
+    let mounted = true;
+    const supabase = getSupabaseBrowserClient();
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted) setIsAuthed(!!data.session);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) setIsAuthed(!!session);
+    });
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isAuthed) {
+      console.log(`[useInactivity] armed — warning ${Math.round(INACTIVITY_WARNING_MS / 60000)}m / logout ${Math.round(INACTIVITY_LOGOUT_MS / 60000)}m`);
+    }
+  }, [isAuthed]);
+
   // ── Countdown ticker (separate effect, React-managed) ──
   useEffect(() => {
     if (!showWarning) return;
@@ -123,7 +153,7 @@ export function useInactivity(): UseInactivityReturn {
     ];
 
     // Don't track inactivity if user isn't authenticated
-    if (!document.cookie.includes('sb-')) return;
+    if (!isAuthed) return;
 
     const handler = () => {
       lastActivityRef.current = Date.now();
@@ -149,11 +179,11 @@ export function useInactivity(): UseInactivityReturn {
       events.forEach((e) => document.removeEventListener(e, handler, { capture: true }));
       clearTimers();
     };
-  }, [startTimers, clearTimers]);
+  }, [startTimers, clearTimers, isAuthed]);
 
   // Handle visibility change (tab hidden/visible)
   useEffect(() => {
-    if (!document.cookie.includes('sb-')) return;
+    if (!isAuthed) return;
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
@@ -168,7 +198,7 @@ export function useInactivity(): UseInactivityReturn {
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [performSignOut, startTimers]);
+  }, [performSignOut, startTimers, isAuthed]);
 
   return { showWarning, countdown, resetActivity, signOutNow };
 }
