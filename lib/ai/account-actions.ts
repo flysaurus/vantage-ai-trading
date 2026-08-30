@@ -729,6 +729,140 @@ export function detectScheduledActivityIntent(m: string): boolean {
   return false;
 }
 
+// ── Order history (executed/filled trades over a time window) ─────────────
+
+/**
+ * Parse a time window for a trade-history query into a `since` Date.
+ * Returns `null` when no explicit window is given (caller decides the default).
+ * Handles: "last week/month/year", "last 30 days", "this week", "over the
+ * past month", "recent/recently/today".
+ */
+export function parseOrderHistoryWindow(m: string): Date | null {
+  const s = m.trim().toLowerCase();
+  const now = new Date();
+  const days = (n: number) => { const d = new Date(now); d.setDate(d.getDate() - n); d.setHours(0, 0, 0, 0); return d; };
+
+  const num = s.match(/\blast\s+(\d+)\s+(days?|weeks?|months?|years?)\b/);
+  if (num) {
+    const n = parseInt(num[1], 10) || 1;
+    const u = num[2];
+    if (u.startsWith('day')) return days(n);
+    if (u.startsWith('week')) return days(n * 7);
+    if (u.startsWith('month')) return days(n * 30);
+    if (u.startsWith('year')) return days(n * 365);
+  }
+
+  const unit = s.match(/\b(?:this|past|over\s+the|last)\s+(week|month|year)\b/);
+  if (unit) {
+    const u = unit[1];
+    if (u === 'week') return days(7);
+    if (u === 'month') return days(30);
+    if (u === 'year') return days(365);
+  }
+
+  if (/\b(?:recently|today)\b/.test(s)) return days(1);
+  if (/\brecent\b/.test(s)) return days(7);
+  return null;
+}
+
+/** Human label for the parsed window ("in the last week", "in the last 30 days", "recently"). */
+export function orderHistoryWindowLabel(m: string): string {
+  const s = m.trim().toLowerCase();
+  const num = s.match(/\blast\s+(\d+)\s+(days?|weeks?|months?|years?)\b/);
+  if (num) return `in the last ${num[1]} ${num[2].replace(/s$/, '')}${num[1] === '1' ? '' : 's'}`;
+  const unit = s.match(/\b(?:this|past|over\s+the|last)\s+(week|month|year)\b/);
+  if (unit) return `in the last ${unit[1]}`;
+  if (/\brecently\b/.test(s)) return 'recently';
+  if (/\brecent\b/.test(s)) return 'in the last week';
+  return '';
+}
+
+/**
+ * Detect a read-only "what did I trade/buy/sell over [window]" history query
+ * ("orders executed last week", "recent trades", "trade history", "what did I
+ * buy this month"). Complementary to detectScheduledActivityIntent (open/pending
+ * orders) — this one is about COMPLETED/EXECUTED orders. Deterministic backstop
+ * because the classifier mislabels these as account_state ("orders executed"
+ * reads like a balance probe to GPT-5 nano) and returns the account summary.
+ */
+export function detectOrderHistoryIntent(m: string): boolean {
+  const s = m.trim().toLowerCase();
+  if (!s || s.length > 240) return false;
+
+  // Mutations (cancel/delete/modify an order) are tool-path actions, not a listing.
+  if (/\b(cancel|delete|remove|pause|modify|change|edit)\b/.test(s) && /\b(order|trade|buy|sell)\b/.test(s)) return false;
+  // DCA creation commands → structured form, not a history listing.
+  if (isDcaCreationCommand(s)) return false;
+  // Open/pending/scheduled/queued → the scheduled-activity router (runs first).
+  if (/\b(open|pending|scheduled|queued|upcoming|waiting)\s+(orders?|trades?|buys?|fills?)\b/.test(s)) return false;
+  // Future-tense scheduling ("orders for next week", "trades coming up") is
+  // NOT executed history.
+  if (/\b(next\s+(week|month|year)|upcoming|tomorrow|coming\s+up|in\s+the\s+future)\b/.test(s)) return false;
+  // Educational definitions without an ownership signal.
+  if (/\b(what\s+is|whats|what's|explain|define|meaning|how\s+(does|do|to))\b/.test(s) && /\b(order|trade)\b/.test(s) && !/\b(my|mine|i\s+have|i've|did\s+i|have\s+i|i\s+made|my\s+account)\b/.test(s)) return false;
+
+  // Explicit "trade/order/transaction history".
+  if (/\b(?:trade|order|transaction|activity)\s*history\b/.test(s)) return true;
+  // Recency word + trade noun ("recent trades", "orders in the last week", "trades this month").
+  if (/\b(?:recent|recently|past|last|this)\b/.test(s) && /\b(trades?|orders?|transactions?|buys?|sells?|purchases?|fills?)\b/.test(s)) return true;
+  // "orders executed/filled/completed/went through" (with or without a window).
+  if (/\borders?\b/.test(s) && /\b(executed|filled|completed|closed|went\s+(through|thru)|filled\s+in)\b/.test(s)) return true;
+  // "what did I buy/sell", "what have I bought/sold/traded".
+  if (/\b(what|which)\b/.test(s) && /\b(did\s+i|have\s+i|i've|i\s+have)\b/.test(s) && /\b(buy|bought|sell|sold|trade|traded|purchase|purchased)\b/.test(s)) return true;
+  // "my trades/orders this week", "orders over the last month".
+  if (/\b(?:my|i)\b/.test(s) && /\b(trades?|orders?)\b/.test(s) && /\b(in|over|during|for|since|this|last|past)\b/.test(s)) return true;
+  return false;
+}
+
+export interface OrderHistoryRow {
+  symbol: string;
+  companyName?: string | null;
+  side: 'buy' | 'sell';
+  qty: number | null;
+  filledQty: number | null;
+  status: string;
+  filledPrice: number | null;
+  notional: number | null;
+  filledAt: string | null;
+  createdAt: string | null;
+}
+
+function formatOrderHistoryDate(iso: string | null): string {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  } catch { return '—'; }
+}
+
+/** Read-only, deterministic answer listing executed orders over a window. */
+export function buildOrderHistoryAnswer(orders: OrderHistoryRow[], windowLabel: string): string {
+  const usd = (n: number | null | undefined) =>
+    n == null ? null : n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+  if (orders.length === 0) {
+    return `You have no executed orders${windowLabel ? ` ${windowLabel}` : ''} — nothing has filled recently.`;
+  }
+  const lines = [`Here are your executed orders${windowLabel ? ` ${windowLabel}` : ''}:`];
+  for (const o of orders) {
+    const side = o.side === 'buy' ? 'Bought' : 'Sold';
+    const qty = o.filledQty != null ? Number(o.filledQty) : (o.qty != null ? Number(o.qty) : null);
+    const shares = qty != null ? `${Number(qty).toLocaleString('en-US', { maximumFractionDigits: 4 })} sh` : null;
+    const price = usd(o.filledPrice);
+    const notional = usd(o.notional);
+    const name = o.companyName ? ` (${o.companyName})` : '';
+    const date = formatOrderHistoryDate(o.filledAt || o.createdAt);
+    const detail = notional
+      ? `${notional}`
+      : price && shares
+        ? `${price} · ${shares}`
+        : shares || price || '—';
+    lines.push(`- ${side} ${o.symbol}${name} — ${detail} · ${date}`);
+  }
+  lines.push('', 'Want a longer window (e.g. "last 30 days") or just buys/sells?');
+  return lines.join('\n');
+}
+
 export interface ScheduledDca {
   symbol: string;
   amount: number | null;

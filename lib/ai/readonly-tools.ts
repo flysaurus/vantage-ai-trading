@@ -198,17 +198,23 @@ export async function executeReadonlyTool(
       case 'listOrders': {
         if (!isAuthed) return JSON.stringify({ orders: [], note: 'No authenticated user.' });
         const limit = Math.min(Math.max(Number(input?.limit) || 20, 1), 50);
-        const { data, error } = await (supabase as any)
+        let ordersQuery = (supabase as any)
           .from('orders')
-          .select('id, symbol, side, quantity, status, price, notional, created_at, source')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(limit);
+          .select('id, symbol, company_name, side, qty, filled_qty, status, filled_price, notional, filled_at, created_at, source')
+          .eq('user_id', userId);
+        // Account segregation: scope order reads to the active account.
+        ordersQuery = acctScope ? applyAccountScopeFilter(ordersQuery, acctScope) : ordersQuery.eq('is_demo', false);
+        const { data, error } = await ordersQuery.order('created_at', { ascending: false }).limit(limit);
         if (error) return JSON.stringify({ error: error.message });
         return JSON.stringify({
           orders: (data || []).map((o: any) => ({
-            id: o.id, symbol: o.symbol, side: o.side, quantity: o.quantity,
-            status: o.status, price: o.price, notional: o.notional, createdAt: o.created_at, source: o.source,
+            id: o.id, symbol: o.symbol, name: o.company_name ?? null, side: o.side,
+            qty: o.qty != null ? Number(o.qty) : null,
+            filledQty: o.filled_qty != null ? Number(o.filled_qty) : null,
+            status: o.status,
+            filledPrice: o.filled_price != null ? Number(o.filled_price) : null,
+            notional: o.notional != null ? Number(o.notional) : null,
+            filledAt: o.filled_at ?? null, createdAt: o.created_at, source: o.source,
           })),
         });
       }

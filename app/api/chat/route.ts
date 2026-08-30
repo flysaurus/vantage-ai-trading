@@ -15,7 +15,7 @@ import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
 import { detectAppHelpIntent, buildAppHelpAnswer } from '@/lib/ai/app-help'
-import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, detectScheduledActivityIntent, buildScheduledActivityAnswer, detectAccountStateIntent, isDcaCreationCommand } from '@/lib/ai/account-actions'
+import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, detectScheduledActivityIntent, buildScheduledActivityAnswer, detectAccountStateIntent, isDcaCreationCommand, detectOrderHistoryIntent, parseOrderHistoryWindow, orderHistoryWindowLabel, buildOrderHistoryAnswer, type OrderHistoryRow } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
@@ -94,6 +94,41 @@ async function fetchScheduledActivityAnswer(userId: string, accountId?: string |
     createdAt: o.created_at || null,
   }));
   return buildScheduledActivityAnswer(dcas, orders);
+}
+
+/** Fetch executed (filled) orders within an optional time window and render them. */
+async function fetchOrderHistoryAnswer(
+  userId: string,
+  accountId: string | null | undefined,
+  since: Date | null,
+  windowLabel: string,
+): Promise<string> {
+  const supabase = createServerClient();
+  const acctScope = accountId ? parseAccountScope(accountId) : null;
+  let orderQuery = (supabase as any).from('orders')
+    .select('symbol, company_name, side, qty, filled_qty, status, filled_price, notional, filled_at, created_at')
+    .eq('user_id', userId)
+    .in('status', ['filled', 'partially_filled', 'executed', 'closed']);
+  orderQuery = acctScope ? applyAccountScopeFilter(orderQuery, acctScope) : orderQuery.eq('is_demo', false);
+  if (since) orderQuery = orderQuery.gte('filled_at', since.toISOString());
+  const { data, error } = await orderQuery.order('filled_at', { ascending: false }).limit(50);
+  if (error) {
+    console.error('[chat] order-history query failed:', error.message);
+    return "I couldn't load your order history right now — please try again.";
+  }
+  const orders: OrderHistoryRow[] = (data || []).map((o: any) => ({
+    symbol: o.symbol,
+    companyName: o.company_name ?? null,
+    side: o.side,
+    qty: o.qty != null ? Number(o.qty) : null,
+    filledQty: o.filled_qty != null ? Number(o.filled_qty) : null,
+    status: o.status,
+    filledPrice: o.filled_price != null ? Number(o.filled_price) : null,
+    notional: o.notional != null ? Number(o.notional) : null,
+    filledAt: o.filled_at ?? null,
+    createdAt: o.created_at ?? null,
+  }));
+  return buildOrderHistoryAnswer(orders, windowLabel);
 }
 
 const client = new Anthropic({
@@ -1167,6 +1202,20 @@ export async function POST(req: Request) {
       if (userId && userId !== 'anonymous') {
         console.log('[chat] 🧭 scheduled-activity → deterministic answer');
         return textSSEResponse(await fetchScheduledActivityAnswer(userId, accountMeta?.accountId));
+      }
+    }
+
+    // ── Deterministic order-history router (executed/filled trades) ──
+    // "orders executed last week", "recent trades", "trade history", "what did I
+    // buy this month" are read-only queries the classifier mislabels as
+    // account_state (GPT-5 nano reads "orders executed" as a balance probe and
+    // returns the account summary). Answer from the DB BEFORE the classifier.
+    if (mode !== 'alerts' && detectOrderHistoryIntent(lastMessage)) {
+      if (userId && userId !== 'anonymous') {
+        const since = parseOrderHistoryWindow(lastMessage);
+        const windowLabel = orderHistoryWindowLabel(lastMessage);
+        console.log('[chat] 🧭 order-history → deterministic answer');
+        return textSSEResponse(await fetchOrderHistoryAnswer(userId, accountMeta?.accountId, since, windowLabel));
       }
     }
 
