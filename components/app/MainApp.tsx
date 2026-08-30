@@ -218,7 +218,7 @@ function AppShell() {
       return;
     }
     // First login: show once unless user previously opted out
-    if (typeof window !== 'undefined' && !localStorage.getItem('vantage:skipAccountSelect')) {
+    if (typeof window !== 'undefined' && !localStorage.getItem('vantage:skipAccountSelect:v2')) {
       setShowAccountSelect(true);
     }
   }, []);

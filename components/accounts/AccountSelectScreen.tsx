@@ -16,7 +16,7 @@ import { useAccounts } from '@/context/AccountContext';
 import type { AccountEntry } from '@/app/api/accounts/route';
 import { PlusCircle, ArrowRight } from 'lucide-react';
 
-const SKIP_KEY = 'vantage:skipAccountSelect';
+const SKIP_KEY = 'vantage:skipAccountSelect:v2';
 
 // ─── Broker logo cache ───────────────────────────────────────
 
