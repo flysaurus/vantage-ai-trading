@@ -28,6 +28,7 @@ import { executePendingAction } from '@/lib/ai/executors'
 import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
 import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
+import { parseAccountScope, applyAccountScopeFilter } from '@/lib/account-scope'
 import { getBatchQuotes } from '@/lib/market-data'
 import { createServerClient } from '@/lib/supabase'
 import {
@@ -57,18 +58,22 @@ import { logClassifierAudit } from '@/lib/ai/classifier-audit'
 import { validateResponse } from '@/lib/ai/validator'
 
 /** Fetch the user's DCA schedules + open/queued orders and render the answer. */
-async function fetchScheduledActivityAnswer(userId: string): Promise<string> {
+async function fetchScheduledActivityAnswer(userId: string, accountId?: string | null): Promise<string> {
   const supabase = createServerClient();
+  const acctScope = accountId ? parseAccountScope(accountId) : null;
+  let dcaQuery = (supabase as any).from('strategies')
+    .select('id, symbol, config, is_active, next_run_at, connection_id, is_demo')
+    .eq('user_id', userId).eq('type', 'dca')
+    .order('created_at', { ascending: true });
+  dcaQuery = acctScope ? applyAccountScopeFilter(dcaQuery, acctScope) : dcaQuery.eq('is_demo', false);
+  let orderQuery = (supabase as any).from('orders')
+    .select('id, symbol, side, qty, notional, status, created_at, connection_id, is_demo')
+    .eq('user_id', userId)
+    .in('status', ['submitted', 'open', 'partially_filled']);
+  orderQuery = acctScope ? applyAccountScopeFilter(orderQuery, acctScope) : orderQuery.eq('is_demo', false);
   const [dcaRes, orderRes] = await Promise.all([
-    (supabase as any).from('strategies')
-      .select('id, symbol, config, is_active, next_run_at')
-      .eq('user_id', userId).eq('type', 'dca')
-      .order('created_at', { ascending: true }),
-    (supabase as any).from('orders')
-      .select('id, symbol, side, qty, notional, status, created_at')
-      .eq('user_id', userId)
-      .in('status', ['submitted', 'open', 'partially_filled'])
-      .order('created_at', { ascending: false }),
+    dcaQuery.order('created_at', { ascending: true }),
+    orderQuery.order('created_at', { ascending: false }),
   ]);
   const dcas = ((dcaRes.data || []) as any[]).map((d: any) => ({
     symbol: d.symbol,
@@ -1161,7 +1166,7 @@ export async function POST(req: Request) {
     if (mode !== 'alerts' && detectScheduledActivityIntent(lastMessage)) {
       if (userId && userId !== 'anonymous') {
         console.log('[chat] 🧭 scheduled-activity → deterministic answer');
-        return textSSEResponse(await fetchScheduledActivityAnswer(userId));
+        return textSSEResponse(await fetchScheduledActivityAnswer(userId, accountMeta?.accountId));
       }
     }
 
@@ -1905,6 +1910,9 @@ Use these for any market-direction questions ("how are markets today?", "any sel
       userId,
       portfolioSnapshot,
       investorStyle: profile.investorStyle,
+      // Account segregation: thread the acting account so money tools (e.g.
+      // DCA create) write strategy rows under the correct account.
+      accountId: accountMeta?.accountId ?? null,
     };
 
     // ── Build initial conversation ────────────────────────────

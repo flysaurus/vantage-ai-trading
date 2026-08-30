@@ -7,6 +7,7 @@ import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 import { calculateNextRun } from '@/lib/scheduler';
 import { getBrokerCashForUser } from '@/lib/broker/get-account-cash';
+import { parseAccountScope } from '@/lib/account-scope';
 
 const VALID_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly'];
 const VALID_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri'];
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       endDate,
       investBy,
       quantity,
+      accountId,
     } = body as {
       symbol?: string;
       amount?: number;
@@ -44,7 +46,37 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       endDate?: string | null;
       investBy?: string;
       quantity?: number;
+      accountId?: string | null;
     };
+
+    // ─── Account scope (data segregation) ────────────────────
+    // Determine which account this DCA belongs to. When the caller supplies an
+    // account id, verify the live connection actually belongs to this user
+    // (never trust a client-supplied connection id). Demo → is_demo=true,
+    // connection_id=null (scheduler never executes demo rows).
+    const scope = parseAccountScope(accountId);
+    let connectionId: string | null = null;
+    let isDemo = false;
+    if (scope) {
+      isDemo = scope.isDemo;
+      if (!scope.isDemo && scope.connectionId) {
+        const { data: connRow } = await (supabase as any)
+          .from('broker_connections')
+          .select('id')
+          .eq('id', scope.connectionId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (!connRow) {
+          return NextResponse.json({ error: 'That broker account does not belong to you.' }, { status: 403 });
+        }
+        connectionId = scope.connectionId;
+      }
+    } else if (accountId != null && accountId !== '') {
+      // Explicit but unrecognized account id → refuse rather than guess.
+      return NextResponse.json({ error: 'Invalid account id.' }, { status: 400 });
+    }
+    // accountId omitted → legacy behavior (live, no explicit connection; the
+    // scheduler resolves the sole connected broker).
 
     // ─── Validation ─────────────────────────────────────────
     if (!symbol || !symbol.trim()) {
@@ -113,6 +145,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         symbol: symbol.trim().toUpperCase(),
         config,
         is_active: true,
+        connection_id: connectionId,
+        is_demo: isDemo,
         // Seed next_run_at so weekly/biweekly/monthly schedules respect their
         // day-of-week / day-of-month from the start (otherwise the first cron
         // after startDate fires immediately regardless of the configured day).

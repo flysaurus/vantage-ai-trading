@@ -19,6 +19,8 @@ import { actionRequiresSymbolEcho } from '@/lib/ai/confirm';
 export interface MoneyToolContext {
   supabase: any;               // service-role client (server-side only)
   userId: string | null;
+  /** Canonical account id ('demo' | 'snaptrade:<conn_id>') the user is acting on. */
+  accountId?: string | null;
 }
 
 const VALID_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly'];
@@ -283,6 +285,9 @@ export async function executeMoneyTool(
         if (isNaN(Date.parse(startDate))) return fail('startDate must be a valid date (YYYY-MM-DD).');
 
         const payload: Record<string, unknown> = { symbol, amount, frequency, startDate };
+        // Account scope: embed the acting account so the executor writes the
+        // strategy row under the correct account (demo stays demo).
+        if (ctx.accountId) payload.accountId = ctx.accountId;
         if (input?.dayOfWeek) {
           if (!VALID_DAYS.includes(input.dayOfWeek)) return fail('dayOfWeek must be mon..fri.');
           payload.dayOfWeek = input.dayOfWeek;

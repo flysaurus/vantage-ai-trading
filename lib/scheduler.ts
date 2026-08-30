@@ -24,6 +24,8 @@ interface DcaSchedule {
   config: DcaConfig;
   last_run_at: string | null;
   next_run_at: string | null;
+  connection_id: string | null;
+  is_demo: boolean;
 }
 
 interface DcaExecutionResult {
@@ -128,12 +130,15 @@ export async function executeDcaSchedules(supabase: any): Promise<DcaExecutionRe
     return results;
   }
 
-  // Fetch active DCA schedules that are due
+  // Fetch active DCA schedules that are due. Demo rows (is_demo=true) are
+  // NEVER executed — they belong to the demo portfolio and must not fire real
+  // orders against a live broker.
   const { data: schedules, error } = await supabase
     .from('strategies')
-    .select('id, user_id, symbol, config, last_run_at, next_run_at')
+    .select('id, user_id, symbol, config, last_run_at, next_run_at, connection_id, is_demo')
     .eq('type', 'dca')
-    .eq('is_active', true);
+    .eq('is_active', true)
+    .eq('is_demo', false);
 
   if (error || !schedules || schedules.length === 0) {
     return results;
@@ -198,7 +203,7 @@ export async function executeDcaSchedules(supabase: any): Promise<DcaExecutionRe
         shares,
         amount,
         isNotional,
-      });
+      }, sched.connection_id);
 
       // Update schedule
       const nextRun = calculateNextRun(config, now);
@@ -240,10 +245,13 @@ async function placeDcaOrder(
   userId: string,
   symbol: string,
   opts: { shares: number; amount: number; isNotional: boolean },
+  connectionId?: string | null,
 ): Promise<{ placed: boolean; error: boolean; detail: string }> {
   let creds: Awaited<ReturnType<typeof resolveSnapTradeCredentials>>;
   try {
-    creds = await resolveSnapTradeCredentials(userId);
+    // Resolve the EXACT connection the schedule is scoped to (falls back to
+    // sole-broker resolution for legacy rows with a NULL connection_id).
+    creds = await resolveSnapTradeCredentials(userId, connectionId);
   } catch (err) {
     if (err instanceof SnapTradeAuthError) {
       return { placed: false, error: false, detail: 'No connected brokerage — order not placed' };

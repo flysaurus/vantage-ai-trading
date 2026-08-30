@@ -1158,6 +1158,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         } : null,
         // Account context — prevents AI from presenting Demo holdings as real
         accountMeta: {
+          accountId,
           isDemo: isDemoAccount,
           brokerSource: isDemoAccount ? 'demo' : (activeAccount?.brokerageSlug || activeAccount?.broker || 'snaptrade'),
           brokerName: isDemoAccount ? 'Demo Portfolio' : (activeAccount?.name || 'Connected Broker'),

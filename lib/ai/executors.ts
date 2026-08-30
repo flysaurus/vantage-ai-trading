@@ -17,6 +17,7 @@
 import { calculateNextRun } from '@/lib/scheduler';
 import { placeSingleTrade, placeBasketTrade } from '@/lib/ai/order-service';
 import type { PendingAction } from '@/lib/ai/pending-actions';
+import { parseAccountScope } from '@/lib/account-scope';
 
 export interface ExecResult {
   ok: boolean;
@@ -203,12 +204,35 @@ async function execDcaCreate(
   if (payload.dayOfMonth && VALID_DATES.includes(payload.dayOfMonth as string)) config.dayOfMonth = payload.dayOfMonth;
   if (payload.endDate) config.endDate = payload.endDate;
 
+  // Account scope: write the strategy row under the account the user acted on
+  // (demo → is_demo=true/connection_id=null and the scheduler never executes it;
+  // live → the specific connection). Ownership of the connection is re-verified
+  // here for defense-in-depth.
+  const scope = parseAccountScope(payload.accountId as string | null | undefined);
+  let connectionId: string | null = null;
+  let isDemo = false;
+  if (scope) {
+    isDemo = scope.isDemo;
+    if (!scope.isDemo && scope.connectionId) {
+      const { data: connRow } = await (supabase as any)
+        .from('broker_connections')
+        .select('id')
+        .eq('id', scope.connectionId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (!connRow) return { ok: false, message: 'That broker account does not belong to you.' };
+      connectionId = scope.connectionId;
+    }
+  }
+
   const { error } = await (supabase as any).from('strategies').insert({
     user_id: userId,
     type: 'dca',
     symbol,
     config,
     is_active: true,
+    connection_id: connectionId,
+    is_demo: isDemo,
     next_run_at: calculateNextRun(config as any).toISOString(),
   });
   if (error) return { ok: false, message: `Failed to create DCA: ${error.message}` };

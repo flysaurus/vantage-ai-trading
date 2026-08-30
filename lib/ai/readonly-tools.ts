@@ -9,12 +9,15 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getInvestorStyleTargets } from '@/lib/investor-style-targets';
 import { computeRebalancePlan, formatRebalancePlanAnswer } from '@/lib/ai/account-actions';
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions';
+import { parseAccountScope, applyAccountScopeFilter } from '@/lib/account-scope';
 
 export interface ReadonlyToolContext {
   supabase: any;               // service-role client (server-side only)
   userId: string | null;
   portfolioSnapshot: PortfolioSnapshot | null;
   investorStyle: string;
+  /** Canonical account id ('demo' | 'snaptrade:<conn_id>') the user is acting on. */
+  accountId?: string | null;
 }
 
 const STYLE_KEYS = ['buffett', 'lynch', 'livermore', 'munger', 'soros'];
@@ -84,8 +87,11 @@ export async function executeReadonlyTool(
   input: any,
   ctx: ReadonlyToolContext,
 ): Promise<string> {
-  const { supabase, userId, portfolioSnapshot, investorStyle } = ctx;
+  const { supabase, userId, portfolioSnapshot, investorStyle, accountId } = ctx;
   const isAuthed = !!userId && userId !== 'anonymous';
+  // Account segregation: scope strategy/schedule reads to the active account.
+  // Demo → is_demo=true; live → the specific connection; unspecified → live only.
+  const acctScope = parseAccountScope(accountId);
 
   try {
     switch (name) {
@@ -121,17 +127,19 @@ export async function executeReadonlyTool(
 
       case 'listDcaSchedules': {
         if (!isAuthed) return JSON.stringify({ schedules: [], note: 'No authenticated user.' });
-        const { data, error } = await (supabase as any)
+        let dcaQuery = (supabase as any)
           .from('strategies')
-          .select('id, symbol, config, is_active, next_run_at, last_run_at, created_at')
+          .select('id, symbol, config, is_active, next_run_at, last_run_at, created_at, connection_id, is_demo')
           .eq('user_id', userId)
-          .eq('type', 'dca')
-          .order('created_at', { ascending: false });
+          .eq('type', 'dca');
+        dcaQuery = acctScope ? applyAccountScopeFilter(dcaQuery, acctScope) : dcaQuery.eq('is_demo', false);
+        const { data, error } = await dcaQuery.order('created_at', { ascending: false });
         if (error) return JSON.stringify({ error: error.message });
         return JSON.stringify({
           schedules: (data || []).map((s: any) => ({
             id: s.id, symbol: s.symbol, config: s.config,
             isActive: s.is_active, nextRunAt: s.next_run_at, lastRunAt: s.last_run_at,
+            isDemo: !!s.is_demo, connectionId: s.connection_id ?? null,
           })),
         });
       }
