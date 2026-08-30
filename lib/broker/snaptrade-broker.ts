@@ -231,27 +231,48 @@ export class SnapTradeBroker implements BrokerEngine {
     let cashBalance = 0;
     let buyingPower = 0;
 
+    // `total_value` is authoritative from the accounts-list endpoint, but
+    // settled `cash` + `buying_power` are authoritative from the per-account
+    // BALANCES endpoint (`/accounts/{id}/balances`) — the accounts payload does
+    // NOT reliably surface them (e.g. Alpaca reports buying power / total value
+    // in `balance.cash`, so `available cash` would show the wrong figure).
     for (const a of accounts) {
       totalValue += a.total_value ?? 0;
-      // If we already have cash/buying_power from the accounts list, use them
-      if (a.cash != null || a.buying_power != null) {
-        cashBalance += a.cash ?? 0;
-        buyingPower += a.buying_power ?? 0;
-      } else {
-        // Fall back to the dedicated balances endpoint
+    }
+
+    const perAccount = await Promise.allSettled(
+      accounts.map(async (a) => {
         try {
-          const balances = await getAccountBalances(
-            a.id,
-            this.userId,
-            this.userSecret,
-          );
-          for (const b of balances) {
-            cashBalance += b.cash ?? 0;
-            buyingPower += b.buying_power ?? 0;
-          }
+          const balances = await getAccountBalances(a.id, this.userId, this.userSecret);
+          return {
+            balances,
+            fallbackCash: 0,
+            fallbackBuyingPower: 0,
+            hasBalances: Array.isArray(balances) && balances.length > 0,
+          };
         } catch {
-          // Balances endpoint unavailable — leave at 0
+          // Balances endpoint unavailable — fall back to accounts-list fields.
+          return {
+            balances: null,
+            fallbackCash: a.cash ?? 0,
+            fallbackBuyingPower: a.buying_power ?? 0,
+            hasBalances: false,
+          };
         }
+      }),
+    );
+
+    for (const r of perAccount) {
+      if (r.status !== 'fulfilled') continue;
+      const { balances, fallbackCash, fallbackBuyingPower, hasBalances } = r.value;
+      if (hasBalances) {
+        for (const b of balances!) {
+          cashBalance += b.cash ?? 0;
+          buyingPower += b.buying_power ?? 0;
+        }
+      } else {
+        cashBalance += Number(fallbackCash || 0);
+        buyingPower += Number(fallbackBuyingPower || 0);
       }
     }
 
