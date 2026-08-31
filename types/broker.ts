@@ -137,6 +137,8 @@ export interface BrokerAdapter {
   connect(config: BrokerConfig): Promise<void>;
   disconnect(): void;
   isConnected(): boolean;
+  /** Scope subsequent API calls to a specific broker_connections.id (multi-broker). */
+  setConnectionId?(connectionId: string | null): void;
 
   // Account
   getAccount(fresh?: boolean): Promise<BrokerAccount>;

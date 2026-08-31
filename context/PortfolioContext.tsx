@@ -267,7 +267,7 @@ const PortfolioContext = createContext<PortfolioContextValue>({
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const { isConnected, broker } = useBroker();
   const { user } = useAuth();
-  const { activeAccount } = useAccounts();
+  const { activeAccount, activeAccountId } = useAccounts();
   const isShowingDemo = activeAccount?.isDemo ?? false;
 
   // ── Load persisted demo state synchronously (SSR-safe lazy init) ──
@@ -589,6 +589,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         // bump re-runs this effect with silent=false); the 30s background poll
         // (silent=true) can safely ride the cache.
         const fresh = !silent;
+
+        // Scope the adapter to the ACTIVE connection (2+ SnapTrade brokers).
+        const connectionId = activeAccountId?.startsWith('snaptrade:')
+          ? activeAccountId.slice('snaptrade:'.length)
+          : null;
+        broker.setConnectionId?.(connectionId);
+
         const ba = await broker.getAccount(fresh);
         const positions =
           ba.positions && ba.positions.length > 0
@@ -653,7 +660,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     // mount / explicit-refresh loads surface errors.
     const interval = setInterval(() => loadBrokerAccount(true), 30000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [isConnected, broker, isShowingDemo, brokerRefreshNonce]);
+  }, [isConnected, broker, isShowingDemo, brokerRefreshNonce, activeAccountId]);
 
   // Fetch on mount and when state changes
   useEffect(() => {

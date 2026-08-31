@@ -12,6 +12,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import type { BrokerAdapter, BrokerConfig, BrokerId } from '@/types/broker';
 import { brokerRegistry, setActiveBroker } from '@/lib/broker';
 import { apiGet } from '@/lib/api-client';
+import { useAccounts } from '@/context/AccountContext';
 
 interface BrokerContextValue {
   broker: BrokerAdapter | null;
@@ -53,13 +54,27 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
   const [holdingsAvailable, setHoldingsAvailable] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
+  // Active account's broker_connections.id (multi-broker scoping). When the
+  // user has 2+ connected SnapTrade brokers, /api/broker/status needs an
+  // explicit connectionId to resolve which one to preview; without it the route
+  // returns `ambiguous:true` (still `connected`, no preview) and the adapter's
+  // setConnectionId() scopes the account/positions calls.
+  const { activeAccountId } = useAccounts();
+  const activeConnectionId =
+    activeAccountId?.startsWith('snaptrade:')
+      ? activeAccountId.slice('snaptrade:'.length)
+      : null;
+
   // Discover broker on mount: check /api/broker/status
   useEffect(() => {
     let cancelled = false;
 
     async function checkStatus() {
       try {
-        const res = await apiGet('/api/broker/status');
+        const statusUrl = activeConnectionId
+          ? `/api/broker/status?connectionId=${encodeURIComponent(activeConnectionId)}`
+          : '/api/broker/status';
+        const res = await apiGet(statusUrl);
 
         // 401: no valid token — broker not connected, that's fine
         if (res.status === 401) {
@@ -135,7 +150,7 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeConnectionId]);
 
   // Disconnect on unmount
   useEffect(() => {
@@ -152,7 +167,10 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
 
     const interval = setInterval(async () => {
       try {
-        const res = await apiGet('/api/broker/status');
+        const statusUrl = activeConnectionId
+          ? `/api/broker/status?connectionId=${encodeURIComponent(activeConnectionId)}`
+          : '/api/broker/status';
+        const res = await apiGet(statusUrl);
         if (res.status === 401) return; // token expired, apiGet will redirect
         if (res.ok) {
           const data = await res.json();
@@ -169,7 +187,7 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [isConnected]);
+  }, [isConnected, activeConnectionId]);
 
   return (
     <BrokerContext.Provider

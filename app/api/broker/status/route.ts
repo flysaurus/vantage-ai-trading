@@ -8,24 +8,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 
-export async function GET(_req: NextRequest): Promise<NextResponse> {
+export async function GET(req: NextRequest): Promise<NextResponse> {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
   const userId = authUser!.id;
 
+  // Active account's broker_connections.id (stripped of the `snaptrade:` prefix
+  // by the client) — lets a multi-broker user get a precise status/preview.
+  const requestedConnectionId = req.nextUrl.searchParams.get('connectionId');
+
   try {
     // ── Canonical resolver — reads LIVE SnapTrade balances ──
     // Requires exactly one connected SnapTrade connection (or an explicit
-    // connection id). Ambiguity (2+ connections) fails closed with 409 —
-    // never "first row wins". Header balances come from live /accounts +
-    // /balances, NOT the cached snaptrade_accounts JSON (fixes stale $32K).
+    // connection id). Ambiguity (2+ connections) with NO explicit id now
+    // returns `connected:true, ambiguous:true` (HTTP 200) — the client has a
+    // real broker, it just needs to scope per-account calls via the adapter's
+    // setConnectionId(). Never "first row wins"; never fail closed to demo.
     const { resolveSnapTradeCredentials, SnapTradeAuthError, SnapTradeAmbiguousError } =
       await import('@/lib/snaptrade/client');
     const { snapTradeFetch } = await import('@/lib/snaptrade/auth');
 
     let creds;
     try {
-      creds = await resolveSnapTradeCredentials(userId);
+      creds = await resolveSnapTradeCredentials(userId, requestedConnectionId);
     } catch (err) {
       if (err instanceof SnapTradeAuthError) {
         // No connected SnapTrade broker — clean "not connected" state.
@@ -38,18 +43,18 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
         });
       }
       if (err instanceof SnapTradeAmbiguousError) {
-        return NextResponse.json(
-          {
-            connected: true,
-            brokerId: 'snaptrade',
-            ambiguous: true,
-            error: err.message,
-            accountPreview: null,
-            marketOpen: false,
-            environment: null,
-          },
-          { status: 409 },
-        );
+        return NextResponse.json({
+          connected: true,
+          brokerId: 'snaptrade',
+          ambiguous: true,
+          error: err.message,
+          connectionId: null,
+          accountPreview: null,
+          marketOpen: false,
+          environment: null,
+          trading_enabled: false,
+          holdings_available: true,
+        });
       }
       throw err;
     }

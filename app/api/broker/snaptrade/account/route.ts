@@ -241,6 +241,10 @@ function normalisePositions(raw: unknown): PositionInput[] {
 
   return list
     .filter((p): p is Record<string, unknown> => p !== null && typeof p === 'object')
+    // Drop cash-equivalent sweeps (SPAXX / money-market core positions) — their
+    // value is already reflected in the cash balance, so counting them as a
+    // position double-counts and inflates invested/marketValue.
+    .filter((p) => (p as any).cash_equivalent !== true)
     .map((p) => {
       const symbol = extractPositionTicker(p);
       const name = extractPositionName(p) || symbol;

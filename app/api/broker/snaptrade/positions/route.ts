@@ -152,6 +152,9 @@ function flattenPositions(raw: unknown): SnapTradePosition[] {
 
   return list
     .filter((p): p is Record<string, unknown> => p !== null && typeof p === 'object')
+    // Drop cash-equivalent sweeps (SPAXX / money-market core positions) — their
+    // value is already in the cash balance; keeping them double-counts cash.
+    .filter((p) => (p as any).cash_equivalent !== true)
     .map((p) => {
       const symbol = extractPositionTicker(p);
       const name = extractPositionName(p) || symbol;

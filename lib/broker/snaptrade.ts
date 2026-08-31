@@ -80,6 +80,10 @@ export class SnapTradeAdapter implements BrokerAdapter {
     return this._connected;
   }
 
+  setConnectionId(id: string | null): void {
+    this.connectionId = id;
+  }
+
   // ─── Account ─────────────────────────────────────────────
 
   async getAccount(fresh?: boolean): Promise<BrokerAccount> {

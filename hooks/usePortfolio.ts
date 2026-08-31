@@ -314,6 +314,11 @@ export function usePortfolio() {
         ? activeAccountId.slice('snaptrade:'.length)
         : null;
 
+      // Scope the broker adapter to the ACTIVE connection before fetching —
+      // with 2+ SnapTrade brokers the adapter is initialized with no default
+      // connectionId, so we must point it at the selected account's row.
+      broker.setConnectionId?.(connectionId);
+
       // ── Fire enrichment queries in PARALLEL with the broker fetch ──
       // These only need uid (not the positions), so we run them alongside
       // SnapTrade's slower account+positions calls instead of serializing extra
