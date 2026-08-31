@@ -262,8 +262,31 @@ export function AITab({ messages, setMessages }: AITabProps) {
   //   rebalance_confirm  → ✓ Confirm / ✕ Cancel
   //   rebalance_budget   → 💵 available cash / 📊 full portfolio / ✏️ custom
   //   rebalance_custom   → inline $ amount input + deploy
-  const [rebalanceAction, setRebalanceAction] = useState<{ kind: 'rebalance_plan' | 'rebalance_confirm' | 'rebalance_budget' | 'rebalance_custom' | 'rebalance_asset' | 'confirm_pending' | 'style_pick' | 'style_changed' | 'risk_changed' | 'dca_setup'; msgId: string } | null>(null);
+  const [rebalanceAction, setRebalanceAction] = useState<{ kind: 'rebalance_plan' | 'rebalance_confirm' | 'rebalance_budget' | 'rebalance_custom' | 'rebalance_asset' | 'confirm_pending' | 'style_pick' | 'style_changed' | 'risk_changed' | 'dca_setup'; msgId: string } | null>(() => {
+    // Inline action buttons (Execute/Confirm/budget choices) are tagged via the
+    // SSE `data.action` event — transient, NOT part of the persisted message
+    // text. Persist the tag so the buttons survive tab switches / remounts
+    // (Em report: "switched tab and came back, buttons gone"). The render guard
+    // below (`rebalanceAction.msgId === msg.id`) still ensures it only shows on
+    // the matching last-AI message, so a stale entry is harmless.
+    try {
+      const raw = localStorage.getItem('vantage:rebalance-action');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const validKinds = ['rebalance_plan','rebalance_confirm','rebalance_budget','rebalance_custom','rebalance_asset','confirm_pending','style_pick','style_changed','risk_changed','dca_setup'];
+      if (parsed && validKinds.includes(parsed.kind) && typeof parsed.msgId === 'string') return parsed;
+    } catch {}
+    return null;
+  });
   const [customAmountValue, setCustomAmountValue] = useState('');
+
+  // Keep the rebalance action tag in sync with localStorage so it survives remount.
+  useEffect(() => {
+    try {
+      if (rebalanceAction) localStorage.setItem('vantage:rebalance-action', JSON.stringify(rebalanceAction));
+      else localStorage.removeItem('vantage:rebalance-action');
+    } catch {}
+  }, [rebalanceAction]);
 
   // ── TL;DR toggle state (set of collapsed message indices) ──
   const [collapsedTLDRs, setCollapsedTLDRs] = useState<Set<number>>(new Set());
@@ -665,6 +688,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       prevAccountRef.current = accountId;
       setMessages([]);
       setCurrentSessionId(null);
+      setRebalanceAction(null); // don't leak another account's action buttons
       setLoading(false);
       loadingRef.current = false;
       setInput('');
@@ -727,6 +751,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
             setMessages(lastMessages.map(m => ({
               role: m.role as 'user' | 'ai',
               content: m.content,
+              id: m.id, // preserve DB id so action buttons / CLARIFY / strategy selection survive remount
             })));
             setCurrentSessionId(targetSession.id);
           }
