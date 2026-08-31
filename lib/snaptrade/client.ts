@@ -27,9 +27,13 @@ export interface SnapTradeConnection {
     id: string;
     slug: string;
     name: string;
+    /** Broker-level trading ceiling (can this broker trade at all via SnapTrade). */
+    allows_trading?: boolean;
+    authorization_types?: Array<{ type: string; auth_type: string }>;
   };
   name: string;
   created_date: string;
+  /** Connection-level grant: "trade" | "read". Authoritative per-connection signal. */
   type: string;
   status: string;
 }

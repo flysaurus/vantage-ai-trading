@@ -18,7 +18,6 @@ import { requireAuth } from '@/lib/auth/get-server-user';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrCreateSnapTradeUser, listConnections, listAccounts } from '@/lib/snaptrade/client';
-import { getAllowedBrokerages } from '@/lib/snaptrade/auth';
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
@@ -135,10 +134,14 @@ export async function GET(req: NextRequest) {
     );
 
     // ── Verify trading capability (from actual connection, not assumption) ──
+    // Authoritative signal = the connection's own `type` ("trade"|"read")
+    // combined with the brokerage's `allows_trading` ceiling. Never a hardcoded
+    // broker-name list: a broker that supports trading can still be connected
+    // read-only (and vice-versa). Fail closed: if we can't confirm both, treat
+    // as read-only.
     const brokerSlug = latest.brokerage.slug || conn.brokerage_slug;
-    const brokers = await getAllowedBrokerages();
-    const brokerProfile = brokers.find(b => b.slug.toUpperCase() === brokerSlug.toUpperCase());
-    const tradingEnabled = brokerProfile?.allowsTrading ?? false;
+    const tradingEnabled =
+      latest.type === 'trade' && latest.brokerage?.allows_trading === true;
 
     // ── List accounts ──
     let accountsList: Array<Record<string, unknown>> = [];
