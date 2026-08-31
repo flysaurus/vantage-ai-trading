@@ -36,6 +36,11 @@ export function useChatStorage(accountId: string = 'demo') {
   // ── load sessions on mount ──
   useEffect(() => {
     const loadRecent = async () => {
+      // Clear stale per-account state up front — `previousSession` is only
+      // re-set when the NEW account has a prior session, so without this a
+      // previous account's conversation would linger in the resume banner.
+      setPreviousSession(null);
+
       try {
         // Try Supabase first for authenticated users
         const supabase = createClient();

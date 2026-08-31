@@ -63,7 +63,26 @@ function AppShell() {
 
   // ── Account Select Screen ─────────────────────────────────
   const [showAccountSelect, setShowAccountSelect] = useState(false);
-  const { setActiveAccount } = useAccounts();
+  const { setActiveAccount, activeAccountId } = useAccounts();
+
+  // ── Chat state is ACCOUNT-scoped ──
+  // `chatMessages` lives here (parent) but AITab (which hydrates/renders it)
+  // is only mounted when the AI tab is active. If the account is switched while
+  // the AI tab is NOT mounted, AITab's own reset effect never runs, so the
+  // previous account's messages would linger in `chatMessages` and leak into the
+  // next account's view. Clear it here — at the point the account actually
+  // changes — so no account's chat ever bleeds into another.
+  const prevChatAccountRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevChatAccountRef.current === null) {
+      prevChatAccountRef.current = activeAccountId;
+      return;
+    }
+    if (prevChatAccountRef.current !== activeAccountId) {
+      prevChatAccountRef.current = activeAccountId;
+      setChatMessages([]);
+    }
+  }, [activeAccountId, setChatMessages]);
 
   // Derive auth state from Supabase (new auth system)
   const isDataLoaded = state !== 'loading';

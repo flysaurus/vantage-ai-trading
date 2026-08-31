@@ -703,9 +703,23 @@ export function AITab({ messages, setMessages }: AITabProps) {
   }, [accountId]);
 
   // ── DB hydration: load recent sessions from Supabase on mount ──
+  // ── DB hydration: load recent sessions from Supabase on mount / account change ──
+  // Guard with a ref keyed by (userId:accountId) — NOT `messages.length === 0`.
+  // The old guard read a STALE `messages` closure: on account switch the reset
+  // effect clears `messages`, but the async fetch callback still saw the OLD
+  // (non-empty) array and skipped loading — leaving the previous account's
+  // history visible (or an empty chat). Keying by identity makes hydration
+  // deterministic and account-safe.
+  const hydratedChatKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!userId) return;
+    const hydrationKey = `${userId}:${accountId}`;
+    if (hydratedChatKeyRef.current === hydrationKey) return;
+    hydratedChatKeyRef.current = hydrationKey;
+
+    let cancelled = false;
     fetchRecentSessions(userId, accountId, 10).then(sessions => {
+      if (cancelled) return;
       let allSessions: DBSession[] = sessions;
 
       if (sessions.length === 0) {
@@ -729,8 +743,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }
       }
 
-      // If chat is empty, hydrate from available sessions
-      if (messages.length === 0 && allSessions.length > 0) {
+      // Hydrate from available sessions for THIS account. (Guarded by the
+      // hydrationKey ref above, not a `messages.length` check — that old check
+      // read a stale closure and skipped loading on account switch.)
+      if (allSessions.length > 0) {
         const today = new Date().toISOString().slice(0, 10);
         const todaySession = allSessions.find(s => s.date === today);
         const targetSession = todaySession || allSessions[0];
@@ -758,6 +774,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }
       }
     }).catch(() => {});
+    return () => { cancelled = true; };
   }, [userId, accountId]); // re-fetch when user or account changes
 
   // ── Persist current session to DB cache (lightweight, offline fallback) ──
