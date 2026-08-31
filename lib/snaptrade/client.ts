@@ -47,6 +47,7 @@ export interface SnapTradeAccount {
   cash: number | null;
   buying_power: number | null;
   total_value: number | null;
+  account_category: string | null;
 }
 
 // ─── User Management ─────────────────────────────────────────
@@ -198,6 +199,7 @@ export async function listAccounts(
       cash: a.cash ?? bal.cash?.amount ?? bal.cash ?? bal.available_cash?.amount ?? bal.available_cash ?? null,
       buying_power: a.buying_power ?? bal.buying_power?.amount ?? bal.buying_power ?? null,
       total_value: a.total_value ?? bal.total?.amount ?? bal.total ?? 0,
+      account_category: a.account_category ?? null,
     };
   });
 }

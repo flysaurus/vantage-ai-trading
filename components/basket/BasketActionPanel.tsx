@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useLivePortfolio } from '@/context/PortfolioContext';
+import { useTradingCapability } from '@/hooks/useTradingCapability';
 import SellModal from '@/components/portfolio/SellModal';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import type { Lot } from '@/lib/fifo-engine';
@@ -58,6 +59,7 @@ export default function BasketActionPanel({
   context = 'portfolio',
 }: BasketActionPanelProps) {
   const { account, executeBasketTrade, sellBasketPositions, loadBaskets } = useLivePortfolio();
+  const { isReadOnly, brokerDisplayName } = useTradingCapability();
 
   const plColor = totalPnL >= 0 ? '#10b981' : '#ef4444';
   const plSign = totalPnL >= 0 ? '+' : '';
@@ -151,6 +153,7 @@ export default function BasketActionPanel({
 
   // Buy More — Whole Basket (proportional top-up at LIVE weights)
   const handleBuyWhole = async () => {
+    if (isReadOnly) return;
     const amount = parseFloat(buyWholeAmount);
     if (!amount || amount <= 0 || amount > 9999999) return;
     if (!hasActivePositions) return;
@@ -197,6 +200,7 @@ export default function BasketActionPanel({
 
   // Buy More — Single Stock
   const handleBuySingle = async (symbol: string) => {
+    if (isReadOnly) return;
     const amount = parseFloat(buySingleAmount);
     if (!amount || amount <= 0 || amount > 9999999) return;
     if (amount > availableCash) return;
@@ -233,6 +237,7 @@ export default function BasketActionPanel({
 
   // Sell — Single Stock (open SellModal)
   const handleSellSingle = (symbol: string) => {
+    if (isReadOnly) return;
     const pos = activePositions.find(p => p.symbol === symbol);
     if (!pos) return;
     setSellSingleSymbol(symbol);
@@ -244,6 +249,7 @@ export default function BasketActionPanel({
 
   // Sell — Whole Basket (open SellModal with proportional %)
   const handleSellWhole = () => {
+    if (isReadOnly) return;
     setSellSingleSymbol(null);
     setSellPositions(
       activePositions.map(p => ({
@@ -257,6 +263,7 @@ export default function BasketActionPanel({
 
   // Sell confirmation
   const handleSellConfirm = async (percentSold?: number) => {
+    if (isReadOnly) return;
     if (!sellPositions || sellPositions.length === 0) {
       setSellPositions(null);
       return;
@@ -291,6 +298,20 @@ export default function BasketActionPanel({
       borderTop: '1px solid rgba(255,255,255,0.06)',
       background: context === 'invest' ? 'transparent' : 'transparent',
     }}>
+      {isReadOnly && (
+        <div style={{
+          margin: '8px 16px',
+          padding: '10px 12px',
+          background: 'rgba(251,191,36,0.08)',
+          border: '1px solid rgba(251,191,36,0.25)',
+          borderRadius: '8px',
+          color: '#f59e0b',
+          fontSize: '12px',
+          lineHeight: '1.5',
+        }}>
+          👁️ {brokerDisplayName || 'This broker'} is read-only — re-authorize with trading access to buy or sell.
+        </div>
+      )}
       {/* ─── Composition List ─── */}
       {activePositions.length > 0 && (
         <div style={{ padding: '8px 0' }}>
@@ -390,6 +411,7 @@ export default function BasketActionPanel({
 
                       {/* Buy More button */}
                       <button
+                        disabled={isReadOnly}
                         onClick={(e) => {
                           e.stopPropagation();
                           if (isBuyingSingle) {
@@ -415,7 +437,8 @@ export default function BasketActionPanel({
                           fontSize: 10,
                           fontWeight: 700,
                           padding: '3px 8px',
-                          cursor: 'pointer',
+                          cursor: isReadOnly ? 'not-allowed' : 'pointer',
+                          opacity: isReadOnly ? 0.4 : 1,
                         }}
                       >
                         {isBuyingSingle ? '×' : '+Buy'}
@@ -423,6 +446,7 @@ export default function BasketActionPanel({
 
                       {/* Sell button */}
                       <button
+                        disabled={isReadOnly}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleSellSingle(pos.symbol);
@@ -435,7 +459,8 @@ export default function BasketActionPanel({
                           fontSize: 10,
                           fontWeight: 600,
                           padding: '3px 8px',
-                          cursor: 'pointer',
+                          cursor: isReadOnly ? 'not-allowed' : 'pointer',
+                          opacity: isReadOnly ? 0.4 : 1,
                         }}
                       >
                         -Sell
@@ -620,6 +645,7 @@ export default function BasketActionPanel({
           {/* Action buttons row */}
           <div style={{ display: 'flex', gap: 8 }}>
             <button
+              disabled={isReadOnly}
               onClick={() => {
                 setShowBuyWholeInput(!showBuyWholeInput);
                 setBuyWholeAmount('');
@@ -640,12 +666,14 @@ export default function BasketActionPanel({
                 color: '#10b981',
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: 'pointer',
+                cursor: isReadOnly ? 'not-allowed' : 'pointer',
+                opacity: isReadOnly ? 0.4 : 1,
               }}
             >
               {showBuyWholeInput ? 'Cancel' : 'Buy More'}
             </button>
             <button
+              disabled={isReadOnly}
               onClick={handleSellWhole}
               style={{
                 flex: 1,
@@ -656,7 +684,8 @@ export default function BasketActionPanel({
                 color: '#ef4444',
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: 'pointer',
+                cursor: isReadOnly ? 'not-allowed' : 'pointer',
+                opacity: isReadOnly ? 0.4 : 1,
               }}
             >
               Sell

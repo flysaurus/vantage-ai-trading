@@ -29,6 +29,7 @@ interface SnapAccount {
   cash: number | null;
   buying_power: number | null;
   total_value: number | null;
+  account_category: string | null;
 }
 
 interface SnapPosition {
@@ -1065,10 +1066,17 @@ export class SnapTradeBroker implements BrokerEngine {
     try {
       const accounts = await this._fetchAccounts();
       if (accounts.length === 0) return null;
+      // Only trade against INVESTMENT accounts (or legacy accounts with no
+      // category). SnapTrade can surface DEPOSIT/LOC accounts for some
+      // brokers (e.g. Fidelity youth/CMA); those are not orderable.
+      const tradable = accounts.filter(
+        (a) => a.account_category == null || a.account_category === 'INVESTMENT',
+      );
+      const pool = tradable.length > 0 ? tradable : accounts;
       // Prefer a margin/cash account; fall back to first
-      const primary = accounts.find((a) => a.type?.toUpperCase()?.includes('MARGIN'))
-        || accounts.find((a) => a.type?.toUpperCase()?.includes('CASH'))
-        || accounts[0];
+      const primary = pool.find((a) => a.type?.toUpperCase()?.includes('MARGIN'))
+        || pool.find((a) => a.type?.toUpperCase()?.includes('CASH'))
+        || pool[0];
       return primary.id;
     } catch {
       return null;
@@ -1133,6 +1141,7 @@ export class SnapTradeBroker implements BrokerEngine {
         cash,
         buying_power: buyingPower,
         total_value: totalValue,
+        account_category: a.account_category ?? null,
       };
     });
   }

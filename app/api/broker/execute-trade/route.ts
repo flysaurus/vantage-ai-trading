@@ -156,6 +156,27 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // GATE 3: Read-only broker — reject before any order is placed.
+  // ═══════════════════════════════════════════════════════════════
+  if (!tradingEnabled) {
+    // Release the idempotency reservation taken in GATE 2 so the user can
+    // retry immediately after re-authorizing with trading access.
+    await releaseIdempotency(supabase, idempotency.dedupKey).catch(() => {});
+    console.error(
+      `[execute-trade] 🚫 BLOCKED (read-only): ${symbol} ${side} for user ${authUser!.id}`,
+    );
+    return NextResponse.json(
+      {
+        success: false,
+        error: `${formatBrokerName(brokerSlug)} is read-only — re-authorize with trading access to place orders.`,
+        status: 'READ_ONLY',
+        blockedBy: 'read-only',
+      },
+      { status: 403 },
+    );
+  }
+
   // --- Place the order ---
   let orderPlaced = false;
   try {

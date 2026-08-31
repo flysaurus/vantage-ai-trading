@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import CompassIcon from '@/components/CompassIcon';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
+import { useTradingCapability } from '@/hooks/useTradingCapability';
 import { getMarketStatus } from '@/lib/market-hours';
 
 // System basket name date suffix: MMDDYYYY in America/New_York.
@@ -84,6 +85,7 @@ interface Props {
 export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, editBasket }: Props) {
   const { user } = useAuth();
   const { account, executeBasketTrade, cancelBasketOrder } = useLivePortfolio();
+  const { isReadOnly, brokerDisplayName } = useTradingCapability();
   const isBasketEditMode = !!editBasket;
 
   // ── Helper: derive fractional shares from dollar amount and price (4 decimal places) ──
@@ -1488,6 +1490,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
   async function handleConfirmOrder() {
     if (!selectedCurated || reviewStocks.length === 0) return;
     if (editLocked) return;
+    // Read-only broker → block before any order is placed.
+    if (isReadOnly) {
+      setExecutionResult({ success: false, executed: 0, failed: reviewStocks.length, totalSpent: 0, error: `${brokerDisplayName || 'This broker'} is read-only — re-authorize with trading access to place orders.` } as any);
+      return;
+    }
     setExecuting(true);
     setExecutionResult(null);
 
@@ -2229,16 +2236,30 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               ⚠️ Insufficient buying power. You need ${(Math.round(parseFloat(budget)) || 0).toLocaleString()} but only have ${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} available.
             </div>
           )}
+          {isReadOnly && (
+            <div style={{
+              padding: '10px 12px',
+              background: 'rgba(251,191,36,0.08)',
+              border: '1px solid rgba(251,191,36,0.25)',
+              borderRadius: '8px',
+              color: '#f59e0b',
+              fontSize: '12px',
+              lineHeight: '1.5',
+              textAlign: 'left',
+            }}>
+              👁️ {brokerDisplayName || 'This broker'} is read-only — re-authorize with trading access to place orders.
+            </div>
+          )}
           <button onClick={handleConfirmOrder}
-            disabled={executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance}
+            disabled={executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance || isReadOnly}
             style={{
               width: '100%', padding: '16px',
-              background: (executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance) ? 'rgba(34,211,238,0.4)' : '#22d3ee',
-              color: (executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance) ? 'rgba(34,211,238,0.6)' : '#0a0f1e',
+              background: (executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance || isReadOnly) ? 'rgba(34,211,238,0.4)' : '#22d3ee',
+              color: (executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance || isReadOnly) ? 'rgba(34,211,238,0.6)' : '#0a0f1e',
               border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: '600',
-              cursor: (executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance) ? 'not-allowed' : 'pointer',
+              cursor: (executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance || isReadOnly) ? 'not-allowed' : 'pointer',
             }}
-          >{executing ? 'Executing...' : 'Confirm & Buy →'}</button>
+          >{isReadOnly ? 'Read-only — no trading access' : (executing ? 'Executing...' : 'Confirm & Buy →')}</button>
 
           <button
             onClick={onClose}

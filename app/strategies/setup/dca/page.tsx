@@ -77,6 +77,7 @@ export default function DcaSetupPage() {
   // directly instead; never fall back to demo holdings.
   const [holdings, setHoldings] = useState<{ symbol: string; qty: number }[]>([]);
   const [availableCash, setAvailableCash] = useState<number | null>(null);
+  const [isReadOnly, setIsReadOnly] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +104,8 @@ export default function DcaSetupPage() {
           if (Array.isArray(accounts)) {
             const live = accounts.find((a: any) => a && !a.isDemo);
             if (live && live.cash != null) setAvailableCash(Number(live.cash) || 0);
+            // Read-only broker → DCA cannot place recurring orders.
+            if (live) setIsReadOnly(!live.tradingEnabled);
           }
         }
       } catch {
@@ -240,6 +243,10 @@ export default function DcaSetupPage() {
 
   // ─── Submit ─────────────────────────────────────────────
   const handleSubmit = async () => {
+    if (isReadOnly) {
+      setToast('This broker is read-only — re-authorize with trading access to schedule DCA.');
+      return;
+    }
     setSubmitting(true);
     try {
       const parsedAmount = investBy === 'amount' ? parseFloat(amount) : 0;
@@ -333,7 +340,7 @@ export default function DcaSetupPage() {
 
   const estOrders = getEstimatedOrderCount(frequency, monthsRunning);
 
-  const canSubmit = selectedSymbol && ((isAmountMode && parseFloat(amount) >= 1 && !amountError) || (isSharesMode && parseFloat(quantity) >= 0.01 && !quantityError)) && frequency && startDate && endDate;
+  const canSubmit = selectedSymbol && ((isAmountMode && parseFloat(amount) >= 1 && !amountError) || (isSharesMode && parseFloat(quantity) >= 0.01 && !quantityError)) && frequency && startDate && endDate && !isReadOnly;
 
   const position = holdings.find(p => p.symbol === selectedSymbol);
   const changeColor = (stockDetails?.changePercent ?? 0) >= 0 ? '#4ade80' : '#f87171';
@@ -533,9 +540,14 @@ export default function DcaSetupPage() {
 
       {/* ─── Bottom Bar ──────────────────────────────── */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'linear-gradient(to top, #0f172a 80%, rgba(15,23,42,0.95))', padding: '12px 16px 64px', borderTop: '1px solid #1e293b' }}>
+        {isReadOnly && (
+          <div style={{ padding: '8px 10px', marginBottom: 8, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 8, color: '#f59e0b', fontSize: 11, lineHeight: '1.4' }}>
+            👁️ This broker is read-only — re-authorize with trading access to schedule DCA.
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={handleSubmit} disabled={!canSubmit || submitting} style={{ flex: 1, padding: 14, borderRadius: 10, border: 'none', background: canSubmit && !submitting ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155', color: canSubmit && !submitting ? '#0f172a' : '#64748b', fontSize: 15, fontWeight: 700, cursor: canSubmit && !submitting ? 'pointer' : 'not-allowed', fontFamily: 'inherit', transition: 'all 0.2s ease' }}>
-            {submitting ? 'Saving...' : editingSchedule ? 'Update DCA' : 'Schedule DCA'}
+            {isReadOnly ? 'Read-only — no trading' : (submitting ? 'Saving...' : editingSchedule ? 'Update DCA' : 'Schedule DCA')}
           </button>
           <button onClick={() => { if (editingSchedule) { setEditingSchedule(null); setSelectedSymbol(''); setAmount(''); setQuantity(''); setFrequency(null); setDayOfWeek(null); setDayOfMonth(null); setStartDate(todayStr()); setEndDate(''); setStockDetails(null); } else { router.back(); } }} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             {editingSchedule ? 'Cancel Edit' : 'Cancel'}
