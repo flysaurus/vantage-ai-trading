@@ -22,6 +22,12 @@ export interface PortfolioSnapshot {
     qty: number;
     price: number;
     marketValue: number;
+    // Enriched fields (optional, backward-compatible) — powers the
+    // deterministic tax-loss-harvesting analysis.
+    avgCost?: number;
+    unrealizedPnl?: number;
+    buyDate?: string;
+    type?: string;
   }>;
 }
 
@@ -605,6 +611,86 @@ export function buildAccountStateAnswer(snapshot: PortfolioSnapshot, risk: strin
     }
   }
   lines.push('', `Risk tolerance: **${risk}**.`);
+  return lines.join('\n');
+}
+
+/**
+ * Detect a tax-loss-harvesting / tax-check intent on MY portfolio.
+ * Distinct from educational tax questions ("what's the capital gains rate?").
+ * Returns true for "run a tax check", "tax-loss harvesting", "harvest my
+ * losses", "wash sale" analysis, etc.
+ */
+export function detectTaxLossHarvestIntent(message: string): boolean {
+  const s = (message || '').trim().toLowerCase();
+  if (!s || s.length > 300) return false;
+  // Definitional / conceptual tax questions ("what is a wash sale", "how does
+  // the wash-sale rule work", "what's the capital gains tax rate") are
+  // educational — NOT a request to analyze MY holdings. Let those reach the model.
+  if (/\b(what\s+(is|are|does)|how\s+does|define|explain|meaning\s+of|whats?\s+(a|the|is))\b/.test(s)) return false;
+  if (/tax[\s-]?loss/.test(s)) return true;
+  if (/\bharvest(?:ing)?\b/.test(s) && /(loss|tax|wash)/.test(s)) return true;
+  if (/\bwash\s+sale\b/.test(s)) return true;
+  if (/\btax\b/.test(s) && /\b(unrealized|unrealised)\s+loss/.test(s)) return true;
+  if (/\btax\s+(check|review|audit|harvest|optimiz\w*)\b/.test(s) && /\b(portfolio|positions|holdings|my)\b/.test(s)) return true;
+  return false;
+}
+
+/**
+ * Deterministic tax-loss-harvesting analysis from the live portfolio snapshot.
+ * Lists unrealized-loss positions (harvest candidates), flags wash-sale risk
+ * (bought within the last 30 days), and surfaces year-end optimization moves.
+ * Read-only — never mutates anything.
+ */
+export function buildTaxLossHarvestAnswer(snapshot: PortfolioSnapshot): string {
+  const usd = (n: number) =>
+    n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const positions = snapshot.positions || [];
+
+  const enriched = positions.map((p) => {
+    const unrealized = p.unrealizedPnl ?? (p.avgCost != null ? (p.price - p.avgCost) * p.qty : null);
+    const costTotal = p.avgCost != null ? p.avgCost * p.qty : null;
+    const pct = unrealized != null && costTotal && costTotal > 0 ? (unrealized / costTotal) * 100 : null;
+    const daysSinceBuy = p.buyDate ? Math.floor((Date.now() - new Date(p.buyDate).getTime()) / 86400000) : null;
+    return { ...p, unrealized, pct, daysSinceBuy };
+  });
+
+  const losers = enriched
+    .filter((p) => p.unrealized != null && p.unrealized < 0)
+    .sort((a, b) => (a.unrealized as number) - (b.unrealized as number));
+
+  const totalHarvestable = losers.reduce((s, p) => s + (p.unrealized ?? 0), 0);
+  const estSavings = Math.abs(totalHarvestable) * 0.2; // ~20% blended federal rate
+
+  if (losers.length === 0) {
+    return [
+      `Good news — I scanned your ${positions.length} position${positions.length === 1 ? '' : 's'} and found **no unrealized losses** to harvest right now.`,
+      '',
+      `Year-end tax moves to keep in mind:`,
+      `- **Defer gains** — avoid realizing new short-term gains before year-end if you can push them into January.`,
+      `- **Max retirement contributions** — pre-tax 401(k)/IRA contributions before year-end lower this year's taxable income.`,
+      `- **Mind the wash-sale rule** — if you do harvest later, don't rebuy the same (or "substantially identical") security within 30 days.`,
+    ].join('\n');
+  }
+
+  const lines: string[] = [
+    `Here's your **tax-loss harvesting** scan — ${losers.length} position${losers.length === 1 ? '' : 's'} with unrealized losses you could harvest:`,
+    '',
+  ];
+  for (const p of losers.slice(0, 8)) {
+    const pctTxt = p.pct != null ? ` (${p.pct.toFixed(1)}%)` : '';
+    const washFlag =
+      p.daysSinceBuy != null && p.daysSinceBuy < 30
+        ? ` ⚠️ bought ${p.daysSinceBuy}d ago — still in the wash-sale window, wait before harvesting`
+        : '';
+    lines.push(`- **${p.symbol}** — ${usd(p.unrealized as number)}${pctTxt} · ${p.qty} shares${washFlag}`);
+  }
+  lines.push('', `**Total harvestable loss:** ${usd(totalHarvestable)} → ~**${usd(estSavings)}** estimated federal tax savings (assumes a ~20% blended rate).`);
+  lines.push('', '**Year-end moves to consider:**');
+  lines.push('1. **Harvest the losses above** — sell to realize the loss, then redeploy into a *non-identical* replacement (e.g. swap an individual stock for a sector ETF) to stay invested.');
+  lines.push('2. **Respect the wash-sale rule** — any position bought in the last 30 days can\'t be harvested cleanly; wait 30 days from the last buy.');
+  lines.push('3. **Offset gains first** — realized losses offset realized capital gains dollar-for-dollar, then up to $3,000 of ordinary income per year (excess carries forward).');
+  lines.push('4. **Defer new gains** — if you hold winners, consider realizing them in January rather than December.');
+  lines.push('5. **Max retirement contributions** — pre-tax 401(k)/IRA contributions before year-end lower this year\'s taxable income.');
   return lines.join('\n');
 }
 

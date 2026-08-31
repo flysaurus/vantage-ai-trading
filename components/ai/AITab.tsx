@@ -1179,6 +1179,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
             qty: p.qty || 0,
             price: p.price ?? p.avgCost ?? 0,
             marketValue: p.marketValue || 0,
+            // Enriched fields → deterministic tax-loss-harvesting analysis.
+            avgCost: p.avgCost,
+            unrealizedPnl: p.totalPnl,
+            buyDate: p.buyDate,
+            type: p.type,
           })),
         } : null,
         // Account context — prevents AI from presenting Demo holdings as real

@@ -15,7 +15,7 @@ import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
 import { detectAppHelpIntent, buildAppHelpAnswer } from '@/lib/ai/app-help'
-import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, detectScheduledActivityIntent, buildScheduledActivityAnswer, detectAccountStateIntent, isDcaCreationCommand, detectOrderHistoryIntent, parseOrderHistoryWindow, orderHistoryWindowLabel, buildOrderHistoryAnswer, type OrderHistoryRow } from '@/lib/ai/account-actions'
+import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, detectScheduledActivityIntent, buildScheduledActivityAnswer, detectAccountStateIntent, isDcaCreationCommand, detectOrderHistoryIntent, parseOrderHistoryWindow, orderHistoryWindowLabel, buildOrderHistoryAnswer, detectTaxLossHarvestIntent, buildTaxLossHarvestAnswer, type OrderHistoryRow } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
@@ -1229,6 +1229,19 @@ export async function POST(req: Request) {
       if (portfolioSnapshot && (portfolioSnapshot.equity > 0 || portfolioSnapshot.positions.length > 0)) {
         console.log('[chat] 🧭 account-state → deterministic answer');
         return textSSEResponse(buildAccountStateAnswer(portfolioSnapshot, profile.riskTolerance));
+      }
+      // No portfolio loaded → fall through so the model prompts broker connection.
+    }
+
+    // ── Deterministic tax-loss-harvesting router ──
+    // "run a tax check", "tax-loss harvesting", "wash sale" on MY portfolio are
+    // read-only analyses the classifier mislabels as portfolio_construction →
+    // fires the "Stocks only / ETFs only / A mix of both" CLARIFY. Answer from
+    // the live snapshot BEFORE the classifier can mis-route them.
+    if (mode !== 'alerts' && detectTaxLossHarvestIntent(lastMessage)) {
+      if (portfolioSnapshot && portfolioSnapshot.positions.length > 0) {
+        console.log('[chat] 🧭 tax-loss-harvesting → deterministic answer');
+        return textSSEResponse(buildTaxLossHarvestAnswer(portfolioSnapshot));
       }
       // No portfolio loaded → fall through so the model prompts broker connection.
     }
