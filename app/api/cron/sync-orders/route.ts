@@ -35,15 +35,37 @@ import type { OrderStatus } from '@/lib/broker/types';
 
 const IN_FLIGHT = ['submitted', 'open', 'partially_filled'] as const;
 
-// Stale-order guard: an in-flight order older than this that has dropped
-// out of SnapTrade's recentOrders is dead (expired/rejected at the broker)
-// and must not linger as "open" forever. 2 days is conservative:
-//   - market+day orders resolve same-day (fill or expire at close)
-//   - a genuinely-live GTC order stays in recentOrders, so it never hits
-//     the "not found" branch at all — it reconciles normally
-// Only orders BOTH missing from recentOrders AND older than this threshold
-// are auto-cancelled; recent+missing is treated as transient lag and skipped.
-const STALE_AFTER_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+// Stale-order guard: an in-flight order that has dropped out of SnapTrade's
+// recentOrders and has been missing across this many TRADING DAYS is dead
+// (expired/rejected at the broker) and must not linger as "open" forever.
+//
+// We count trading days (Mon–Fri), NOT wall-clock days. A weekend-placed order
+// legitimately sits "submitted" for ~2.5 wall-clock days before Monday's open,
+// but has passed 0 trading sessions — it must never be auto-cancelled before
+// its first fillable session. (This exact bug produced false 'stale_guard'
+// cancels on 2026-08-31 that the broker then filled.)
+//
+// Only orders BOTH missing from recentOrders AND missing across ≥2 trading
+// days are auto-cancelled; recent+missing is treated as transient lag.
+const STALE_AFTER_TRADING_DAYS = 2;
+
+// Count elapsed trading days (Mon–Fri) strictly between two timestamps.
+// A weekend-placed order has 0 elapsed trading days until Monday, so it is
+// never cancelled before its first fillable session.
+function tradingDaysBetween(fromMs: number, toMs: number): number {
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) return 0;
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const start = new Date(fromMs);
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(toMs);
+  end.setUTCHours(0, 0, 0, 0);
+  let count = 0;
+  for (let t = start.getTime() + DAY_MS; t < end.getTime(); t += DAY_MS) {
+    const dow = new Date(t).getUTCDay();
+    if (dow !== 0 && dow !== 6) count++;
+  }
+  return count;
+}
 
 const ALLOWED_SECRETS = [
   process.env.CRON_SECRET || '',
@@ -207,8 +229,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         //  2. Old + missing → dropped/expired/rejected at the broker. Auto-cancel
         //     so it can't linger as "open" forever (stale-state guard).
         const createdAt = new Date(o.created_at).getTime();
-        const ageMs = Date.now() - createdAt;
-        if (Number.isFinite(createdAt) && ageMs > STALE_AFTER_MS) {
+        const tradingDays = tradingDaysBetween(createdAt, Date.now());
+        if (Number.isFinite(createdAt) && tradingDays >= STALE_AFTER_TRADING_DAYS) {
           const now = new Date().toISOString();
           const { error: staleErr } = await supabase
             .from('orders')
@@ -231,7 +253,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               });
             staleCancelled++;
             console.log(
-              `[sync-orders] Stale-cancel: ${brokerOrderId.slice(0, 8)} open ${Math.round(ageMs / 3600000)}h → cancelled`,
+              `[sync-orders] Stale-cancel: ${brokerOrderId.slice(0, 8)} open ${tradingDays} trading-days → cancelled`,
             );
 
             // Honest stale-guard email: we could no longer confirm status with
