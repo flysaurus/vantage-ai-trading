@@ -24,6 +24,14 @@ import { extractOrderSymbol, extractPositionTicker } from '@/lib/snaptrade/mappi
 import { sumOpenReservedAmount, availableCash } from '@/lib/available-cash';
 import { formatBrokerName } from '@/lib/broker-name';
 
+// ─── Constants ────────────────────────────────────────────────
+
+// Broker average-cost is rounded to 1 decimal place (±0.05/share) for some
+// fractional positions (e.g. RCAT: broker 9.1 vs DB 9.089657). A plain 1¢
+// threshold would flag these as drift when they're just precision artifacts.
+// Allow that rounding slack: >0.05, plus a hair for float representation.
+const COST_TOLERANCE_PER_SHARE = 0.06;
+
 // ─── Types ────────────────────────────────────────────────────
 
 export interface ReconcileInput {
@@ -421,7 +429,7 @@ export async function runReconciliation(input: ReconcileInput): Promise<Reconcil
     const dbAvgCost = Number(d?.avg_cost ?? 0);
     const lotsRemaining = lotsRemainingBySymbol.get(sym) || 0;
     const qtyMismatch = Math.abs(brokerQty - dbQty) > 1e-4;
-    const costMismatch = Math.abs(brokerAvgCost - dbAvgCost) > 0.01;
+    const costMismatch = Math.abs(brokerAvgCost - dbAvgCost) > COST_TOLERANCE_PER_SHARE;
     const lotMismatch = Math.abs(dbQty - lotsRemaining) > 1e-4;
     if (qtyMismatch) qtyMismatches++;
     if (costMismatch) costMismatches++;
