@@ -3,7 +3,7 @@
 import { apiGet, apiPost } from '@/lib/api-client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Bell, Settings, X } from 'lucide-react';
+import { Bell, Settings, X } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import { useTabStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
@@ -148,9 +148,6 @@ export function Header() {
 
       {/* ── Right: Icons ── */}
       <div className="header-icons">
-        <button className="header-icon-btn" aria-label="Search">
-          <Search size={22} />
-        </button>
         <button
           className="header-icon-btn"
           onClick={handleBellClick}
