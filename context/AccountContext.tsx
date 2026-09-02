@@ -76,9 +76,29 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setActiveAccount = useCallback((accountId: string) => {
-    setActiveAccountId(accountId);
+    if (accountId === activeAccountId) return; // no-op — same account
+
+    // Persist the new selection FIRST (synchronously) so the reload below
+    // reads the freshly-saved id from localStorage via loadActiveAccount().
     saveActiveAccount(accountId);
-  }, []);
+
+    // Full page reload: switching accounts must reload the ENTIRE app —
+    // portfolio, orders, watchlist, baskets, AI context — so no stale data
+    // from the previous account lingers. A reactive partial refresh was
+    // leaving stale state (orders store, tab-local state, cached quotes),
+    // so we hard-reload and let the fresh mount re-fetch everything for the
+    // newly selected account.
+    if (typeof window !== 'undefined') {
+      // Suppress the account-select screen on the post-reload mount — the
+      // user has already made an explicit account choice, so don't re-nag.
+      try {
+        sessionStorage.setItem('vantage:skipAccountSelectOnce', '1');
+      } catch {
+        /* ignore */
+      }
+      window.location.reload();
+    }
+  }, [activeAccountId]);
 
   // ── Auto-select the user's connected broker over the demo default ──
   // When accounts load and the current selection is still the unset default
