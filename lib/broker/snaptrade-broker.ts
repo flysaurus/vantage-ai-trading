@@ -354,17 +354,7 @@ export class SnapTradeBroker implements BrokerEngine {
       const accountId = await this._getPrimaryAccountId();
       if (!accountId) return [];
 
-      const response = await snapTradeFetch<{ orders?: SnapOrder[] }>(
-        `/accounts/${accountId}/recentOrders`,
-        null,
-        {
-          userId: this.userId,
-          userSecret: this.userSecret,
-          only_executed: 'false',
-        },
-      );
-
-      const rawOrders = response.orders || [];
+      const rawOrders = await this._fetchOrders(accountId);
       const mapped = rawOrders.map((o) => this._mapOrder(o));
       console.log(
         `[SnapTradeBroker] getOrders: ${mapped.length} orders for ${this.brokerName}`,
@@ -720,17 +710,7 @@ export class SnapTradeBroker implements BrokerEngine {
       const accountId = await this._getPrimaryAccountId();
       if (!accountId) return null;
 
-      const response = await snapTradeFetch<{ orders?: SnapOrder[] }>(
-        `/accounts/${accountId}/recentOrders`,
-        null,
-        {
-          userId: this.userId,
-          userSecret: this.userSecret,
-          only_executed: 'false',
-        },
-      );
-
-      const rawOrders = response.orders || [];
+      const rawOrders = await this._fetchOrders(accountId);
       const found = rawOrders.find(
         (o) =>
           o.brokerage_order_id &&
@@ -970,18 +950,10 @@ export class SnapTradeBroker implements BrokerEngine {
       const accountId = await this._getPrimaryAccountId();
       if (!accountId) return [];
 
-      const response = await snapTradeFetch<{ orders?: SnapOrder[] }>(
-        `/accounts/${accountId}/recentOrders`,
-        null,
-        {
-          userId: this.userId,
-          userSecret: this.userSecret,
-          only_executed: 'false',
-        },
-      );
+      const rawOrders = await this._fetchOrders(accountId);
 
       const changed: string[] = [];
-      for (const raw of response.orders || []) {
+      for (const raw of rawOrders) {
         const orderId = raw.brokerage_order_id;
         if (!orderId || !trackedOrders.has(orderId)) continue;
 
@@ -1017,17 +989,9 @@ export class SnapTradeBroker implements BrokerEngine {
       const accountId = await this._getPrimaryAccountId();
       if (!accountId) return;
 
-      const response = await snapTradeFetch<{ orders?: SnapOrder[] }>(
-        `/accounts/${accountId}/recentOrders`,
-        null,
-        {
-          userId: this.userId,
-          userSecret: this.userSecret,
-          only_executed: 'false',
-        },
-      );
+      const rawOrders = await this._fetchOrders(accountId);
 
-      const hasFill = (response.orders || []).some(
+      const hasFill = rawOrders.some(
         (o) => _mapSnapTradeStatusToOrderStatus(o.status) === 'FILLED',
       );
 
@@ -1081,6 +1045,22 @@ export class SnapTradeBroker implements BrokerEngine {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Fetch every order for an account from SnapTrade's `/accounts/{id}/orders`
+   * endpoint, which returns a BARE ARRAY of all orders (all statuses).
+   * `/recentOrders` stopped returning order history for this connection (empty
+   * `orders` array), so `/orders` is now the authoritative source for sync.
+   */
+  private async _fetchOrders(accountId: string): Promise<SnapOrder[]> {
+    const raw = await snapTradeFetch<unknown>(
+      `/accounts/${accountId}/orders`,
+      null,
+      { userId: this.userId, userSecret: this.userSecret },
+    );
+    if (Array.isArray(raw)) return raw as SnapOrder[];
+    return (raw as { orders?: SnapOrder[] } | null)?.orders ?? [];
   }
 
   private _mapOrder(raw: SnapOrder): BrokerOrder {

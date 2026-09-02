@@ -223,7 +223,11 @@ export async function runReconciliation(input: ReconcileInput): Promise<Reconcil
     }
   }
 
-  // ── 3. Broker: recentOrders (per account, merged) ──
+  // ── 3. Broker: orders (per account, merged) ──
+  // NOTE: SnapTrade's `/recentOrders` endpoint stopped returning order history
+  // for this connection (it now yields an empty `orders` array), so we use the
+  // full `/accounts/{id}/orders` endpoint, which returns a BARE ARRAY of every
+  // order (all statuses) rather than a `{ orders: [...] }` envelope.
   interface RawBrokerOrder {
     brokerage_order_id?: string;
     status?: string;
@@ -238,17 +242,14 @@ export async function runReconciliation(input: ReconcileInput): Promise<Reconcil
   const brokerOrders = new Map<string, RawBrokerOrder>();
   for (const acctId of accountIds) {
     try {
-      const resp = await snapTradeFetch<{ orders?: RawBrokerOrder[] }>(
-        `/accounts/${acctId}/recentOrders`,
-        null,
-        { ...ep, only_executed: 'false' },
-      );
-      for (const o of resp.orders || []) {
+      const raw = await snapTradeFetch<unknown>(`/accounts/${acctId}/orders`, null, ep);
+      const list = (Array.isArray(raw) ? raw : ((raw as { orders?: RawBrokerOrder[] })?.orders ?? [])) as RawBrokerOrder[];
+      for (const o of list) {
         const id = o.brokerage_order_id;
         if (id) brokerOrders.set(id, o);
       }
     } catch (err) {
-      console.error(`[reconcile] recentOrders fetch failed for ${acctId}:`, (err as Error).message);
+      console.error(`[reconcile] orders fetch failed for ${acctId}:`, (err as Error).message);
     }
   }
 
