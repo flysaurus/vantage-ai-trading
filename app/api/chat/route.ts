@@ -2176,6 +2176,9 @@ Use these for any market-direction questions ("how are markets today?", "any sel
               const block = (chunk as any).content_block;
               if (block?.type === 'tool_use') {
                 hadToolCalls = true;
+                // Note: block.input is always {} here (a placeholder); the real
+                // JSON streams in via input_json_delta below. Zero-arg tools
+                // (e.g. getPortfolio) emit NO deltas — just start/stop.
                 currentToolBlock = { id: block.id, name: block.name, inputJson: '' };
               }
             }
@@ -2187,10 +2190,14 @@ Use these for any market-direction questions ("how are markets today?", "any sel
             if (chunk.type === 'content_block_stop') {
               if (currentToolBlock && currentToolBlock.id) {
                 try {
+                  const raw = (currentToolBlock.inputJson || '').trim();
                   turnToolBlocks.push({
                     id: currentToolBlock.id,
                     name: currentToolBlock.name || 'unknown',
-                    input: JSON.parse(currentToolBlock.inputJson),
+                    // Zero-arg tools stream no input_json_delta → raw is ''.
+                    // Default to {} so the tool still executes with no args
+                    // instead of throwing and aborting the whole turn.
+                    input: raw ? JSON.parse(raw) : {},
                   });
                 } catch (e) { console.warn('[chat] Tool input parse error:', e); }
                 currentToolBlock = null;
