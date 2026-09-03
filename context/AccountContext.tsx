@@ -10,6 +10,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import type { AccountEntry } from '@/app/api/accounts/route';
 import { apiGet } from '@/lib/api-client';
+import { useOrderStore } from '@/store';
 
 const STORAGE_KEY = 'vantage:activeAccount';
 
@@ -78,26 +79,17 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   const setActiveAccount = useCallback((accountId: string) => {
     if (accountId === activeAccountId) return; // no-op — same account
 
-    // Persist the new selection FIRST (synchronously) so the reload below
-    // reads the freshly-saved id from localStorage via loadActiveAccount().
+    // Persist the new selection, then update state IN PLACE (no full page reload).
+    // A reload is jarring and is an anti-pattern — the investor-style switcher
+    // already updates in place. PortfolioContext + useOrders re-key off
+    // activeAccountId and re-fetch automatically; we clear the order store here
+    // so stale orders from the previous account don't linger during the refetch.
     saveActiveAccount(accountId);
+    setActiveAccountId(accountId);
 
-    // Full page reload: switching accounts must reload the ENTIRE app —
-    // portfolio, orders, watchlist, baskets, AI context — so no stale data
-    // from the previous account lingers. A reactive partial refresh was
-    // leaving stale state (orders store, tab-local state, cached quotes),
-    // so we hard-reload and let the fresh mount re-fetch everything for the
-    // newly selected account.
-    if (typeof window !== 'undefined') {
-      // Suppress the account-select screen on the post-reload mount — the
-      // user has already made an explicit account choice, so don't re-nag.
-      try {
-        sessionStorage.setItem('vantage:skipAccountSelectOnce', '1');
-      } catch {
-        /* ignore */
-      }
-      window.location.reload();
-    }
+    try {
+      useOrderStore.getState().setOrders([]);
+    } catch { /* store not initialized in all contexts */ }
   }, [activeAccountId]);
 
   // ── Auto-select the user's connected broker over the demo default ──

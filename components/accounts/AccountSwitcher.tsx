@@ -59,8 +59,8 @@ export function AccountSwitcher() {
 
         {/* Read-only badge */}
         {showReadOnlyBadge && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-            View only
+          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold tracking-wide">
+            VIEW ONLY
           </span>
         )}
 

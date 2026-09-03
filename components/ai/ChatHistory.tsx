@@ -34,7 +34,7 @@ function SessionDay({
   isFirst: boolean;
 }) {
   return (
-    <div style={{ marginBottom: '8px' }}>
+    <div style={{ marginBottom: '6px' }}>
       {/* Date header — tappable */}
       <button
         onClick={onToggle}
@@ -46,7 +46,7 @@ function SessionDay({
           background: 'rgba(255,255,255,0.04)',
           border: '1px solid rgba(255,255,255,0.06)',
           borderRadius: '10px',
-          padding: '12px 14px',
+          padding: '10px 12px',
           cursor: 'pointer',
           fontFamily: 'inherit',
           color: TEXT_BODY,
@@ -75,8 +75,8 @@ function SessionDay({
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: '10px',
-            padding: '10px 4px 4px 4px',
+            gap: '8px',
+            padding: '8px 4px 4px 4px',
           }}
         >
           {session.messages.map((msg: DBChatMessage) => {
@@ -90,7 +90,7 @@ function SessionDay({
                     background: 'rgba(34,211,238,0.12)',
                     border: '1px solid rgba(34,211,238,0.2)',
                     borderRadius: '16px 16px 4px 16px',
-                    padding: '12px 15px',
+                    padding: '10px 13px',
                     fontSize: '14px',
                   }}
                 >
@@ -109,7 +109,7 @@ function SessionDay({
                   background: 'rgba(255,255,255,0.04)',
                   borderLeft: '3px solid #22d3ee',
                   borderRadius: '4px 16px 16px 16px',
-                  padding: '14px 16px',
+                  padding: '12px 14px',
                   fontSize: '14px',
                   color: 'rgba(255,255,255,0.85)',
                 }}
@@ -403,7 +403,7 @@ export function ChatHistory({ open, onClose }: ChatHistoryProps) {
             padding: '12px 20px 32px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '6px',
+            gap: '4px',
           }}
         >
           {/* Loading state */}

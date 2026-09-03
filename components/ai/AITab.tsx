@@ -198,6 +198,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // the AI a "real money / live" label while showing demo data.
   const { activeAccount, activeAccountId } = useAccounts();
   const isDemoAccount = activeAccount?.isDemo ?? true;
+  // Read-only = a connected (non-demo) broker whose trading is disabled.
+  const isReadOnly = !isDemoAccount && !!(activeAccount && !activeAccount.tradingEnabled);
   // Canonical account scope for chat isolation (defaults to demo until accounts resolve)
   const accountId = activeAccountId || 'demo';
   const { user, refreshUser } = useAuth();
@@ -574,6 +576,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastAiResponseRef = useRef('');
+  const lastAiMessageRef = useRef<HTMLDivElement>(null); // last AI bubble DOM node (for scroll-to-top of new responses)
   const lastAiMessageIdRef = useRef<string | null>(null); // client-side AI message id (matches msg.id used for trade messageId)
 
   // ── Smooth streaming queue ──
@@ -701,6 +704,51 @@ export function AITab({ messages, setMessages }: AITabProps) {
       isDrainingRef.current = false;
     }
   }, [accountId]);
+
+  // ── Switch acknowledgment: quiet inline divider on in-place account/style switch ──
+  const [switchNotice, setSwitchNotice] = useState<{ account: string; style: string } | null>(null);
+  const prevScopeRef = useRef<{ account: string; style: string } | null>(null);
+  useEffect(() => {
+    const styleKey = String(investorStyle || 'lynch');
+    const scope = { account: accountId, style: styleKey };
+    if (prevScopeRef.current === null) {
+      prevScopeRef.current = scope;
+      return;
+    }
+    if (prevScopeRef.current.account !== scope.account || prevScopeRef.current.style !== scope.style) {
+      prevScopeRef.current = scope;
+      setSwitchNotice({
+        account: activeAccount?.name || (isDemoAccount ? 'Demo Portfolio' : 'Portfolio'),
+        style: styleKey.charAt(0).toUpperCase() + styleKey.slice(1),
+      });
+    }
+  }, [accountId, investorStyle, activeAccount?.name, isDemoAccount]);
+
+  // ── Capability notice (read-only): per-account dismissal ──
+  // ✕ dismiss = session-only (reappears next session); "don't show again" = permanent per-account.
+  const [capDismissed, setCapDismissed] = useState(false);
+  const [capHidden, setCapHidden] = useState(false);
+  useEffect(() => {
+    try {
+      setCapDismissed(sessionStorage.getItem(`vantage:cap-notice:${accountId}`) === '1');
+      setCapHidden(localStorage.getItem(`vantage:cap-notice-hidden:${accountId}`) === '1');
+    } catch {
+      setCapDismissed(false);
+      setCapHidden(false);
+    }
+  }, [accountId]);
+  const dismissCapNotice = (permanent: boolean) => {
+    try {
+      if (permanent) {
+        localStorage.setItem(`vantage:cap-notice-hidden:${accountId}`, '1');
+        setCapHidden(true);
+      } else {
+        sessionStorage.setItem(`vantage:cap-notice:${accountId}`, '1');
+      }
+      setCapDismissed(true);
+    } catch { /* ignore */ }
+  };
+  const showCapabilityNotice = isReadOnly && !capHidden && !capDismissed;
 
   // ── DB hydration: load recent sessions from Supabase on mount ──
   // ── DB hydration: load recent sessions from Supabase on mount / account change ──
@@ -1001,6 +1049,14 @@ export function AITab({ messages, setMessages }: AITabProps) {
     container.scrollTo({ top: container.scrollHeight, behavior: smooth ? 'smooth' : 'instant' as ScrollBehavior });
   }
 
+  function scrollToTopOfLastResponse(smooth = true) {
+    const container = chatContainerRef.current;
+    const el = lastAiMessageRef.current;
+    if (!container || !el) { scrollToBottom(smooth); return; }
+    const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+    container.scrollTo({ top: Math.max(0, top - 12), behavior: smooth ? 'smooth' : 'instant' as ScrollBehavior });
+  }
+
   // ── Track user scroll intent ──
   useEffect(() => {
     const container = chatContainerRef.current;
@@ -1037,11 +1093,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
     prevMessageCountRef.current = messages.length;
   }, [messages.length]);
 
-  // ── Auto-scroll during streaming: pin to bottom unless user scrolled away ──
+  // ── Auto-scroll during streaming: keep the new response's top in view ──
   useEffect(() => {
     if (!loading) return;
     if (wasAtBottomRef.current && !isUserScrollingRef.current) {
-      scrollToBottom(false);
+      scrollToTopOfLastResponse(false);
     }
   }, [messages, loading]);
 
@@ -1089,6 +1145,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
     retryOpts?: { retryAttempt: number; retryFailures: any[] },
   ) => {
     if (!content.trim() || loadingRef.current) return;
+
+    setSwitchNotice(null); // switch acknowledgment divider is consumed by the next turn
 
     // ── Stepper intercept: if a multi-question stepper is active ──
     // Free-text answers (for open-ended questions without options) are
@@ -1555,7 +1613,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
         lastAiResponseRef.current = '';
         lastAiMessageIdRef.current = null;
       }
-      scrollToBottom();
+      // Scroll to the TOP of the new response so it reads from the start (not pinned to bottom)
+      setTimeout(() => scrollToTopOfLastResponse(true), 0);
     }
   };
 
@@ -1947,6 +2006,36 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             position: 'relative',
           }}
         >
+        {/* ── Capability notice (read-only) — dismissible, per-account ── */}
+        {showCapabilityNotice && (
+          <div style={{
+            margin: '0 0 4px 0',
+            padding: '10px 14px',
+            background: 'rgba(245,158,11,0.07)',
+            border: '1px solid rgba(245,158,11,0.22)',
+            borderRadius: '12px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '8px',
+          }}>
+            <span style={{ fontSize: '14px', flexShrink: 0, lineHeight: 1.5 }}>👁️</span>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: '12px', color: '#fbbf24', fontWeight: 600, margin: '0 0 3px 0', lineHeight: '1.4' }}>
+                View-only account
+              </p>
+              <p style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.65)', margin: 0, lineHeight: '1.5' }}>
+                {activeAccount?.broker || 'This broker'} is read-only — you can research and analyze, but can&apos;t place live trades. Trade and DCA buttons will offer alternatives (like downloadable plans) instead.
+              </p>
+              <button onClick={() => dismissCapNotice(true)} style={{ background: 'none', border: 'none', padding: 0, marginTop: '6px', fontSize: '10.5px', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}>
+                Don&apos;t show again
+              </button>
+            </div>
+            <button onClick={() => dismissCapNotice(false)} aria-label="Dismiss" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '16px', cursor: 'pointer', padding: '0 2px', lineHeight: 1, flexShrink: 0 }}>
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Empty state — no suggestions inside chat */}
         {messages.length === 0 && !loading && (
           <div style={{ flex: 1 }} />
@@ -1990,18 +2079,15 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           return (
             <React.Fragment key={i}>
             <div
+              ref={isLastAiMsg ? lastAiMessageRef : undefined}
               style={{
                 maxWidth: '100%',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '14px',
-                padding: '14px 16px',
                 fontSize: '14px',
                 color: 'rgba(255,255,255,0.85)',
               }}
             >
-              <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#22d3ee', marginBottom: '6px', letterSpacing: '0.03em' }}>
-                VANTAGE AI
+              <div style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.38)', marginBottom: '6px', letterSpacing: '0.02em' }}>
+                Vantage AI Advisor
               </div>
               {(() => {
                 // ── Show progress indicator while AI is generating ──
@@ -2403,6 +2489,17 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           );
         })}
 
+        {/* ── Switch acknowledgment divider ── */}
+        {switchNotice && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 4px' }}>
+            <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+            <span style={{ fontSize: '10.5px', fontWeight: 600, letterSpacing: '0.03em', color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap' }}>
+              now viewing {switchNotice.account} · {switchNotice.style}
+            </span>
+            <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+          </div>
+        )}
+
         {/* Thinking indicator — hidden during progress (ProgressIndicator takes over) */}
         {loading && checklistItems.length === 0 && (
           <div style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', padding: '12px 0 4px' }}>
@@ -2489,23 +2586,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
 
       {/* ======== 3. INPUT ZONE — fixed at bottom with separator ======== */}
       <div style={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.015)', padding: '18px 16px 20px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))', position: 'relative', zIndex: 10 }}>
-        {/* ── Real-broker trade warning — block execution is in executeTrade(), this is visual ── */}
-        {isConnected && brokerMeta && !brokerMeta.tradingEnabled && (
-          <div style={{
-            fontSize: '11px',
-            color: WARNING,
-            textAlign: 'center',
-            marginBottom: '10px',
-            background: 'rgba(245,158,11,0.08)',
-            padding: '8px 12px',
-            borderRadius: '10px',
-            border: '1px solid rgba(245,158,11,0.2)',
-            lineHeight: 1.4,
-          }}>
-            ⚠️ Real order execution not yet available for connected brokers.<br/>
-            <span style={{ color: TEXT_DIM, fontSize: '10px' }}>Trade buttons run paper-only demo simulations — no orders are sent to your broker.</span>
-          </div>
-        )}
 
         {/* Deep Dive segmented control + usage — left-aligned toggle, trailing count */}
         <div style={{
@@ -2978,8 +3058,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               {[
                 { label: 'Market Pulse', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); handleMarketPulse(e); } },
                 { label: 'Strategy Ideas', live: false, onClick: () => { setShowExplore(false); sendToChat('Based on my current portfolio and market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas.'); } },
-                { label: 'Rebalance', live: false, onClick: () => { setShowExplore(false); sendToChat('rebalance'); } },
-                { label: 'DCA', live: false, onClick: () => { setShowExplore(false); sendToChat('Set up a dollar-cost averaging (DCA) plan'); } },
+                { label: 'Rebalance', live: false, reason: isReadOnly ? 'Download plan on view-only accounts' : undefined, onClick: () => { setShowExplore(false); sendToChat('rebalance'); } },
+                { label: 'DCA', live: false, reason: isReadOnly ? 'Unavailable — view-only account' : undefined, onClick: () => { setShowExplore(false); sendToChat('Set up a dollar-cost averaging (DCA) plan'); } },
                 { label: 'Tax Check', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); sendToChat('Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.', e); } },
                 { label: 'Alerts', live: false, onClick: () => { setShowExplore(false); sendMessage('Scan my portfolio for urgent alerts', 'alerts'); wasAtBottomRef.current = true; scrollToBottom(true); } },
               ].map((action) => (
@@ -2992,27 +3072,32 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                     borderRadius: '12px',
                     padding: '13px 10px',
                     display: 'flex',
-                    flexDirection: 'row',
+                    flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '6px',
+                    gap: '4px',
                     cursor: 'pointer',
                   }}
                 >
-                  <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#fff' }}>{action.label}</span>
-                  {action.live && (
-                    <span style={{
-                      fontSize: '8.5px',
-                      fontWeight: 700,
-                      color: ACCENT,
-                      background: 'rgba(34,211,238,0.12)',
-                      padding: '1px 5px',
-                      borderRadius: '999px',
-                      letterSpacing: '0.05em',
-                      lineHeight: 1.4,
-                    }}>
-                      LIVE
-                    </span>
+                  <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#fff' }}>{action.label}</span>
+                    {action.live && (
+                      <span style={{
+                        fontSize: '8.5px',
+                        fontWeight: 700,
+                        color: ACCENT,
+                        background: 'rgba(34,211,238,0.12)',
+                        padding: '1px 5px',
+                        borderRadius: '999px',
+                        letterSpacing: '0.05em',
+                        lineHeight: 1.4,
+                      }}>
+                        LIVE
+                      </span>
+                    )}
+                  </div>
+                  {action.reason && (
+                    <span style={{ fontSize: '9.5px', color: WARNING, textAlign: 'center', lineHeight: 1.35 }}>{action.reason}</span>
                   )}
                 </div>
               ))}
