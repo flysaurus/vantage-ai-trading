@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -342,7 +342,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // message object (unlike the single dataCallout/rebalanceAction states).
   const downloadRef = useRef<DownloadPayload | null>(null);
 
-  const handleDownloadExport = useCallback(async (payload: DownloadPayload) => {
+  // Build the export File (blob + filename) once, shared by both the
+  // download (save) and share (native share sheet) paths — one fetch, no
+  // duplicate xlsx generation on mobile.
+  const buildExportFile = useCallback(async (payload: DownloadPayload): Promise<{ file: File; filename: string } | null> => {
     try {
       const res = await fetch('/api/ai/export', {
         method: 'POST',
@@ -350,23 +353,69 @@ export function AITab({ messages, setMessages }: AITabProps) {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        setToast('Download failed — please try again.');
-        return;
+        setToast('Export failed — please try again.');
+        return null;
       }
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
       const cd = res.headers.get('Content-Disposition') || '';
-      a.download = cd.match(/filename="([^"]+)"/)?.[1] || 'vantage-export.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      const filename = cd.match(/filename="([^"]+)"/)?.[1] || 'vantage-export.xlsx';
+      const type = blob.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const file = new File([blob], filename, { type });
+      return { file, filename };
     } catch {
-      setToast('Download failed — please try again.');
+      setToast('Export failed — please try again.');
+      return null;
     }
   }, [setToast]);
+
+  // Force a browser save (anchor + download attribute).
+  const triggerSave = useCallback((file: File, filename: string) => {
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }, []);
+
+  const handleDownloadExport = useCallback(async (payload: DownloadPayload) => {
+    const result = await buildExportFile(payload);
+    if (!result) return;
+    triggerSave(result.file, result.filename);
+  }, [buildExportFile, triggerSave]);
+
+  // Share via the native OS share sheet (Web Share API) — on phones this opens
+  // AirDrop / Messages / WhatsApp / Save-to-Files, which is far easier to find
+  // than a silent download. Falls back to a plain save where file-share is
+  // unsupported (most desktop browsers).
+  const handleShareExport = useCallback(async (payload: DownloadPayload) => {
+    const result = await buildExportFile(payload);
+    if (!result) return;
+    const { file, filename } = result;
+    const nav = typeof navigator !== 'undefined' ? navigator : null;
+    if (nav && typeof nav.share === 'function') {
+      const shareData: ShareData = { files: [file], title: filename };
+      if (typeof nav.canShare === 'function' && nav.canShare(shareData)) {
+        try {
+          await nav.share(shareData);
+          return;
+        } catch (err) {
+          // AbortError = user dismissed the sheet — not an error, stay silent.
+          if (err instanceof Error && err.name === 'AbortError') return;
+          // Other share failures (e.g. no target app) fall through to save.
+        }
+      }
+    }
+    triggerSave(file, filename);
+  }, [buildExportFile, triggerSave]);
+
+  // Web Share API presence is static per browser — compute once.
+  const canShareFiles = useMemo(
+    () => typeof navigator !== 'undefined' && typeof (navigator as any).share === 'function',
+    [],
+  );
 
   // ── Sequential clarifying-question stepper ──
   // When an AI response contains multiple [CLARIFY:{...}] markers,
@@ -2488,6 +2537,24 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   >
                     ⬇️ Download .xlsx
                   </button>
+                  {canShareFiles && (
+                    <button
+                      onClick={() => handleShareExport(msg.download!)}
+                      style={{
+                        background: 'rgba(34,211,238,0.08)',
+                        border: '1px solid rgba(34,211,238,0.35)',
+                        borderRadius: '8px',
+                        color: '#22d3ee',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        padding: '8px 14px',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      📤 Share
+                    </button>
+                  )}
                   {msg.download.rows.length > 0 && (
                     <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
                       {msg.download.rows.length} line{msg.download.rows.length === 1 ? '' : 's'} · {msg.download.title}
