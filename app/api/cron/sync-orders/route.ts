@@ -220,13 +220,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // recentOrders — it's an un-linkable row (e.g. a manual/recovery write).
       // Route it through the stale-guard below so it can't linger "open"
       // invisibly: recent → transient lag (skipped), old → auto-cancelled.
-      const live = o.brokerage_order_id ? liveById.get(o.brokerage_order_id) : undefined;
+      let live = o.brokerage_order_id ? liveById.get(o.brokerage_order_id) : undefined;
+
+      // The first getOrders() snapshot missed this order. Before we conclude it
+      // is gone, re-verify with a FRESH targeted lookup so we never write
+      // `cancelled` over a real fill/rejection (Alpaca is the source of truth).
+      // If the broker still knows the order, we fall through to the normal
+      // transition logic below, which persists the REAL terminal state
+      // (filled / rejected / cancelled) — not a guessed `cancelled`.
+      if (!live && o.brokerage_order_id) {
+        try {
+          live = (await broker.getOrderById(o.brokerage_order_id)) ?? undefined;
+        } catch {
+          live = undefined;
+        }
+      }
+
       if (!live || !o.brokerage_order_id) {
         const brokerOrderId = o.brokerage_order_id || o.id;
-        // Broker no longer returns this order. Two cases:
+        // Broker no longer returns this order even on a fresh targeted lookup.
+        // Two cases:
         //  1. Recent + missing → transient lag (just placed, not yet visible).
         //     Skip and retry next run.
-        //  2. Old + missing → dropped/expired/rejected at the broker. Auto-cancel
+        //  2. Old + missing → genuinely dropped/expired at the broker. Auto-cancel
         //     so it can't linger as "open" forever (stale-state guard).
         const createdAt = new Date(o.created_at).getTime();
         const tradingDays = tradingDaysBetween(createdAt, Date.now());

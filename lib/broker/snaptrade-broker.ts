@@ -800,6 +800,22 @@ export class SnapTradeBroker implements BrokerEngine {
       }
     }
 
+    // No terminal raw_response → VERIFY the broker's true terminal state before
+    // declaring success. A cancel can race a fill: the broker may execute the
+    // order in the same instant the cancel is accepted, and SnapTrade's 200 can
+    // omit raw_response entirely. Never let a `cancelled` DB write overwrite a
+    // real fill/rejection — Alpaca is the source of truth.
+    const verified = await this.getOrderById(orderId).catch(() => null);
+    if (verified && _isTerminalNonCancelled(verified.status)) {
+      return {
+        success: false,
+        alreadyTerminal: true,
+        reconciledOrder: verified,
+        httpStatus: res.status,
+        message: `Order is already ${_statusLabel(verified.status)} — cancel not applied.`,
+      };
+    }
+
     return {
       success: true,
       httpStatus: res.status,
