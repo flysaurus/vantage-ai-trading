@@ -582,19 +582,26 @@ apiGet('/api/broker/status')
           alertOnDrift,
           driftThreshold,
         });
+      const data = await res.json().catch(() => null);
       if (!res.ok) {
-        const err = await res.json();
         setExecProgress('');
-        setToast(err.error || 'Execution failed');
-        setSubmitting(false);
+        setToast(data?.error || 'Execution failed');
         return;
+      }
+      const placed = data?.ordersPlaced ?? total;
+      const failedErrors = data?.errors;
+      if (failedErrors && failedErrors.length > 0) {
+        setExecProgress('');
+        console.error('[rebalance] partial execution errors:', failedErrors);
+        setToast(`⚠️ ${placed} of ${total} orders placed — ${failedErrors.length} failed`);
+        return; // stay on page so failed legs can be retried
       }
       for (let i = 1; i <= total; i++) {
         setExecProgress(`Order ${i} of ${total} confirmed ✅`);
         await new Promise(r => setTimeout(r, 300));
       }
       setExecProgress('');
-      setToast(`✓ ${total} orders placed`);
+      setToast(`✓ ${placed} orders placed`);
       setTimeout(() => router.back(), 1500);
     } catch {
       setExecProgress('');
@@ -639,13 +646,19 @@ apiGet('/api/broker/status')
         driftThreshold,
       };
       const res = await await apiPost('/api/strategies/rebalancing/execute', body);
+      const data = await res.json().catch(() => null);
       if (!res.ok) {
-        const err = await res.json();
-        setToast(err.error || 'Rebalance failed');
-        setSubmitting(false);
+        setToast(data?.error || 'Rebalance failed');
         return;
       }
-      setToast('✓ Rebalancing orders placed');
+      const placed = data?.ordersPlaced ?? trades.length;
+      const failedErrors = data?.errors;
+      if (failedErrors && failedErrors.length > 0) {
+        console.error('[rebalance] partial execution errors:', failedErrors);
+        setToast(`⚠️ ${placed} of ${trades.length} orders placed — ${failedErrors.length} failed`);
+        return; // stay on page so failed legs can be retried
+      }
+      setToast(`✓ ${placed} orders placed`);
       setTimeout(() => router.back(), 1500);
     } catch {
       setToast('Network error. Please try again.');
@@ -673,7 +686,7 @@ apiGet('/api/broker/status')
               <>
                 <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>Execute Rebalance</div>
                 <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 16 }}>
-                  {isConnected ? 'Orders will be placed via Alpaca' : 'Demo mode — orders simulated'}
+                  {isConnected ? 'Orders will be placed with your connected brokerage' : 'Demo mode — orders simulated'}
                 </div>
 
                 {/* Order summary table */}
@@ -738,7 +751,7 @@ apiGet('/api/broker/status')
               <>
                 <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>Execute Rebalance</div>
                 <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 16 }}>
-                  {isConnected ? 'Orders will be placed via Alpaca' : 'Demo mode — orders simulated'}
+                  {isConnected ? 'Orders will be placed with your connected brokerage' : 'Demo mode — orders simulated'}
                 </div>
                 <div style={{ marginBottom: 12, borderRadius: 8, overflow: 'hidden', border: '1px solid #1e293b' }}>
                   <div style={{ display: 'flex', padding: '8px 10px', background: '#0f172a', fontSize: 10, fontWeight: 700, color: '#e2e8f0', textTransform: 'uppercase' }}>
