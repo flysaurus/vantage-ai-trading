@@ -15,7 +15,7 @@ import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { buildProfileAnswer, type ProfileQuestionKind } from '@/lib/ai/profile-answers'
 import { buildAppHelpAnswer, type AppHelpKind } from '@/lib/ai/app-help'
-import { extractRiskTarget, extractStyleTarget, extractRebalanceTarget, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioGroundingMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, buildScheduledActivityAnswer, isDcaCreationCommand, parseOrderHistoryWindow, orderHistoryWindowLabel, buildOrderHistoryAnswer, buildTaxLossHarvestAnswer, type OrderHistoryRow } from '@/lib/ai/account-actions'
+import { extractRiskTarget, extractStyleTarget, extractRebalanceTarget, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioGroundingMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, buildScheduledActivityAnswer, buildDcaReadOnlyAnswer, isDcaCreationCommand, parseOrderHistoryWindow, orderHistoryWindowLabel, buildOrderHistoryAnswer, buildTaxLossHarvestAnswer, type OrderHistoryRow } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { planToExportPayload } from '@/lib/export/rebalance-export'
 import { buildMarkerExportPayload } from '@/lib/export/marker-export'
@@ -1333,6 +1333,12 @@ export async function POST(req: Request) {
         case 'app_help':
           return textSSEResponse(buildAppHelpAnswer((classification.handlerData?.kind ?? 'capabilities') as AppHelpKind));
         case 'dca_setup':
+          // Read-only broker connections (e.g. Fidelity view-only) cannot place
+          // recurring orders — return the standard explanation instead of the
+          // DCA setup form.
+          if (accountMeta && !accountMeta.isDemo && !accountMeta.tradingEnabled) {
+            return textSSEResponse(buildDcaReadOnlyAnswer(accountMeta.brokerName));
+          }
           return textSSEResponse(
             "Let's set up your dollar-cost averaging plan — pick the symbol, amount, frequency, and end date in the form.",
             { kind: 'dca_setup' },

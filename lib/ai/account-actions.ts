@@ -1140,6 +1140,21 @@ export function buildScheduledActivityAnswer(dcas: ScheduledDca[], orders: Queue
   return lines.join('\n');
 }
 
+/**
+ * Standard answer when the user asks to set up dollar-cost averaging on a
+ * READ-ONLY broker connection (e.g. Fidelity view-only). DCA requires placing
+ * recurring orders, which a read-only connection cannot do — so we explain the
+ * limitation and point them to a trading-enabled connection or the demo account.
+ */
+export function buildDcaReadOnlyAnswer(brokerName: string): string {
+  const name = (brokerName || 'this broker').trim();
+  return [
+    `Dollar-cost averaging isn't available on your **${name}** connection — it's a read-only (view-only) connection, so it can't place recurring buy orders.`,
+    '',
+    `To set up DCA, either connect a trading-enabled broker (like Alpaca) or switch to the demo account. Your ${name} connection still works for research, portfolio analysis, and downloadable plans.`,
+  ].join('\n');
+}
+
 /** Ask which style to switch to (when the user said "change my style" with no target). */
 export function formatStylePickPrompt(currentStyle: string): string {
   const current = getStyleConfig(currentStyle).label;

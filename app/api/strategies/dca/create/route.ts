@@ -62,12 +62,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       if (!scope.isDemo && scope.connectionId) {
         const { data: connRow } = await (supabase as any)
           .from('broker_connections')
-          .select('id')
+          .select('id, trading_enabled')
           .eq('id', scope.connectionId)
           .eq('user_id', userId)
           .maybeSingle();
         if (!connRow) {
           return NextResponse.json({ error: 'That broker account does not belong to you.' }, { status: 403 });
+        }
+        if (connRow.trading_enabled !== true) {
+          return NextResponse.json({ error: 'This broker connection is read-only — DCA is not available.' }, { status: 403 });
         }
         connectionId = scope.connectionId;
       }

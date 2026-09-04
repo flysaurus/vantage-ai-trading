@@ -473,33 +473,11 @@ export function InlineTradeButton({
     );
   }
 
-  // ── Read-only broker: disabled buy button ──
-  if (isReadOnly) {
-    return (
-      <button
-        disabled
-        title={`Trading not available — ${activeAccount.broker} is read-only`}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '4px',
-          background: 'rgba(100,116,139,0.06)',
-          border: '1px solid rgba(100,116,139,0.15)',
-          borderRadius: '6px',
-          color: '#64748b',
-          fontSize: '11px',
-          fontWeight: 600,
-          padding: '3px 8px',
-          cursor: 'not-allowed',
-          fontFamily: 'inherit',
-          opacity: 0.5,
-        }}
-      >
-        <span style={{ fontSize: '10px' }}>🔒</span>
-        Read-only broker
-      </button>
-    );
-  }
+  // ── Read-only broker: never render trade buttons ──
+  // View-only accounts (e.g. Fidelity read connection) hide BUY/SELL entirely
+  // rather than showing a disabled placeholder — execution surfaces must not
+  // appear where trading is unavailable.
+  if (isReadOnly) return null;
 
   const isBuy = side === 'BUY';
   const effectiveExecuted = !!(executed || isExecuted);

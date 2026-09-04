@@ -2328,7 +2328,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                               suggestions={suggestions}
                               symbolNames={symbolNames}
                               proseText={msg.content}
-                              enabled={tier !== 'silver'}
+                              enabled={tier !== 'silver' && !isReadOnly}
                               onTrade={(sym, sd, sh, am) => handleTradeAction(sym, sd, sh, am, msg.id)}
                             />
                           );
@@ -2342,6 +2342,15 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               {/* Rebalance inline action buttons (Execute / Confirm / Cancel) */}
               {showRebalanceButtons && (() => {
                 const kind = rebalanceAction!.kind;
+
+                // Read-only accounts never place orders — suppress the three
+                // execution-stage button sets (plan→execute, execution-preview→
+                // confirm, staged-preview→confirm). Plan-configuration stages
+                // still render so users can generate + download a plan.
+                if (isReadOnly && (kind === 'rebalance_plan' || kind === 'rebalance_confirm' || kind === 'confirm_pending')) {
+                  return null;
+                }
+
                 const solid = (bg: string) => ({
                   background: bg,
                   color: '#0b1220',
@@ -2635,7 +2644,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                     <InlineTradeButtons
                       suggestions={suggestions}
                       choiceSuggestions={choices}
-                      enabled={tier !== 'silver'}
+                      enabled={tier !== 'silver' && !isReadOnly}
                       onTrade={(sym, sd, sh, am) => handleTradeAction(sym, sd, sh, am, msg.id)}
                       executedMap={msgExecutedMap}
                     />

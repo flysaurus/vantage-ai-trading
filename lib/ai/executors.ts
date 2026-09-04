@@ -256,11 +256,12 @@ async function execDcaCreate(
     if (!scope.isDemo && scope.connectionId) {
       const { data: connRow } = await (supabase as any)
         .from('broker_connections')
-        .select('id')
+        .select('id, trading_enabled')
         .eq('id', scope.connectionId)
         .eq('user_id', userId)
         .maybeSingle();
       if (!connRow) return { ok: false, message: 'That broker account does not belong to you.' };
+      if (connRow.trading_enabled !== true) return { ok: false, message: 'This broker connection is read-only — DCA is not available.' };
       connectionId = scope.connectionId;
     }
   }

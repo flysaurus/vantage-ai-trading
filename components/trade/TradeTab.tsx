@@ -83,6 +83,7 @@ export function TradeTab() {
   const { orders: brokerOrders } = useOrderStore();
   const { activeAccount } = useAccounts();
   const isShowingDemo = activeAccount?.isDemo ?? false;
+  const isReadOnly = !isShowingDemo && !!brokerMeta && !brokerMeta.tradingEnabled;
 
   // Fetch quote when symbol selected
   useEffect(() => {
@@ -393,18 +394,20 @@ export function TradeTab() {
               <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.2' }}>AI-curated themed portfolios</div>
             </button>
             <button
-              onClick={() => router.push('/strategies/setup/dca')}
+              onClick={() => { if (!isReadOnly) router.push('/strategies/setup/dca'); }}
+              disabled={isReadOnly}
               style={{
                 background: '#1a2235',
                 border: '1px solid rgba(34,211,238,0.3)',
                 borderRadius: '10px',
                 padding: '10px 8px',
-                cursor: 'pointer',
+                cursor: isReadOnly ? 'not-allowed' : 'pointer',
                 textAlign: 'center',
+                opacity: isReadOnly ? 0.55 : 1,
               }}
             >
               <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: '600', marginBottom: '2px' }}>DCA</div>
-              <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.2' }}>Dollar cost averaging</div>
+              <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.2' }}>{isReadOnly ? 'Read-only — unavailable' : 'Dollar cost averaging'}</div>
             </button>
           </div>
         </div>
