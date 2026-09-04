@@ -81,8 +81,20 @@ export function detectAccountAction(
 
   const styleMatch = /(?:please\s+)?(?:change|switch|set|move|update)\s+(?:(?:my|the|it)\s+)?(?:(?:investment|investor|trading|investing)\s+)?(?:style\s+)?(?:to|into)\s+([a-z][a-z\s]{1,24})/i.exec(m);
   // "make/turn it aggressive" / "make my style X" — the "make … X" form (no "to").
-  const makeStyleMatch = /(?:please\s+)?(?:make|turn)\s+(?:(?:my|the|it|me|this|that)\s+)(?:(?:investment|investor|trading|investing|style)\s+)?([a-z][a-z\s]{1,24})/i.exec(m);
+  const makeStyleMatch = /(?:please\s+)?(?:make|turn)\s+(?:(?:my|the|it|me|this|that)\s+)(?:(investment|investor|trading|investing|style)\s+)?([a-z][a-z\s]{1,24})/i.exec(m);
   const rebalanceMatch = /\brebalance\b/i.test(m);
+
+  // "make/turn it X" / "make me X" is idiomatic English and only denotes a
+  // style/risk command when X is a recognized risk or style word, or an explicit
+  // "style/investor/..." qualifier is present. Otherwise ("make it count",
+  // "make it matter") it's an idiom → fall through to the model.
+  const makeTarget = makeStyleMatch ? makeStyleMatch[2] : null;
+  const makeQualifier = makeStyleMatch ? makeStyleMatch[1] : null;
+  const makeForm = makeTarget != null && (
+    !!makeQualifier ||
+    detectRiskLevel(makeTarget) !== null ||
+    normalizeStyle(makeTarget) !== null
+  );
 
   // "change my style" / "make my style" with NO target → ask which (style picker).
   const styleChangeAskMatch = /(?:please\s+)?(?:change|switch|set|move|update|make|turn)\s+(?:(?:my|the|it|me)\s+)?(?:(?:investment|investor|trading|investing)\s+)?style\b(?!\s+(?:to|into)\s+[a-z])/i.test(m);
@@ -93,7 +105,7 @@ export function detectAccountAction(
   const styleAfterMatch = /\b(?:change|switch|set|move|update|make|turn|adjust|become)\b[^.!?]{0,30}?\b(?:to|into)\s+(?:a\s+|an\s+|more\s+|less\s+)?([a-z][a-z\s]{0,20}?)\s*style\b/i.exec(m);
   const styleMentioned = /\bstyle\b/i.test(m);
 
-  const rawStyle = styleMatch ? styleMatch[1] : (makeStyleMatch ? makeStyleMatch[1] : (styleAfterMatch ? styleAfterMatch[1] : null));
+  const rawStyle = styleMatch ? styleMatch[1] : (makeForm ? makeTarget : (styleAfterMatch ? styleAfterMatch[1] : null));
   const style = rawStyle ? normalizeStyle(rawStyle) : null;
 
   // Risk-tolerance change. A risk word ("aggressive") only maps to RISK when the
@@ -124,11 +136,11 @@ export function detectAccountAction(
 
   // Explicit "change style to <something>" but target isn't a valid style →
   // ask with buttons (invalid_style is rendered with the style picker).
-  if ((styleMatch || makeStyleMatch || styleAfterMatch) && rawStyle && !style && !rebalanceMatch) {
+  if ((styleMatch || makeForm || styleAfterMatch) && rawStyle && !style && !rebalanceMatch) {
     return { type: 'invalid_style', requested: rawStyle.trim() };
   }
 
-  const hasChange = (!!styleMatch || !!makeStyleMatch || !!styleAfterMatch) && !!style;
+  const hasChange = (!!styleMatch || !!makeForm || !!styleAfterMatch) && !!style;
   const hasRebalance = rebalanceMatch;
 
   if (hasChange && hasRebalance && !hypothetical) return { type: 'change_and_rebalance', style: style! };

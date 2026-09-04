@@ -102,11 +102,18 @@ const STOP_WORDS = new Set([
 export function tokenizeMessage(message: string): string[] {
   const candidates = new Set<string>();
 
-  // 1. Regex ticker patterns (2-5 letter sequences — could be tickers)
+  // 1. Regex ticker patterns (2-5 letter sequences — could be tickers).
+  //    Only $-prefixed or ALL-CAPS words are ticker candidates here. A bare
+  //    lowercase word is prose — preserve its case so the Tier 1 classifier
+  //    sees it as prose rather than misreading it as a ticker ("one solid
+  //    stick" must not become SOLID/STICK). Lowercase words are still
+  //    collected in original case by step 2 below.
   const tickerMatches = message.match(/\$?\b([A-Z]{2,5})\b/gi);
   if (tickerMatches) {
     for (const m of tickerMatches) {
-      const upper = m.replace('$', '').toUpperCase();
+      const bare = m.replace('$', '');
+      if (!m.startsWith('$') && bare !== bare.toUpperCase()) continue;
+      const upper = bare.toUpperCase();
       if (!NOT_TICKERS.has(upper)) candidates.add(upper);
     }
   }
@@ -192,11 +199,6 @@ async function quickValidate(symbol: string, usSymbols: Set<string>): Promise<Ti
   }
 
   return null;
-}
-
-/** Is this phrase ticker-shaped? (2-5 chars, all alpha, uppercase) */
-function isTickerShaped(phrase: string): boolean {
-  return /^[A-Z]{2,5}$/.test(phrase);
 }
 
 // ── Tier 1: Classify via DeepSeek ─────────────────────────
@@ -615,9 +617,13 @@ export async function resolveTickers(
   }
 
   for (const candidate of allCandidates) {
-    // Only quick-validate ticker-shaped candidates in Tier 0
-    // Non-ticker phrases (company names, descriptive refs) skip Tier 0 entirely
-    if (isTickerShaped(candidate)) {
+    // Tier 0 fast-path: quick-validate anything that could be a ticker —
+    // uppercase ticker-shaped phrases AND bare 2-5 letter words (a real ticker
+    // typed in lowercase like "nvda"). quickValidate uppercases internally, so
+    // both hit the cache case-insensitively. A lowercase word that is NOT a real
+    // ticker (e.g. "solid", "stick") misses the cache and correctly falls
+    // through to Tier 1 as prose.
+    if (/^[A-Za-z]{2,5}$/.test(candidate)) {
       const validated = await quickValidate(candidate, usSymbols);
       if (validated) {
         resolved.push(validated);
@@ -625,7 +631,7 @@ export async function resolveTickers(
         unmatchedTier0.push(candidate);
       }
     } else {
-      // Non-ticker phrase — always goes to Tier 1 classification
+      // Multi-word / non-ticker phrase — always goes to Tier 1 classification
       unmatchedTier0.push(candidate);
     }
   }
