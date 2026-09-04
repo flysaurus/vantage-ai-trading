@@ -102,6 +102,7 @@ export default function RebalancingPage() {
   const storeAccount = usePortfolioStore(s => s.account) as (AccountSummary & { sectorAllocations?: any[] }) | null;
   const [account, setAccount] = useState<(AccountSummary & { sectorAllocations?: any[] }) | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isReadOnly, setIsReadOnly] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
@@ -113,7 +114,16 @@ export default function RebalancingPage() {
       // Check broker status (fire and forget — doesn't block)
 apiGet('/api/broker/status')
         .then(r => r.ok ? r.json() : null)
-        .then(data => { if (!cancelled && data?.isConnected) setIsConnected(true); })
+        .then(data => {
+          if (cancelled) return;
+          // Route returns `connected` (NOT `isConnected`) — reading the wrong
+          // key previously left isConnected permanently false (always demo).
+          if (data?.connected) {
+            setIsConnected(true);
+            // Read-only (view-only) connections are connected but can't trade.
+            if (data?.trading_enabled === false) setIsReadOnly(true);
+          }
+        })
         .catch(() => {});
 
       // If store already has data from usePortfolio (on main dashboard), use it
@@ -553,6 +563,14 @@ apiGet('/api/broker/status')
     setConfirmOpen(false);
     setSubmitting(true);
 
+    // Read-only connections can't place orders — defensive guard (button is
+    // already hidden in the confirm modal, but never execute on view-only).
+    if (isReadOnly) {
+      setSubmitting(false);
+      setToast('Read-only account — rebalancing orders can\'t be placed');
+      return;
+    }
+
     // Demo mode: simulate order placement
     if (!isConnected) {
       const total = editedOrders.length;
@@ -623,6 +641,13 @@ apiGet('/api/broker/status')
     setConfirmOpen(false);
     setSubmitting(true);
 
+    // Read-only connections can't place orders — defensive guard.
+    if (isReadOnly) {
+      setSubmitting(false);
+      setToast('Read-only account — rebalancing orders can\'t be placed');
+      return;
+    }
+
     // Demo mode: simulate
     if (!isConnected) {
       await new Promise(r => setTimeout(r, 800));
@@ -686,7 +711,7 @@ apiGet('/api/broker/status')
               <>
                 <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>Execute Rebalance</div>
                 <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 16 }}>
-                  {isConnected ? 'Orders will be placed with your connected brokerage' : 'Demo mode — orders simulated'}
+                  {isReadOnly ? 'Read-only account — orders can\'t be placed' : isConnected ? 'Orders will be placed with your connected brokerage' : 'Demo mode — orders simulated'}
                 </div>
 
                 {/* Order summary table */}
@@ -738,20 +763,26 @@ apiGet('/api/broker/status')
                     {execProgress}
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button onClick={() => setConfirmOpen(false)} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #475569', background: 'none', color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    Cancel
-                  </button>
-                  <button onClick={executeQueue} disabled={submitting} style={{ flex: 1.5, padding: 10, borderRadius: 8, border: 'none', background: submitting ? '#334155' : 'linear-gradient(135deg, #06b6d4, #0d9488)', color: submitting ? '#64748b' : '#0f172a', fontSize: 13, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
-                    {submitting ? 'Placing Orders...' : 'Execute Rebalance'}
-                  </button>
-                </div>
+                {isReadOnly ? (
+                  <div style={{ padding: '12px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 10, fontSize: 12, color: '#fbbf24', textAlign: 'center', lineHeight: 1.5 }}>
+                    ⚠️ Read-only account — rebalancing orders can't be placed. Review or download this plan, then execute it on a trading-enabled account.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={() => setConfirmOpen(false)} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #475569', background: 'none', color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      Cancel
+                    </button>
+                    <button onClick={executeQueue} disabled={submitting} style={{ flex: 1.5, padding: 10, borderRadius: 8, border: 'none', background: submitting ? '#334155' : 'linear-gradient(135deg, #06b6d4, #0d9488)', color: submitting ? '#64748b' : '#0f172a', fontSize: 13, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+                      {submitting ? 'Placing Orders...' : 'Execute Rebalance'}
+                    </button>
+                  </div>
+                )}
               </>
             ) : (
               <>
                 <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>Execute Rebalance</div>
                 <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 16 }}>
-                  {isConnected ? 'Orders will be placed with your connected brokerage' : 'Demo mode — orders simulated'}
+                  {isReadOnly ? 'Read-only account — orders can\'t be placed' : isConnected ? 'Orders will be placed with your connected brokerage' : 'Demo mode — orders simulated'}
                 </div>
                 <div style={{ marginBottom: 12, borderRadius: 8, overflow: 'hidden', border: '1px solid #1e293b' }}>
                   <div style={{ display: 'flex', padding: '8px 10px', background: '#0f172a', fontSize: 10, fontWeight: 700, color: '#e2e8f0', textTransform: 'uppercase' }}>
@@ -784,14 +815,20 @@ apiGet('/api/broker/status')
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(6,182,212,0.06)', borderRadius: 8, marginBottom: 16, fontSize: 11, color: '#94a3b8' }}>
                   <span>{trades.length} trades · ${totalTradeValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button onClick={() => setConfirmOpen(false)} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #475569', background: 'none', color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    Cancel
-                  </button>
-                  <button onClick={executeRebalance} disabled={submitting} style={{ flex: 1.5, padding: 10, borderRadius: 8, border: 'none', background: submitting ? '#334155' : 'linear-gradient(135deg, #06b6d4, #0d9488)', color: submitting ? '#64748b' : '#0f172a', fontSize: 13, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
-                    {submitting ? 'Placing Orders...' : 'Execute Rebalance'}
-                  </button>
-                </div>
+                {isReadOnly ? (
+                  <div style={{ padding: '12px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 10, fontSize: 12, color: '#fbbf24', textAlign: 'center', lineHeight: 1.5 }}>
+                    ⚠️ Read-only account — rebalancing orders can't be placed. Review or download this plan, then execute it on a trading-enabled account.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={() => setConfirmOpen(false)} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #475569', background: 'none', color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      Cancel
+                    </button>
+                    <button onClick={executeRebalance} disabled={submitting} style={{ flex: 1.5, padding: 10, borderRadius: 8, border: 'none', background: submitting ? '#334155' : 'linear-gradient(135deg, #06b6d4, #0d9488)', color: submitting ? '#64748b' : '#0f172a', fontSize: 13, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+                      {submitting ? 'Placing Orders...' : 'Execute Rebalance'}
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -814,6 +851,12 @@ apiGet('/api/broker/status')
           <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: 8, fontSize: 12, color: '#06b6d4', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span>💡</span>
             <span>{isFresh ? 'AI Suggested Plan — review before executing' : sessionId ? 'Populated from AI Advisor' : 'Opened from AI Advisor'}</span>
+          </div>
+        )}
+        {isReadOnly && (
+          <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 8, fontSize: 12, color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>⚠️</span>
+            <span>Read-only account — build and review a rebalance plan, but orders can't be placed.</span>
           </div>
         )}
       </div>
@@ -1323,6 +1366,12 @@ apiGet('/api/broker/status')
         {!isConnected && (
           <div style={{ fontSize: 10, color: '#fbbf24', textAlign: 'center', marginBottom: 8, fontWeight: 500 }}>
             ⚠️ Demo mode — orders will be simulated
+          </div>
+        )}
+        {/* Read-only warning */}
+        {isReadOnly && (
+          <div style={{ fontSize: 10, color: '#fbbf24', textAlign: 'center', marginBottom: 8, fontWeight: 500 }}>
+            ⚠️ Read-only account — orders can't be placed
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

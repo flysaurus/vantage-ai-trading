@@ -131,6 +131,7 @@ export default function TaxHarvestingPage() {
   const [tradeSummary, setTradeSummary] = useState<TradeSummary>({ realizedGains: 0, realizedLosses: 0, netPosition: 0 });
   const [isConnected, setIsConnected] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
+  const [isReadOnly, setIsReadOnly] = useState(false);
 
   // UI state
   const [selectedHarvests, setSelectedHarvests] = useState<Record<string, HarvestSelection>>({});
@@ -155,17 +156,21 @@ export default function TaxHarvestingPage() {
 
         // Check broker status
         let connected = false;
+        let readOnly = false;
         try {
           const statusRes = await apiGet('/api/broker/status');
           if (statusRes.ok) {
             const status = await statusRes.json();
             connected = status.connected || status.isConnected || false;
+            // Read-only (view-only) connections are connected but can't trade.
+            readOnly = connected && status.trading_enabled === false;
           }
         } catch { /* use demo fallback */ }
 
         if (cancelled) return;
         setIsConnected(connected);
         setIsDemo(!connected);
+        setIsReadOnly(readOnly);
 
         // Load positions
         let posList: Position[] = [];
@@ -337,6 +342,12 @@ export default function TaxHarvestingPage() {
   }, []);
 
   const handleExecute = async () => {
+    // Read-only connections can't place orders — defensive guard (button is
+    // already disabled, but never execute on view-only).
+    if (isReadOnly) {
+      setToast('Read-only account — trading unavailable');
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await await apiPost('/api/strategies/tax-harvest/execute', {
@@ -406,6 +417,12 @@ export default function TaxHarvestingPage() {
       {isDemo && !loading && (
         <div style={{ padding: '8px 14px', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#fbbf24', marginBottom: 16, textAlign: 'center' }}>
           ⚠️ Demo mode — connect broker to harvest real losses
+        </div>
+      )}
+
+      {isReadOnly && !loading && (
+        <div style={{ padding: '8px 14px', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#fbbf24', marginBottom: 16, textAlign: 'center' }}>
+          ⚠️ Read-only account — you can review harvest opportunities but can't execute trades
         </div>
       )}
 
@@ -627,20 +644,25 @@ export default function TaxHarvestingPage() {
             ⚠️ Demo mode — connect broker to execute live trades
           </div>
         )}
+        {isReadOnly && selectedCount > 0 && (
+          <div style={{ fontSize: 10, color: '#fbbf24', textAlign: 'center', marginBottom: 8, fontWeight: 500 }}>
+            ⚠️ Read-only account — trading unavailable
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button
             onClick={() => setShowConfirm(true)}
-            disabled={selectedCount === 0 || submitting || !isConnected}
+            disabled={selectedCount === 0 || submitting || !isConnected || isReadOnly}
             style={{
               flex: 1, padding: 14, borderRadius: 10, border: 'none',
-              background: selectedCount > 0 && !submitting && isConnected ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155',
-              color: selectedCount > 0 && !submitting && isConnected ? '#0f172a' : '#64748b',
+              background: selectedCount > 0 && !submitting && isConnected && !isReadOnly ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155',
+              color: selectedCount > 0 && !submitting && isConnected && !isReadOnly ? '#0f172a' : '#64748b',
               fontSize: 15, fontWeight: 700,
-              cursor: selectedCount > 0 && !submitting && isConnected ? 'pointer' : 'not-allowed',
+              cursor: selectedCount > 0 && !submitting && isConnected && !isReadOnly ? 'pointer' : 'not-allowed',
               fontFamily: 'inherit', transition: 'all 0.2s ease',
             }}
           >
-            {submitting ? 'Executing...' : isConnected ? `Execute Harvest (${selectedCount})` : 'Connect Broker to Execute'}
+            {submitting ? 'Executing...' : isReadOnly ? 'Read-only — unavailable' : isConnected ? `Execute Harvest (${selectedCount})` : 'Connect Broker to Execute'}
           </button>
           <button onClick={() => router.back()} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             Cancel
