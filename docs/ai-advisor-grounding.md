@@ -1,6 +1,6 @@
 # AI Advisor Grounding & Account-Action Design
 
-**Status:** Phase 1 implemented. Phases 2–4 proposed (awaiting Em sign-off on mutations).
+**Status:** Phase 1 implemented. Phase 2 (account-action tools + intents) **implemented**. Phases 3–4 outstanding (Phase 4 needs explicit go-ahead — real money).
 
 ## Problem
 The AI Advisor ("Vantage AI") answers account/profile questions on a **light path** with no
@@ -33,15 +33,28 @@ and has no $1,000 ETF; real portfolio ≈ $101K with ~$755 invested.
      PORTFOLIO CONTEXT; if context is empty, say so.
    - Annotate example dollar amounts as FORMAT placeholders (stop "$1,000" leaking).
 
-### Phase 2 — Account-action tools + intents (proposed, low-risk mutation: style change)
-Add classifier intents + tools so the model can actually *act* instead of hallucinating:
-- `getPortfolio()` — current positions/cash/equity (from context).
-- `getStyleTargets(style)` — `getInvestorStyleTargets(style)` (ETF allocation targets).
-- `changeInvestorStyle(style)` — validated DB update (same path as `InvestorStyleBadge` /
-  `/api/db/users/update`, `VALID_STYLES`). Reversible, low risk.
-- `getRebalancePlan(style)` — read-only: current holdings vs style targets → trades.
-- Wire compound detection: "change my style to X and rebalance" → change style (tool) → compute
-  rebalance plan (tool) → explain exactly what the app does/will do, grounded.
+### Phase 2 — Account-action tools + intents (IMPLEMENTED)
+Model-facing tools so the advisor can *act* instead of hallucinating. Delivered in three
+sub-phases (all committed Aug 2026):
+- **Read-only tools** (`lib/ai/readonly-tools.ts`, "2a") — `getPortfolio()`, `getStyleTargets(style)`,
+  `getRebalancePlan(style)`, plus `listDcaSchedules`, `listBaskets`, `listAlerts`, `listWatchlist`,
+  `listOrders`. All read-only, safe on every intent.
+- **Money tools** (`lib/ai/money-tools.ts`, "2b/2c") — `previewBuyStock`, `previewSellStock`,
+  `previewExecuteBasket`, `previewDca*`, `previewAlert*`, `previewWatchlist*`. PREVIEW-ONLY: they
+  validate + stage a short-lived `pending_action` (5-min TTL, one-outstanding-per-user) and never
+  execute. The deterministic confirm gate (`lib/ai/confirm.ts` + `lib/ai/executors.ts`) runs the
+  real side effect only after a terse user confirm.
+- **Deterministic style/risk mutations** (`app/api/chat/route.ts`, profile_mutation branch) —
+  `changeInvestorStyle(style)` is NOT a model tool; it is intercepted by `classify()` →
+  `profile_mutation` → `extractStyleTarget` and written to `users.investor_style` directly
+  (with `extractRiskTarget` → `users.risk_tolerance`). This is deliberate (Phase 1 design):
+  rigid intents never originate outside the classifier. Classifier fallback handles phrasings the
+  regex misses (`profileField`/`profileValue` → `normalizeStyle`).
+- **Compound detection** — "change my style to X and rebalance" is handled in the same
+  profile_mutation branch: it checks `extractRebalanceTarget().rebalance` and chains
+  `computeRebalancePlan` after the style write.
+
+Test coverage: `tests/readonly-tools.test.ts` + `tests/money-tools.test.ts` (added 2026-09-04).
 
 ### Phase 3 — Light-path validation ("solid check", proposed)
 Post-generation grounding check for account/portfolio-relative light-path responses: detect
