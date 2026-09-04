@@ -50,7 +50,8 @@ export function buildRebalanceOrderRequest(
   };
 }
 
-/** Build the `orders` insert row for a share-based rebalance leg. */
+/** Build the `orders` insert row for a share-based leg. `source` tags the
+ *  order's origin (rebalance / tax_harvest) for downstream attribution. */
 export function buildRebalanceInsertRow(params: {
   orderId: string;
   userId: string;
@@ -58,8 +59,9 @@ export function buildRebalanceInsertRow(params: {
   trade: RebalanceTrade;
   result: OrderResult;
   now: string;
+  source?: string;
 }): Record<string, unknown> {
-  const { orderId, userId, brokerConnectionId, trade, result, now } = params;
+  const { orderId, userId, brokerConnectionId, trade, result, now, source = 'rebalance' } = params;
   const symbol = trade.symbol.toUpperCase();
   const requestedAmount =
     result.fillPrice && result.fillPrice > 0
@@ -83,7 +85,7 @@ export function buildRebalanceInsertRow(params: {
     time_in_force: 'day',
     is_demo: false,
     brokerage_order_id: result.orderId || null,
-    source: 'rebalance',
+    source,
     created_at: now,
   };
 }
@@ -97,6 +99,7 @@ export async function placeRebalanceTrade(
   broker: { placeOrder: (req: OrderRequest) => Promise<OrderResult> },
   supabase: { from: (table: string) => any },
   params: { userId: string; brokerConnectionId: string; trade: RebalanceTrade },
+  source: string = 'rebalance',
 ): Promise<RebalanceLegOutcome> {
   const { userId, brokerConnectionId, trade } = params;
   const symbol = trade.symbol.toUpperCase();
@@ -129,6 +132,7 @@ export async function placeRebalanceTrade(
         trade,
         result,
         now: new Date().toISOString(),
+        source,
       });
       await supabase.from('orders').insert(row).select('id').single();
       persisted = true;
