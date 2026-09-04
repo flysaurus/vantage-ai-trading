@@ -53,7 +53,7 @@ import {
   resolveVehicleForRequest,
   detectVehicleAnswer,
 } from '@/lib/ai/manager'
-import { classify } from '@/lib/ai/classifier'
+import { classify, type ClassifierResult } from '@/lib/ai/classifier'
 import { logClassifierAudit } from '@/lib/ai/classifier-audit'
 import { validateResponse } from '@/lib/ai/validator'
 
@@ -153,6 +153,53 @@ function buildAccountContext(meta: {
   const envLabel = meta.environment === 'paper' ? 'paper trading' : 'live';
   const tradeNote = meta.tradingEnabled ? ' Trading is enabled.' : ' Trading is READ-ONLY — the user cannot place orders from this account.';
   return `🔒 ACCOUNT CONTEXT: Connected to ${meta.brokerName} (${envLabel} environment). These are REAL ${envLabel === 'live' ? 'positions with real money' : 'paper-trading positions'}.${tradeNote}`;
+}
+
+// ─── Holdings-callout scope (SSE dataCallout event) ──────────────────
+// The server decides WHICH holdings to surface in a client-side callout based
+// on the classified intent. The client renders from its OWN live PortfolioContext
+// (never trusts server-sent numbers), so the event only carries scope + tickers.
+export interface DataCalloutEvent {
+  scope: 'holdings' | 'positions';
+  /** For scope='positions': the held tickers to show. Omitted for 'holdings'. */
+  tickers?: string[] | null;
+}
+
+/**
+ * Determine whether (and how) to surface a holdings callout for a classified
+ * message. Deterministic — no prose heuristics, no trust in model output.
+ *
+ * Rule 1+2: `portfolio_relative_question` / `account_state` → full holdings.
+ * Rule 3: `single_security_research` / `comparative` → only the mentioned
+ *         tickers the user ACTUALLY holds (intersection).
+ */
+function resolveDataCallout(
+  classification: ClassifierResult,
+  portfolioSnapshot: PortfolioSnapshot | null,
+  lastMessage: string,
+): DataCalloutEvent | null {
+  const hasHoldings = !!(portfolioSnapshot && portfolioSnapshot.positions.length > 0);
+  if (!hasHoldings) return null;
+
+  const category = classification.category;
+
+  if (category === 'portfolio_relative_question' || category === 'account_state') {
+    return { scope: 'holdings' };
+  }
+
+  // Rule 3: research/comparative — surface ONLY held tickers mentioned in the
+  // message. Never surfaces a ticker the user doesn't own (e.g. "NVDA vs AMD"
+  // while holding only NVDA → callout shows NVDA only).
+  if (category === 'single_security_research' || category === 'comparative') {
+    const mentioned = new Set(extractTickers(lastMessage).map(t => t.toUpperCase()));
+    if (mentioned.size === 0) return null;
+    const held = portfolioSnapshot!.positions.map(p => (p.symbol || '').toUpperCase());
+    const intersection = held.filter(s => mentioned.has(s));
+    if (intersection.length === 0) return null;
+    return { scope: 'positions', tickers: intersection };
+  }
+
+  return null;
 }
 
 // Known single-letter NYSE/Nasdaq tickers
@@ -603,12 +650,15 @@ function buildVehicleClarifyResponse(): Response {
  *  streaming path. Use this for EVERY deterministic (non-model) response so it
  *  actually renders: the client ONLY parses `data: {...}` SSE lines, so a plain
  *  `Response.json({ content })` body is silently dropped (empty AI bubble). */
-function textSSEResponse(content: string, action?: { kind: string }): Response {
+function textSSEResponse(content: string, action?: { kind: string }, dataCallout?: DataCalloutEvent): Response {
   const encoder = new TextEncoder();
   const body = new ReadableStream({
     start(controller) {
       if (action) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ action })}\n\n`));
+      }
+      if (dataCallout) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ dataCallout })}\n\n`));
       }
       controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`));
       controller.enqueue(encoder.encode('data: [DONE]\n\n'));
@@ -1228,7 +1278,7 @@ export async function POST(req: Request) {
     if (mode !== 'alerts' && detectAccountStateIntent(lastMessage)) {
       if (portfolioSnapshot && (portfolioSnapshot.equity > 0 || portfolioSnapshot.positions.length > 0)) {
         console.log('[chat] 🧭 account-state → deterministic answer');
-        return textSSEResponse(buildAccountStateAnswer(portfolioSnapshot, profile.riskTolerance));
+        return textSSEResponse(buildAccountStateAnswer(portfolioSnapshot, profile.riskTolerance), undefined, { scope: 'holdings' });
       }
       // No portfolio loaded → fall through so the model prompts broker connection.
     }
@@ -1499,7 +1549,7 @@ export async function POST(req: Request) {
 
       if (classification.category === 'account_state') {
         if (portfolioSnapshot && (portfolioSnapshot.equity > 0 || portfolioSnapshot.positions.length > 0)) {
-          return textSSEResponse(buildAccountStateAnswer(portfolioSnapshot, profile.riskTolerance));
+          return textSSEResponse(buildAccountStateAnswer(portfolioSnapshot, profile.riskTolerance), undefined, { scope: 'holdings' });
         }
         // No portfolio loaded → let the model prompt the user to connect a broker.
         console.log('[chat] 🧭 account_state with no portfolio → fall through to model');
@@ -2031,6 +2081,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
 
     const encoder = new TextEncoder();
     const fullResponse: string[] = []; // ALL text from ALL tool-call turns
+    const dataCallout = resolveDataCallout(classification, portfolioSnapshot, lastMessage);
     const readable = new ReadableStream({
       async start(controller) {
         try {
@@ -2041,6 +2092,14 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         const MAX_TOOL_TURNS = 8; // enough for complex portfolios with many symbol lookups (pharma, minerals, etc.)
         const convMessages: Array<{ role: 'user' | 'assistant'; content: any }> =
           [...initialMessages];
+
+        // ── Holdings callout (SSE dataCallout) ──
+        // Emitted BEFORE the first text byte so the client can render the holdings
+        // callout (from its own live PortfolioContext) alongside the streamed
+        // answer. Server only signals scope/tickers — never position numbers.
+        if (dataCallout) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ dataCallout })}\n\n`));
+        }
 
         // ── Screening results checklist ──
         if (isMixedVehicle) {

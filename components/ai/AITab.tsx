@@ -22,6 +22,7 @@ import type { PortfolioBlock } from '@/lib/portfolio-types';
 import { parseClarifyMarkers, questionsToOptions, ClarifyingOptions, ClarifyStepper, type ClarifyingOption, type ClarifyingQuestion } from '@/components/ai/ClarifyingOptions';
 import { SummaryCard } from '@/components/ai/SummaryCard';
 import { PositionCards } from '@/components/ai/PositionCards';
+import { HoldingsCallout } from '@/components/ai/HoldingsCallout';
 import { ProgressIndicator, type ChecklistItem } from '@/components/ai/ProgressIndicator';
 import TradeTicket from '@/components/portfolio/TradeTicket';
 import CompassIcon from '@/components/CompassIcon';
@@ -289,6 +290,28 @@ export function AITab({ messages, setMessages }: AITabProps) {
       else localStorage.removeItem('vantage:rebalance-action');
     } catch {}
   }, [rebalanceAction]);
+
+  // ── Holdings callout tag (SSE dataCallout) ──
+  // Server emits { scope, tickers } when the classified intent warrants a holdings
+  // data panel (portfolio_relative_question / account_state → full; research/comparative
+  // → held-ticker intersection). Mirrors the rebalanceAction pattern: persisted so the
+  // callout survives tab switches, and gated on `msgId === msg.id` at render time.
+  const [dataCallout, setDataCallout] = useState<{ scope: 'holdings' | 'positions'; tickers?: string[] | null; msgId: string } | null>(() => {
+    try {
+      const raw = localStorage.getItem('vantage:data-callout');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && (parsed.scope === 'holdings' || parsed.scope === 'positions') && typeof parsed.msgId === 'string') return parsed;
+    } catch {}
+    return null;
+  });
+
+  useEffect(() => {
+    try {
+      if (dataCallout) localStorage.setItem('vantage:data-callout', JSON.stringify(dataCallout));
+      else localStorage.removeItem('vantage:data-callout');
+    } catch {}
+  }, [dataCallout]);
 
   // ── TL;DR toggle state (set of collapsed message indices) ──
   const [collapsedTLDRs, setCollapsedTLDRs] = useState<Set<number>>(new Set());
@@ -1368,6 +1391,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
                   refreshUser();
                 }
               }
+              if (data.dataCallout) {
+                // Holdings callout — server decided scope+tickers; render from live
+                // PortfolioContext (never server numbers). Tagged to this AI message.
+                setDataCallout({
+                  scope: data.dataCallout.scope,
+                  tickers: data.dataCallout.tickers ?? null,
+                  msgId: aiMsgId,
+                });
+              }
               if (data.corrections) {
                 // Server-side marker validation caught a hallucinated ticker
                 correctedTextRef.current = data.correctedText;
@@ -2089,6 +2121,11 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               <div style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.38)', marginBottom: '6px', letterSpacing: '0.02em' }}>
                 Vantage AI Advisor
               </div>
+              {/* Holdings callout — data panel rendered from live PortfolioContext when
+                  the server tagged this message with a dataCallout (scope+tickers). */}
+              {dataCallout && dataCallout.msgId === msg.id && (
+                <HoldingsCallout account={liveAccount} scope={dataCallout.scope} tickers={dataCallout.tickers} />
+              )}
               {(() => {
                 // ── Show progress indicator while AI is generating ──
                 // Replaces raw reasoning text with branded pipeline stages
