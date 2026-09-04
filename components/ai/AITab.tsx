@@ -117,6 +117,25 @@ interface Message {
   role: 'user' | 'ai';
   content: string;
   id?: string;
+  download?: DownloadPayload;
+}
+
+/** Structured export payload attached to a downloadable AI response. */
+interface DownloadPayload {
+  title: string;
+  subtitle?: string | null;
+  thesis?: string | null;
+  grandTotal?: number | null;
+  rows: Array<{
+    ticker: string;
+    company?: string | null;
+    action: 'buy' | 'sell' | 'hold';
+    qty?: number | null;
+    amountUsd?: number | null;
+    price?: number | null;
+    lineTotal?: number | null;
+    note?: string | null;
+  }>;
 }
 
 interface AITabProps {
@@ -315,6 +334,38 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   // ── TL;DR toggle state (set of collapsed message indices) ──
   const [collapsedTLDRs, setCollapsedTLDRs] = useState<Set<number>>(new Set());
+
+  // ── Downloadable-export payload (SSE `download` event) ──
+  // Held in a ref during streaming, attached to the committed AI message at
+  // stream end. Multiple messages can be downloadable, so it lives on the
+  // message object (unlike the single dataCallout/rebalanceAction states).
+  const downloadRef = useRef<DownloadPayload | null>(null);
+
+  const handleDownloadExport = useCallback(async (payload: DownloadPayload) => {
+    try {
+      const res = await fetch('/api/ai/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        setToast('Download failed — please try again.');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cd = res.headers.get('Content-Disposition') || '';
+      a.download = cd.match(/filename="([^"]+)"/)?.[1] || 'vantage-export.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch {
+      setToast('Download failed — please try again.');
+    }
+  }, [setToast]);
 
   // ── Sequential clarifying-question stepper ──
   // When an AI response contains multiple [CLARIFY:{...}] markers,
@@ -1318,6 +1369,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
       const aiMsgId = crypto.randomUUID();
       lastAiMessageIdRef.current = aiMsgId;
+      downloadRef.current = null; // reset per-message — never carry a stale payload into a retry
       setMessages(prev => [...prev, { role: 'ai', content: '', id: aiMsgId }]);
 
       // SSE events (data: {...}\n\n) are NOT guaranteed to arrive aligned to
@@ -1399,6 +1451,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
                   tickers: data.dataCallout.tickers ?? null,
                   msgId: aiMsgId,
                 });
+              }
+              if (data.download) {
+                // Downloadable export — server emitted the structured payload
+                // (rebalance plan / portfolio build). Attach at stream end.
+                downloadRef.current = data.download as DownloadPayload;
               }
               if (data.corrections) {
                 // Server-side marker validation caught a hallucinated ticker
@@ -1557,10 +1614,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }
 
       // Commit validated content to the AI message bubble
+      const pendingDownload = downloadRef.current;
+      downloadRef.current = null;
       setMessages(prev => {
         const updated = [...prev];
         if (updated.length > 0 && updated[updated.length - 1].role === 'ai') {
-          updated[updated.length - 1] = { ...updated[updated.length - 1], role: 'ai' as const, content: finalContent };
+          updated[updated.length - 1] = { ...updated[updated.length - 1], role: 'ai' as const, content: finalContent, ...(pendingDownload ? { download: pendingDownload } : {}) };
         }
         return updated;
       });
@@ -2390,6 +2449,35 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   </div>
                 );
               })()}
+              {/* Downloadable export — server tagged this response with a structured
+                  export payload (rebalance plan / portfolio build). Show the button
+                  on ANY such message (not just the last), so historical plans stay
+                  exportable within the session. */}
+              {msg.download && (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '12px', alignItems: 'center' }}>
+                  <button
+                    onClick={() => handleDownloadExport(msg.download!)}
+                    style={{
+                      background: 'rgba(34,211,238,0.12)',
+                      border: '1px solid rgba(34,211,238,0.35)',
+                      borderRadius: '8px',
+                      color: '#22d3ee',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      padding: '8px 14px',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    ⬇️ Download .xlsx
+                  </button>
+                  {msg.download.rows.length > 0 && (
+                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
+                      {msg.download.rows.length} line{msg.download.rows.length === 1 ? '' : 's'} · {msg.download.title}
+                    </span>
+                  )}
+                </div>
+              )}
               {/* Inline trade buttons (Demo/Gold only) */}
               {(() => {
                 if (tier === 'silver') return null;

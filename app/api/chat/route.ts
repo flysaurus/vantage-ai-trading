@@ -17,6 +17,9 @@ import { buildProfileAnswer, type ProfileQuestionKind } from '@/lib/ai/profile-a
 import { buildAppHelpAnswer, type AppHelpKind } from '@/lib/ai/app-help'
 import { extractRiskTarget, extractStyleTarget, extractRebalanceTarget, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioGroundingMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, buildScheduledActivityAnswer, isDcaCreationCommand, parseOrderHistoryWindow, orderHistoryWindowLabel, buildOrderHistoryAnswer, buildTaxLossHarvestAnswer, type OrderHistoryRow } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
+import { planToExportPayload } from '@/lib/export/rebalance-export'
+import { buildMarkerExportPayload } from '@/lib/export/marker-export'
+import type { ExportPayload } from '@/lib/export/xlsx'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
 import { MONEY_TOOLS, executeMoneyTool } from '@/lib/ai/money-tools'
@@ -164,6 +167,13 @@ export interface DataCalloutEvent {
   /** For scope='positions': the held tickers to show. Omitted for 'holdings'. */
   tickers?: string[] | null;
 }
+
+/**
+ * Downloadable-export payload for a structured AI response (rebalance plan,
+ * portfolio build, basket preview, etc.). The client renders a Download button
+ * on the message and POSTs this payload to `/api/ai/export` on click.
+ */
+export interface DownloadEvent extends ExportPayload {}
 
 /**
  * Determine whether (and how) to surface a holdings callout for a classified
@@ -650,7 +660,7 @@ function buildVehicleClarifyResponse(): Response {
  *  streaming path. Use this for EVERY deterministic (non-model) response so it
  *  actually renders: the client ONLY parses `data: {...}` SSE lines, so a plain
  *  `Response.json({ content })` body is silently dropped (empty AI bubble). */
-function textSSEResponse(content: string, action?: { kind: string }, dataCallout?: DataCalloutEvent): Response {
+function textSSEResponse(content: string, action?: { kind: string }, dataCallout?: DataCalloutEvent, download?: DownloadEvent): Response {
   const encoder = new TextEncoder();
   const body = new ReadableStream({
     start(controller) {
@@ -659,6 +669,9 @@ function textSSEResponse(content: string, action?: { kind: string }, dataCallout
       }
       if (dataCallout) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ dataCallout })}\n\n`));
+      }
+      if (download) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ download })}\n\n`));
       }
       controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`));
       controller.enqueue(encoder.encode('data: [DONE]\n\n'));
@@ -1286,7 +1299,7 @@ export async function POST(req: Request) {
       });
       if (!action) return textSSEResponse('Failed to stage the rebalance — please try again.');
       console.log(`[chat] 🔒 staged rebalance_execute (${legs.length} legs) for user ${userId.slice(0, 8)}`);
-      return textSSEResponse(formatRebalanceExecutionPreview(plan), { kind: 'rebalance_confirm' });
+      return textSSEResponse(formatRebalanceExecutionPreview(plan), { kind: 'rebalance_confirm' }, undefined, planToExportPayload(plan));
     }
 
     // (Style/risk mutations + rebalance plans are now confirm-only, gated on
@@ -1395,7 +1408,7 @@ export async function POST(req: Request) {
             const plan = computeRebalancePlan(portfolioSnapshot, targetStyle);
             return textSSEResponse(`✅ Your investor style is now **${styleLabel(style)}**.
 
-` + formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' });
+` + formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' }, undefined, planToExportPayload(plan));
           }
           return textSSEResponse(formatStyleChangeAnswer(style, profile.riskTolerance), { kind: 'style_changed' });
         }
@@ -1443,7 +1456,7 @@ export async function POST(req: Request) {
             customAmount: scope.customAmount ?? undefined,
             assetClass,
           });
-          return textSSEResponse(formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' });
+          return textSSEResponse(formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' }, undefined, planToExportPayload(plan));
         }
         if (detectCashOnlyRebalance(lastMessage)) {
           return textSSEResponse(formatAssetClassPrompt('cash-only'), { kind: 'rebalance_asset' });
@@ -2553,6 +2566,18 @@ Use these for any market-direction questions ("how are markets today?", "any sel
             }
           } catch (e) {
             console.error('[chat] confirm_pending detection error:', e);
+          }
+        }
+
+        // ── Marker-gated downloadable export ──
+        // Structured responses (portfolio builds, basket previews, position
+        // analyses) carry [PORTFOLIO:]/[POSITION:]/[RECOMMEND:] markers. Extract
+        // a downloadable .xlsx payload from them (never from prose) so the
+        // client can render a Download button. Skipped on rejected responses.
+        if (!validationRejected) {
+          const downloadPayload = buildMarkerExportPayload(responseText);
+          if (downloadPayload) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ download: downloadPayload })}\n\n`));
           }
         }
 
