@@ -1,6 +1,6 @@
 # AI Advisor Grounding & Account-Action Design
 
-**Status:** Phase 1 implemented. Phase 2 (account-action tools + intents) **implemented**. Phases 3–4 outstanding (Phase 4 needs explicit go-ahead — real money).
+**Status:** Phase 1 implemented. Phase 2 (account-action tools + intents) **implemented**. Phase 3 (light-path "solid check") **implemented**. Phase 4 outstanding (needs explicit go-ahead — real money).
 
 ## Problem
 The AI Advisor ("Vantage AI") answers account/profile questions on a **light path** with no
@@ -56,11 +56,27 @@ sub-phases (all committed Aug 2026):
 
 Test coverage: `tests/readonly-tools.test.ts` + `tests/money-tools.test.ts` (added 2026-09-04).
 
-### Phase 3 — Light-path validation ("solid check", proposed)
-Post-generation grounding check for account/portfolio-relative light-path responses: detect
-referenced `$` amounts / portfolio totals / held tickers and cross-check against the injected
-`portfolioContext`; on mismatch, inject a correction or regenerate. (Full pipeline already
-validates `[PORTFOLIO:]` blocks.)
+### Phase 3 — Light-path validation ("solid check", IMPLEMENTED)
+Post-generation grounding check for account/portfolio-relative light-path responses. Wired at
+`app/api/chat/route.ts` (~line 2255) via `detectPortfolioGroundingMismatch(responseText,
+portfolioSnapshot)`, which composes three read-only cross-checks in
+`lib/ai/account-actions.ts`:
+- **Portfolio total** — `detectPortfolioTotalMismatch(text, equity)`: flags a claimed
+  portfolio/account total that deviates >5% from actual equity (pattern fixed to also catch
+  "is worth" / "is valued at" phrasings).
+- **Cash** — `detectCashMismatch(text, cash)`: flags a fabricated cash-balance claim
+  ("your cash is $X" / "$X in cash") >5% off actual cash (or any non-trivial claim when cash is $0).
+- **Held tickers** — `detectUnheldTickerClaim(text, heldSymbols)`: flags "you own/hold X",
+  "your position in X", "you have N shares of X" for tickers NOT in positions. Only fires when
+  holdings data is authoritative (non-empty positions), so it never contradicts an unavailable feed.
+  Mixed-case company names ("Apple") and common words (`NOT_TICKERS`) are skipped.
+
+On any mismatch the backstop appends an honest `⚠️ *Correction: …*` note to the streamed answer
+(instead of letting the hallucination stand). Test coverage: `tests/grounding-check.test.ts`.
+
+**Known limitation:** the co-reference phrasing "you already own several of those" (no explicit
+ ticker) is not caught — only explicit ticker ownership claims are. (Full pipeline already
+ validates `[PORTFOLIO:]` blocks.)
 
 ### Phase 4 — Rebalance execution rewire (proposed, touches REAL orders — report-before-fix)
 `/api/strategies/rebalancing/execute` currently uses the **legacy direct-Alpaca path**

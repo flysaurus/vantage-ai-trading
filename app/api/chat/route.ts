@@ -15,7 +15,7 @@ import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { buildProfileAnswer, type ProfileQuestionKind } from '@/lib/ai/profile-answers'
 import { buildAppHelpAnswer, type AppHelpKind } from '@/lib/ai/app-help'
-import { extractRiskTarget, extractStyleTarget, extractRebalanceTarget, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, buildScheduledActivityAnswer, isDcaCreationCommand, parseOrderHistoryWindow, orderHistoryWindowLabel, buildOrderHistoryAnswer, buildTaxLossHarvestAnswer, type OrderHistoryRow } from '@/lib/ai/account-actions'
+import { extractRiskTarget, extractStyleTarget, extractRebalanceTarget, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioGroundingMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, buildScheduledActivityAnswer, isDcaCreationCommand, parseOrderHistoryWindow, orderHistoryWindowLabel, buildOrderHistoryAnswer, buildTaxLossHarvestAnswer, type OrderHistoryRow } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
@@ -2253,10 +2253,11 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           // buy/sell buttons render for a message that wasn't a recommendation.
           responseText = responseText.replace(/\[RECOMMEND:[^\]]*\]/g, '');
           // Phase 3 grounding backstop: if the light-path model fabricated a
-          // portfolio/account total that deviates >5% from the actual equity,
-          // append an honest correction instead of letting the hallucination stand.
-          if (portfolioSnapshot && portfolioSnapshot.equity > 0) {
-            const correction = detectPortfolioTotalMismatch(responseText, portfolioSnapshot.equity);
+          // portfolio/account total, cash figure, or claimed ownership of a ticker
+          // it doesn't hold, append an honest correction instead of letting the
+          // hallucination stand.
+          if (portfolioSnapshot) {
+            const correction = detectPortfolioGroundingMismatch(responseText, portfolioSnapshot);
             if (correction) {
               console.log('[chat] 🔧 Phase 3 grounding correction appended');
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: correction })}\n\n`));

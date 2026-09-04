@@ -8,6 +8,7 @@
 import { getStyleConfig, getAllStyleLabels } from '@/lib/investor-style-defaults';
 import { getInvestorStyleTargets, resolveRebalanceTargets, type AssetClass } from '@/lib/investor-style-targets';
 import { getRiskTolerancePrompt } from '@/lib/ai/userProfile';
+import { NOT_TICKERS } from '@/lib/symbol-resolution';
 
 const VALID_STYLES = ['buffett', 'lynch', 'livermore', 'soros', 'munger'];
 
@@ -1220,9 +1221,9 @@ export function formatRebalancePlanAnswer(plan: RebalancePlan): string {
 export function detectPortfolioTotalMismatch(text: string, actualEquity: number): string | null {
   if (!text || !actualEquity || actualEquity <= 0) return null;
   const patterns = [
-    /(?:your\s+)?portfolio\s+(?:is\s+|totals?|worth|value(?:d)?\s+at?|valued\s+at)\s+\$?([\d,]+(?:\.\d+)?)/i,
-    /(?:your\s+)?(?:total\s+)?(?:portfolio|account)\s+value\s+(?:is|of)?\s*\$?([\d,]+(?:\.\d+)?)/i,
-    /(?:your\s+)?account\s+(?:is|totals?|worth|value(?:d)?\s+at?|valued\s+at)\s+\$?([\d,]+(?:\.\d+)?)/i,
+    /(?:your\s+)?portfolio\s+(?:is\s+)?(?:worth|totals?|valued\s+at|value(?:d)?(?:\s+at)?|total)\s+(?:about\s+|around\s+|approximately\s+|roughly\s+)?\$?([\d,]+(?:\.\d+)?)/i,
+    /(?:your\s+)?(?:total\s+)?(?:portfolio|account)\s+value\s+(?:is|of)?\s*(?:about\s+|around\s+|approximately\s+)?\$?([\d,]+(?:\.\d+)?)/i,
+    /(?:your\s+)?account\s+(?:is\s+)?(?:worth|totals?|valued\s+at|value(?:d)?(?:\s+at)?|total)\s+(?:about\s+|around\s+|approximately\s+|roughly\s+)?\$?([\d,]+(?:\.\d+)?)/i,
   ];
   for (const p of patterns) {
     const m = p.exec(text);
@@ -1237,4 +1238,86 @@ export function detectPortfolioTotalMismatch(text: string, actualEquity: number)
     }
   }
   return null;
+}
+
+// ─── Phase 3 — Light-path grounding "solid check" ──────────────────────────
+// After the light-path model streams its answer, cross-check any account-relative
+// claims against the server-known portfolio and inject a correction when the
+// model fabricated a figure or claimed ownership of a ticker it doesn't hold.
+// Read-only, no side effects. Composed in detectPortfolioGroundingMismatch().
+// ──────────────────────────────────────────────────────────────────────────
+
+/** Detect a fabricated cash/buying-power claim, e.g. "your cash is $50,000" or
+ *  "$40,000 in cash". Returns a correction note when the claimed figure deviates
+ *  >5% from actual cash (or any non-trivial claim when actual cash is $0). */
+export function detectCashMismatch(text: string, actualCash: number): string | null {
+  if (!text || !Number.isFinite(actualCash)) return null;
+  const patterns = [
+    /(?:your\s+)?cash(?:\s+balance)?\s+(?:is|of|=|:)\s*\$?([\d,]+(?:\.\d+)?)/i,
+    /\$?([\d,]+(?:\.\d+)?)\s+in\s+cash\b/i,
+  ];
+  for (const p of patterns) {
+    const m = p.exec(text);
+    if (!m) continue;
+    const claimed = parseFloat(m[1].replace(/,/g, ''));
+    if (!Number.isFinite(claimed)) continue;
+    const off = actualCash <= 0 ? claimed >= 1 : Math.abs(claimed - actualCash) / actualCash > 0.05;
+    if (off) {
+      return `\n\n---\n⚠️ *Correction: your cash balance is ${usd(actualCash)}, not ${usd(claimed)}.*`;
+    }
+  }
+  return null;
+}
+
+/** Detect a claim of ownership of a ticker the user does not hold, e.g.
+ *  "you own PLTR", "your position in ROK", "you have 10 shares of AXON".
+ *  Only fires when we have authoritative holdings (heldSymbols non-empty) so we
+ *  never contradict a genuinely empty/unavailable holdings feed. Returns a
+ *  correction note listing up to 3 unheld tickers, or null. */
+export function detectUnheldTickerClaim(text: string, heldSymbols: Set<string>): string | null {
+  if (!text || !heldSymbols || heldSymbols.size === 0) return null;
+  const patterns = [
+    /\b(?:you(?:\s+already)?\s+(?:own|hold))\s+(\$?[A-Z]{1,5})\b/gi,
+    /\byour\s+(?:position|holding|stake)\s+in\s+(\$?[A-Z]{1,5})\b/gi,
+    /\byour\s+(\$?[A-Z]{1,5})\s+(?:position|holding|stake)\b/gi,
+    /\byou\s+(?:have|hold)\s+(?:\d+(?:\.\d+)?\s+)?shares?\s+of\s+(\$?[A-Z]{1,5})\b/gi,
+  ];
+  const unheld: string[] = [];
+  const seen = new Set<string>();
+  for (const p of patterns) {
+    let m: RegExpExecArray | null;
+    while ((m = p.exec(text)) !== null) {
+      const raw = m[1].replace('$', '');
+      // Tickers are written ALL-CAPS; skip mixed-case company names ("Apple")
+      // that the case-insensitive phrase regex would otherwise capture.
+      if (!/^[A-Z]{1,5}$/.test(raw)) continue;
+      const sym = raw.toUpperCase();
+      if (NOT_TICKERS.has(sym)) continue;
+      if (heldSymbols.has(sym)) continue;
+      if (seen.has(sym)) continue;
+      seen.add(sym);
+      unheld.push(sym);
+    }
+  }
+  if (unheld.length === 0) return null;
+  const list = unheld.slice(0, 3).join(', ');
+  return `\n\n---\n⚠️ *Correction: you don't currently hold ${list}.*`;
+}
+
+/** Compose the light-path grounding checks: portfolio total + cash + held-ticker
+ *  ownership claims. Returns a combined correction (or null when the response is
+ *  grounded). `snapshot` is the server-known PortfolioSnapshot. */
+export function detectPortfolioGroundingMismatch(text: string, snapshot: PortfolioSnapshot): string | null {
+  if (!text || !snapshot) return null;
+  const parts: string[] = [];
+  const total = detectPortfolioTotalMismatch(text, snapshot.equity);
+  if (total) parts.push(total);
+  const cash = detectCashMismatch(text, snapshot.cash);
+  if (cash) parts.push(cash);
+  const held = new Set(
+    (snapshot.positions || []).map((p) => (p.symbol || '').toUpperCase()).filter(Boolean),
+  );
+  const tickers = detectUnheldTickerClaim(text, held);
+  if (tickers) parts.push(tickers);
+  return parts.length > 0 ? parts.join('\n') : null;
 }
