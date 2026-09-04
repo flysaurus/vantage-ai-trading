@@ -17,6 +17,15 @@
 import { normalizeMessage, editDistance } from './normalize';
 import { NOT_TICKERS } from '@/lib/symbol-resolution';
 import type { VehiclePreference } from './manager';
+import {
+  detectAccountStateIntent,
+  isDcaCreationCommand,
+  detectScheduledActivityIntent,
+  detectOrderHistoryIntent,
+  detectTaxLossHarvestIntent,
+} from './account-actions';
+import { detectProfileQuestion } from './profile-answers';
+import { detectAppHelpIntent } from './app-help';
 
 export type TaxonomyCategory =
   | 'portfolio_construction'
@@ -47,6 +56,14 @@ export interface ClassifierResult {
   profileField?: 'style' | 'risk';
   /** For profile_mutation: the raw target value (e.g. "aggressive", "Lynch"). */
   profileValue?: string;
+  /**
+   * For deterministic Tier-0 hits: which grounded handler should answer.
+   * (account_state / scheduled_activity / hard off-topic are routed purely by
+   * `category` — no handler — so they flow into the existing category handlers.)
+   */
+  handler?: 'profile_question' | 'app_help' | 'dca_setup' | 'order_history' | 'tax_loss';
+  /** Optional payload for the handler (e.g. the specific question/help kind). */
+  handlerData?: { kind?: string };
 }
 
 const TAXONOMY: TaxonomyCategory[] = [
@@ -144,6 +161,59 @@ function fastPath(message: string): ClassifierResult | null {
       source: 'fast_path',
       confidence: 0.97,
     };
+  }
+
+  return null;
+}
+
+// ─── Deterministic Tier 0 (folded read-only detectors) ────────
+//
+// Phase 1: the read-only grounded answerers that used to run as rigid regex
+// blocks BEFORE classify() now live INSIDE classify()'s synchronous fast-path.
+// This satisfies "nothing rigid originates intent outside classification" while
+// keeping account-state / profile / app-help / DCA / order-history / tax-loss
+// answers instant (no GPT-5 nano round-trip).
+
+const NON_FINANCE_PATTERNS = [
+  /^(tell me a joke|write me a poem|what's the weather|recipe for|how to cook|sports score|movie recommendation)/i,
+];
+
+function deterministicTier0(message: string): ClassifierResult | null {
+  const m = message.trim();
+
+  // Hard off-topic guard (was `nonFinancePatterns`) → existing off_topic redirect.
+  if (NON_FINANCE_PATTERNS.some((p) => p.test(m))) {
+    return { category: 'off_topic', vehicle: 'unspecified', needsSearch: false, searchQuery: null, source: 'fast_path', confidence: 1 };
+  }
+
+  const profileKind = detectProfileQuestion(m);
+  if (profileKind) {
+    return { category: 'portfolio_relative_question', vehicle: 'unspecified', needsSearch: false, searchQuery: null, source: 'fast_path', confidence: 1, handler: 'profile_question', handlerData: { kind: profileKind } };
+  }
+
+  const helpKind = detectAppHelpIntent(m);
+  if (helpKind) {
+    return { category: 'educational', vehicle: 'unspecified', needsSearch: false, searchQuery: null, source: 'fast_path', confidence: 1, handler: 'app_help', handlerData: { kind: helpKind } };
+  }
+
+  if (isDcaCreationCommand(m)) {
+    return { category: 'scheduled_activity', vehicle: 'unspecified', needsSearch: false, searchQuery: null, source: 'fast_path', confidence: 1, handler: 'dca_setup' };
+  }
+
+  if (detectScheduledActivityIntent(m)) {
+    return { category: 'scheduled_activity', vehicle: 'unspecified', needsSearch: false, searchQuery: null, source: 'fast_path', confidence: 1 };
+  }
+
+  if (detectOrderHistoryIntent(m)) {
+    return { category: 'account_state', vehicle: 'unspecified', needsSearch: false, searchQuery: null, source: 'fast_path', confidence: 1, handler: 'order_history' };
+  }
+
+  if (detectAccountStateIntent(m)) {
+    return { category: 'account_state', vehicle: 'unspecified', needsSearch: false, searchQuery: null, source: 'fast_path', confidence: 1 };
+  }
+
+  if (detectTaxLossHarvestIntent(m)) {
+    return { category: 'portfolio_construction', vehicle: 'unspecified', needsSearch: false, searchQuery: null, source: 'fast_path', confidence: 1, handler: 'tax_loss' };
   }
 
   return null;
@@ -297,6 +367,11 @@ function failOpen(message: string): ClassifierResult {
 // ─── Public API ───────────────────────────────────────────────
 
 export async function classify(message: string): Promise<ClassifierResult> {
+  // Tier 0: deterministic read-only detectors (folded from route.ts's old
+  // pre-classify regex block). Runs BEFORE fastPath so account-state / profile /
+  // app-help / DCA / order-history / tax-loss keep their original precedence.
+  const tier0 = deterministicTier0(message);
+  if (tier0) return tier0;
   const fast = fastPath(message);
   if (fast) return fast;
   const normalized = normalizeMessage(message);

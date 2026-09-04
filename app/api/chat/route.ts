@@ -13,9 +13,9 @@ import { CHAT_PRINCIPLES } from '@/lib/ai-principles';
 import { resolveTickers } from '@/lib/ticker-resolver';
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
-import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
-import { detectAppHelpIntent, buildAppHelpAnswer } from '@/lib/ai/app-help'
-import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, detectScheduledActivityIntent, buildScheduledActivityAnswer, detectAccountStateIntent, isDcaCreationCommand, detectOrderHistoryIntent, parseOrderHistoryWindow, orderHistoryWindowLabel, buildOrderHistoryAnswer, detectTaxLossHarvestIntent, buildTaxLossHarvestAnswer, type OrderHistoryRow } from '@/lib/ai/account-actions'
+import { buildProfileAnswer, type ProfileQuestionKind } from '@/lib/ai/profile-answers'
+import { buildAppHelpAnswer, type AppHelpKind } from '@/lib/ai/app-help'
+import { extractRiskTarget, extractStyleTarget, extractRebalanceTarget, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatStylePickPrompt, formatRiskChangeAnswer, detectRiskLevel, buildAccountStateAnswer, normalizeStyle, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, detectCashOnlyRebalance, detectFullPortfolioRebalance, detectCustomAmountRebalance, detectScopedRebalanceMode, detectAssetClass, formatRebalanceBudgetPrompt, formatAssetClassPrompt, rebalancePlanToLegs, formatRebalanceExecutionPreview, buildScheduledActivityAnswer, isDcaCreationCommand, parseOrderHistoryWindow, orderHistoryWindowLabel, buildOrderHistoryAnswer, buildTaxLossHarvestAnswer, type OrderHistoryRow } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
@@ -1192,109 +1192,10 @@ export async function POST(req: Request) {
 
     // Finance guard — check last user message
     const lastMessage: string = messages[messages.length - 1]?.content || ''
-    const nonFinancePatterns = [
-      /^(tell me a joke|write me a poem|what's the weather|recipe for|how to cook|sports score|movie recommendation)/i
-    ]
-    if (nonFinancePatterns.some(p => p.test(lastMessage))) {
-      return Response.json({
-        content: "I specialize exclusively in portfolio analysis and market intelligence. What would you like to know about your portfolio or the markets?"
-      })
-    }
-
-    // ── Deterministic profile questions (grounded — no model call) ──
-    // "What is my investment style" / "what's my risk tolerance" / "what's my
-    // profile" are fully answerable from the server-known profile. Answering them
-    // with a free-form model previously hallucinated a fabricated "$1,000 ETF
-    // portfolio" + unsolicited ROK/AXON/PLTR recommendations. Route them
-    // deterministically so the answer is always correct + coherent.
-    if (mode !== 'alerts') {
-      const profileKind = detectProfileQuestion(lastMessage);
-      if (profileKind) {
-        console.log(`[chat] 🧭 profile question (${profileKind}) → deterministic answer`);
-        return textSSEResponse(buildProfileAnswer(profile, profileKind));
-      }
-    }
-
-    // ── Deterministic app-help router (grounded — no model call) ──
-    // "what can you do?", "help", "how do I rebalance/set up DCA/change my
-    // style/connect my broker/set alerts/add funds" are app-usage questions the
-    // model previously answered vaguely or mis-routed (e.g. "how do I rebalance"
-    // fired a real rebalance plan). Answer them from a stable, accurate menu.
-    // Placed AFTER profile questions and BEFORE the confirm gate / account
-    // actions so a "how do I X" question never mutates state or stages a plan.
-    if (mode !== 'alerts') {
-      const helpKind = detectAppHelpIntent(lastMessage);
-      if (helpKind) {
-        console.log(`[chat] 🧭 app-help (${helpKind}) → deterministic answer`);
-        return textSSEResponse(buildAppHelpAnswer(helpKind));
-      }
-    }
-
-    // ── Deterministic DCA setup router ──
-    // "set up a DCA plan" / "create a recurring buy" / "start a weekly DCA" are
-    // CREATION commands. Route them to the structured DCA setup form (symbol
-    // search, amount, frequency, end-date calendar) instead of the model asking
-    // free-text questions one at a time.
-    if (mode !== 'alerts' && isDcaCreationCommand(lastMessage)) {
-      console.log('[chat] 🧭 dca_setup → open structured setup form');
-      return textSSEResponse(
-        "Let's set up your dollar-cost averaging plan — pick the symbol, amount, frequency, and end date in the form.",
-        { kind: 'dca_setup' },
-      );
-    }
-
-    // ── Deterministic scheduled-activity router (DCA + open orders) ──
-    // "what are my scheduled buys", "any open orders", "show my DCA" are
-    // read-only queries the classifier sometimes mislabels as portfolio
-    // construction ("buys" reads like a build verb). Answer from the DB
-    // deterministically BEFORE the classifier can mis-route them.
-    if (mode !== 'alerts' && detectScheduledActivityIntent(lastMessage)) {
-      if (userId && userId !== 'anonymous') {
-        console.log('[chat] 🧭 scheduled-activity → deterministic answer');
-        return textSSEResponse(await fetchScheduledActivityAnswer(userId, accountMeta?.accountId));
-      }
-    }
-
-    // ── Deterministic order-history router (executed/filled trades) ──
-    // "orders executed last week", "recent trades", "trade history", "what did I
-    // buy this month" are read-only queries the classifier mislabels as
-    // account_state (GPT-5 nano reads "orders executed" as a balance probe and
-    // returns the account summary). Answer from the DB BEFORE the classifier.
-    if (mode !== 'alerts' && detectOrderHistoryIntent(lastMessage)) {
-      if (userId && userId !== 'anonymous') {
-        const since = parseOrderHistoryWindow(lastMessage);
-        const windowLabel = orderHistoryWindowLabel(lastMessage);
-        console.log('[chat] 🧭 order-history → deterministic answer');
-        return textSSEResponse(await fetchOrderHistoryAnswer(userId, accountMeta?.accountId, since, windowLabel));
-      }
-    }
-
-    // ── Deterministic account-state router (cash / equity / balance) ──
-    // "whats my account balance", "how much cash do i have", "whats my buying
-    // power" are read-only queries the classifier mislabels as security research
-    // or market commentary. Answer from the live portfolio snapshot BEFORE the
-    // classifier can mis-route them. Falls through (prompt broker connection)
-    // when no portfolio is loaded.
-    if (mode !== 'alerts' && detectAccountStateIntent(lastMessage)) {
-      if (portfolioSnapshot && (portfolioSnapshot.equity > 0 || portfolioSnapshot.positions.length > 0)) {
-        console.log('[chat] 🧭 account-state → deterministic answer');
-        return textSSEResponse(buildAccountStateAnswer(portfolioSnapshot, profile.riskTolerance), undefined, { scope: 'holdings' });
-      }
-      // No portfolio loaded → fall through so the model prompts broker connection.
-    }
-
-    // ── Deterministic tax-loss-harvesting router ──
-    // "run a tax check", "tax-loss harvesting", "wash sale" on MY portfolio are
-    // read-only analyses the classifier mislabels as portfolio_construction →
-    // fires the "Stocks only / ETFs only / A mix of both" CLARIFY. Answer from
-    // the live snapshot BEFORE the classifier can mis-route them.
-    if (mode !== 'alerts' && detectTaxLossHarvestIntent(lastMessage)) {
-      if (portfolioSnapshot && portfolioSnapshot.positions.length > 0) {
-        console.log('[chat] 🧭 tax-loss-harvesting → deterministic answer');
-        return textSSEResponse(buildTaxLossHarvestAnswer(portfolioSnapshot));
-      }
-      // No portfolio loaded → fall through so the model prompts broker connection.
-    }
+    // (Non-finance guard, profile questions, app-help, DCA setup, scheduled
+    // activity, order history, account state, and tax-loss harvesting are now
+    // detected inside classify()'s Tier 0 fast-path — see lib/ai/classifier.ts
+    // `deterministicTier0` — and dispatched right after classify() below.)
 
     // ── Deterministic CONFIRM GATE (plan-then-confirm) ──
     // Handles the user's reply to a pending-action preview. NEVER the LLM — this
@@ -1351,8 +1252,8 @@ export async function POST(req: Request) {
     // ── Deterministic REBALANCE EXECUTION (Phase 4 — real multi-leg orders) ──
     // "execute the rebalance" stages a preview (pending_action) and asks for
     // confirmation. The actual order placement happens in the confirm gate above
-    // via executePendingAction → execRebalance. Detected BEFORE detectAccountAction
-    // so "execute the rebalance" isn't re-read as a new plan request.
+    // via executePendingAction → execRebalance. Detected BEFORE classify() so
+    // "execute the rebalance" isn't re-read as a new plan request.
     if (mode !== 'alerts' && (detectExecuteRebalance(lastMessage) || detectRebalanceFollowUp(messages))) {
       const supabase = createServerClient();
       const targetStyle = (profile.investorStyle || 'Lynch').toLowerCase();
@@ -1388,106 +1289,8 @@ export async function POST(req: Request) {
       return textSSEResponse(formatRebalanceExecutionPreview(plan), { kind: 'rebalance_confirm' });
     }
 
-    // ── Deterministic account actions (grounded — style change + rebalance plan) ──
-    // "change my style to Lynch", "rebalance my portfolio", or the compound
-    // "change my style to Lynch and rebalance" are handled here with real data,
-    // not the free-form model (which previously hallucinated portfolios/picks).
-    // Style change is the only mutation and is reversible; rebalance is PLAN-ONLY
-    // (execution is a separate, gated action).
-    if (mode !== 'alerts') {
-      const action = detectAccountAction(lastMessage, { riskTolerance: profile.riskTolerance, investorStyle: profile.investorStyle });
-      if (action) {
-        const supabase = createServerClient();
-        if (action.type === 'change_style_ask') {
-          return textSSEResponse(formatStylePickPrompt(profile.investorStyle), { kind: 'style_pick' });
-        }
-        if (action.type === 'invalid_style') {
-          return textSSEResponse(formatInvalidStyleAnswer(action.requested), { kind: 'style_pick' });
-        }
-
-        if (action.type === 'change_style' || action.type === 'change_and_rebalance') {
-          try {
-            if (userId && userId !== 'anonymous') {
-              await (supabase as any)
-                .from('users')
-                .update({ investor_style: action.style, investor_style_set_at: new Date().toISOString() })
-                .eq('id', userId);
-              console.log(`[chat] 🎛️ style changed → ${action.style} (user ${userId.slice(0, 8)})`);
-            }
-          } catch (e) {
-            console.error('[chat] style change failed:', e);
-          }
-        }
-
-        if (action.type === 'change_risk') {
-          try {
-            if (userId && userId !== 'anonymous') {
-              await (supabase as any)
-                .from('users')
-                .update({ risk_tolerance: action.risk.toLowerCase() })
-                .eq('id', userId);
-              console.log(`[chat] 🎚️ risk changed → ${action.risk} (user ${userId.slice(0, 8)})`);
-            }
-          } catch (e) {
-            console.error('[chat] risk change failed:', e);
-          }
-          return textSSEResponse(formatRiskChangeAnswer(action.risk), { kind: 'risk_changed' });
-        }
-
-        if (action.type === 'change_style') {
-          return textSSEResponse(formatStyleChangeAnswer(action.style, profile.riskTolerance), { kind: 'style_changed' });
-        }
-
-        // rebalance / change_and_rebalance → compute a grounded plan.
-        const targetStyle = action.type === 'change_and_rebalance'
-          ? action.style
-          : (action.style || profile.investorStyle.toLowerCase());
-
-        if (!portfolioSnapshot || (portfolioSnapshot.equity <= 0 && portfolioSnapshot.positions.length === 0)) {
-          const prefix = action.type === 'change_and_rebalance'
-            ? `✅ Your investor style is now **${styleLabel(action.style)}**.
-
-`
-            : '';
-          return textSSEResponse(
-            prefix + formatTargetsOnlyAnswer(targetStyle) + '\n\n⚠️ I need your current portfolio loaded to compute exact trades — connect your broker or refresh, then say "rebalance my portfolio."'
-          );
-        }
-
-        if (action.type === 'rebalance') {
-          const assetClass = detectAssetClass(lastMessage);
-          if (assetClass) {
-            // Asset class chosen → compute the plan using the resolved scope + asset class.
-            const scope = detectScopedRebalanceMode(messages);
-            const plan = computeRebalancePlan(portfolioSnapshot, targetStyle, {
-              cashOnly: scope.cashOnly,
-              customAmount: scope.customAmount ?? undefined,
-              assetClass,
-            });
-            return textSSEResponse(formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' });
-          }
-          // Budget chosen but no asset class yet → ask what to buy.
-          if (detectCashOnlyRebalance(lastMessage)) {
-            return textSSEResponse(formatAssetClassPrompt('cash-only'), { kind: 'rebalance_asset' });
-          }
-          const customAmount = detectCustomAmountRebalance(lastMessage);
-          if (customAmount != null) {
-            return textSSEResponse(formatAssetClassPrompt('custom', customAmount), { kind: 'rebalance_asset' });
-          }
-          if (detectFullPortfolioRebalance(lastMessage)) {
-            return textSSEResponse(formatAssetClassPrompt('full'), { kind: 'rebalance_asset' });
-          }
-          return textSSEResponse(formatRebalanceBudgetPrompt(portfolioSnapshot, targetStyle), { kind: 'rebalance_budget' });
-        }
-        const plan = computeRebalancePlan(portfolioSnapshot, targetStyle);
-        const prefix = action.type === 'change_and_rebalance'
-          ? `✅ Your investor style is now **${styleLabel(action.style)}**.
-
-`
-          : '';
-        return textSSEResponse(prefix + formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' });
-      }
-    }
+    // (Style/risk mutations + rebalance plans are now confirm-only, gated on
+    // classify()'s category — see the post-classify dispatch below.)
 
     const systemPrompt = mode === 'alerts'
       ? ALERTS_SYSTEM_PROMPT
@@ -1504,33 +1307,110 @@ export async function POST(req: Request) {
     // Append-only audit (fire-and-forget) so mislabels can be reviewed over time.
     void logClassifierAudit(userId, lastMessage, classification);
 
-    // ── Classifier Tier-2: deterministic dispatch (profile mutation + account state) ──
-    // detectAccountAction / detectAppHelpIntent catch exact & common phrasings.
-    // For phrasings the regex misses, GPT-5 nano labels the intent and we dispatch
-    // to the SAME deterministic handlers here. The LLM only LABELS — the DB write
-    // and the answer text are deterministic code, never the model. Safety-critical
-    // actions (confirm/execute) are deliberately NOT in the taxonomy: they stay on
-    // the deterministic gate.
+    // ── Tier 0 deterministic dispatch (read-only grounded answerers) ──
+    // profile questions / app-help / DCA setup / order history / tax-loss are
+    // detected inside classify()'s synchronous Tier 0 (lib/ai/classifier.ts
+    // `deterministicTier0`) and answered here with deterministic text — never the
+    // model. account_state / scheduled_activity carry no handler; they're routed
+    // purely by category in the block below.
+    if (mode !== 'alerts' && classification.handler) {
+      switch (classification.handler) {
+        case 'profile_question':
+          return textSSEResponse(buildProfileAnswer(profile, (classification.handlerData?.kind ?? 'profile') as ProfileQuestionKind));
+        case 'app_help':
+          return textSSEResponse(buildAppHelpAnswer((classification.handlerData?.kind ?? 'capabilities') as AppHelpKind));
+        case 'dca_setup':
+          return textSSEResponse(
+            "Let's set up your dollar-cost averaging plan — pick the symbol, amount, frequency, and end date in the form.",
+            { kind: 'dca_setup' },
+          );
+        case 'order_history':
+          if (userId && userId !== 'anonymous') {
+            const since = parseOrderHistoryWindow(lastMessage);
+            const windowLabel = orderHistoryWindowLabel(lastMessage);
+            console.log('[chat] 🧭 order-history → deterministic answer');
+            return textSSEResponse(await fetchOrderHistoryAnswer(userId, accountMeta?.accountId, since, windowLabel));
+          }
+          break;
+        case 'tax_loss':
+          if (portfolioSnapshot && portfolioSnapshot.positions.length > 0) {
+            console.log('[chat] 🧭 tax-loss-harvesting → deterministic answer');
+            return textSSEResponse(buildTaxLossHarvestAnswer(portfolioSnapshot));
+          }
+          break;
+      }
+    }
+
+    // ── Confirm-only mutations + read-only category fallbacks ──
+    // classify() is now the sole authority on intent. Mutating detectors (style /
+    // risk) only act once classify() already said `profile_mutation`; rebalance
+    // plans only once it said `portfolio_construction`. The DB write + answer text
+    // stay deterministic code, never the model. Confirm/execute stay on the
+    // pre-classify gate (state-machine transitions, not intent).
     if (mode !== 'alerts') {
       const questionGuard = isQuestionLike(lastMessage);
       const hesitantGuard = isHesitant(lastMessage);
 
+      // Single write path for style/risk mutations (replaces the old pre-classify
+      // detectAccountAction + the duplicate classifier handler).
       if (classification.category === 'profile_mutation' && !questionGuard && !hesitantGuard) {
+        const supabase = createServerClient();
+        const rebalanceWanted = extractRebalanceTarget(lastMessage).rebalance;
+
+        // Risk first (preserves the old risk-before-style precedence).
+        const risk = extractRiskTarget(lastMessage, { riskTolerance: profile.riskTolerance, investorStyle: profile.investorStyle })
+          ?? (classification.profileField === 'risk' ? detectRiskLevel((classification.profileValue || '').trim()) : null);
+        if (risk) {
+          try {
+            if (userId && userId !== 'anonymous') {
+              await (supabase as any).from('users').update({ risk_tolerance: risk.toLowerCase() }).eq('id', userId);
+            }
+          } catch (e) { console.error('[chat] risk change failed:', e); }
+          console.log(`[chat] 🎚️ risk changed → ${risk}`);
+          return textSSEResponse(formatRiskChangeAnswer(risk), { kind: 'risk_changed' });
+        }
+
+        const styleRes = extractStyleTarget(lastMessage, { riskTolerance: profile.riskTolerance, investorStyle: profile.investorStyle });
+
+        if (styleRes?.type === 'change_style') {
+          const style = styleRes.style;
+          try {
+            if (userId && userId !== 'anonymous') {
+              await (supabase as any).from('users').update({ investor_style: style, investor_style_set_at: new Date().toISOString() }).eq('id', userId);
+            }
+          } catch (e) { console.error('[chat] style change failed:', e); }
+          console.log(`[chat] 🎛️ style changed → ${style}`);
+
+          // Compound "change my style to X and rebalance" — the single-category
+          // classifier can't express multi-intent, so detect the rebalance here.
+          if (rebalanceWanted) {
+            const targetStyle = style;
+            if (!portfolioSnapshot || (portfolioSnapshot.equity <= 0 && portfolioSnapshot.positions.length === 0)) {
+              return textSSEResponse(
+                `✅ Your investor style is now **${styleLabel(style)}**.
+
+` + formatTargetsOnlyAnswer(targetStyle) + '\n\n⚠️ I need your current portfolio loaded to compute exact trades — connect your broker or refresh, then say "rebalance my portfolio."'
+              );
+            }
+            const plan = computeRebalancePlan(portfolioSnapshot, targetStyle);
+            return textSSEResponse(`✅ Your investor style is now **${styleLabel(style)}**.
+
+` + formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' });
+          }
+          return textSSEResponse(formatStyleChangeAnswer(style, profile.riskTolerance), { kind: 'style_changed' });
+        }
+        if (styleRes?.type === 'invalid_style') {
+          return textSSEResponse(formatInvalidStyleAnswer(styleRes.requested), { kind: 'style_pick' });
+        }
+        if (styleRes?.type === 'change_style_ask') {
+          return textSSEResponse(formatStylePickPrompt(profile.investorStyle), { kind: 'style_pick' });
+        }
+
+        // Classifier fallback for phrasings the regex misses (e.g. "I want to be
+        // a high-risk investor" / "make me a Lynch-style investor").
         const field = classification.profileField;
         const value = (classification.profileValue || '').trim();
-        const supabase = createServerClient();
-        if (field === 'risk') {
-          const risk = detectRiskLevel(value);
-          if (risk) {
-            try {
-              if (userId && userId !== 'anonymous') {
-                await (supabase as any).from('users').update({ risk_tolerance: risk.toLowerCase() }).eq('id', userId);
-              }
-            } catch (e) { console.error('[chat] risk change (classifier) failed:', e); }
-            console.log(`[chat] 🎚️ risk changed via classifier → ${risk} ("${value}")`);
-            return textSSEResponse(formatRiskChangeAnswer(risk), { kind: 'risk_changed' });
-          }
-        } else if (field === 'style') {
+        if (field === 'style' && value) {
           const style = normalizeStyle(value);
           if (style) {
             try {
@@ -1543,8 +1423,39 @@ export async function POST(req: Request) {
           }
           return textSSEResponse(formatInvalidStyleAnswer(value), { kind: 'style_pick' });
         }
-        // Missing/invalid field → fall through to the model (shouldn't happen).
+        // No concrete target → fall through to the model (don't invent one).
         console.warn(`[chat] profile_mutation with field=${field} value="${value}" → fall through`);
+      }
+
+      // Rebalance plan (confirm-only): portfolio_construction + explicit rebalance.
+      if (classification.category === 'portfolio_construction' && extractRebalanceTarget(lastMessage).rebalance) {
+        const targetStyle = (profile.investorStyle || 'Lynch').toLowerCase();
+        if (!portfolioSnapshot || (portfolioSnapshot.equity <= 0 && portfolioSnapshot.positions.length === 0)) {
+          return textSSEResponse(
+            formatTargetsOnlyAnswer(targetStyle) + '\n\n⚠️ I need your current portfolio loaded to compute exact trades — connect your broker or refresh, then say "rebalance my portfolio."'
+          );
+        }
+        const assetClass = detectAssetClass(lastMessage);
+        if (assetClass) {
+          const scope = detectScopedRebalanceMode(messages);
+          const plan = computeRebalancePlan(portfolioSnapshot, targetStyle, {
+            cashOnly: scope.cashOnly,
+            customAmount: scope.customAmount ?? undefined,
+            assetClass,
+          });
+          return textSSEResponse(formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' });
+        }
+        if (detectCashOnlyRebalance(lastMessage)) {
+          return textSSEResponse(formatAssetClassPrompt('cash-only'), { kind: 'rebalance_asset' });
+        }
+        const customAmount = detectCustomAmountRebalance(lastMessage);
+        if (customAmount != null) {
+          return textSSEResponse(formatAssetClassPrompt('custom', customAmount), { kind: 'rebalance_asset' });
+        }
+        if (detectFullPortfolioRebalance(lastMessage)) {
+          return textSSEResponse(formatAssetClassPrompt('full'), { kind: 'rebalance_asset' });
+        }
+        return textSSEResponse(formatRebalanceBudgetPrompt(portfolioSnapshot, targetStyle), { kind: 'rebalance_budget' });
       }
 
       if (classification.category === 'account_state') {
@@ -1562,7 +1473,7 @@ export async function POST(req: Request) {
           console.log('[chat] 🧭 scheduled_activity via classifier but DCA-creation → fall through to tools');
         } else if (userId && userId !== 'anonymous') {
           console.log('[chat] 🧭 scheduled_activity via classifier → deterministic answer');
-          return textSSEResponse(await fetchScheduledActivityAnswer(userId));
+          return textSSEResponse(await fetchScheduledActivityAnswer(userId, accountMeta?.accountId));
         } else {
           console.log('[chat] 🧭 scheduled_activity anonymous → fall through to model');
         }

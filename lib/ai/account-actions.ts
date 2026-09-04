@@ -66,14 +66,30 @@ export function normalizeStyle(input: string): string | null {
 }
 
 /**
- * Detect a clear account-action command. Returns null for questions/hypotheticals
- * (which fall through to the model) — so "how would the app react if I change my
- * style to Lynch?" never mutates the profile.
+ * Raw parse of an account-action message. Shared by `detectAccountAction` (the
+ * legacy combined API, kept for tests/back-compat) and the Phase-1 confirm-only
+ * extractors (`extractRiskTarget` / `extractStyleTarget` / `extractRebalanceTarget`)
+ * so there is exactly ONE source of regex + precedence truth.
  */
-export function detectAccountAction(
+interface AccountActionParse {
+  hypothetical: boolean;
+  styleMatch: RegExpExecArray | null;
+  makeForm: boolean;
+  rebalanceMatch: boolean;
+  rawStyle: string | null;
+  style: string | null;
+  riskLevel: RiskLevel | null;
+  hasRiskChange: boolean;
+  noOpRiskChange: boolean;
+  rebStyle: string | null;
+  styleChangeAskMatch: boolean;
+  styleAfterMatch: RegExpExecArray | null;
+}
+
+function parseAccountAction(
   message: string,
   context?: { riskTolerance?: string; investorStyle?: string }
-): AccountAction | null {
+): AccountActionParse | null {
   const m = message.trim();
   if (!m || m.length > 240) return null;
 
@@ -125,8 +141,6 @@ export function detectAccountAction(
   const noOpRiskChange = !explicitRisk && comparativeRisk && !!context?.riskTolerance && !!riskLevel
     && riskLevel.toLowerCase() === context.riskTolerance.toLowerCase();
 
-  if (hasRiskChange && !noOpRiskChange && !hypothetical) return { type: 'change_risk', risk: riskLevel! };
-
   // Rebalance target style: "rebalance ... to/into/as X"
   let rebStyle: string | null = null;
   if (rebalanceMatch) {
@@ -134,19 +148,89 @@ export function detectAccountAction(
     rebStyle = reb ? normalizeStyle(reb[1]) : null;
   }
 
+  return {
+    hypothetical, styleMatch, makeForm, rebalanceMatch, rawStyle, style,
+    riskLevel, hasRiskChange, noOpRiskChange, rebStyle, styleChangeAskMatch, styleAfterMatch,
+  };
+}
+
+/** Phase-1 confirm-only extractor: canonical risk level if this is an unambiguous
+ *  risk-tolerance COMMAND, else null. Pure — no side effects. */
+export function extractRiskTarget(
+  message: string,
+  context?: { riskTolerance?: string; investorStyle?: string }
+): RiskLevel | null {
+  const p = parseAccountAction(message, context);
+  if (!p) return null;
+  if (p.hasRiskChange && !p.noOpRiskChange && !p.hypothetical) return p.riskLevel;
+  return null;
+}
+
+export type StyleExtraction =
+  | { type: 'change_style'; style: string }
+  | { type: 'invalid_style'; requested: string }
+  | { type: 'change_style_ask' }
+  | null;
+
+/** Phase-1 confirm-only extractor: canonical style target (or an invalid-style /
+ *  ask marker) if this is an unambiguous style COMMAND, else null. Pure. */
+export function extractStyleTarget(
+  message: string,
+  context?: { riskTolerance?: string; investorStyle?: string }
+): StyleExtraction {
+  const p = parseAccountAction(message, context);
+  if (!p) return null;
+  if ((p.styleMatch || p.makeForm || p.styleAfterMatch) && p.rawStyle && !p.style && !p.rebalanceMatch) {
+    return { type: 'invalid_style', requested: p.rawStyle.trim() };
+  }
+  const hasChange = (!!p.styleMatch || !!p.makeForm || !!p.styleAfterMatch) && !!p.style;
+  if (hasChange && !p.hypothetical) return { type: 'change_style', style: p.style! };
+  if (p.styleChangeAskMatch && !p.hypothetical) return { type: 'change_style_ask' };
+  return null;
+}
+
+/** Phase-1 confirm-only extractor: whether a rebalance is requested and its
+ *  optional target style. Pure — no side effects. */
+export function extractRebalanceTarget(
+  message: string,
+  context?: { riskTolerance?: string; investorStyle?: string }
+): { rebalance: boolean; rebStyle: string | null } {
+  const p = parseAccountAction(message, context);
+  if (!p) return { rebalance: false, rebStyle: null };
+  return { rebalance: p.rebalanceMatch, rebStyle: p.rebStyle };
+}
+
+/**
+ * Detect a clear account-action command. Returns null for questions/hypotheticals
+ * (which fall through to the model) — so "how would the app react if I change my
+ * style to Lynch?" never mutates the profile.
+ *
+ * Legacy combined API — kept for back-compat with existing tests. New call sites
+ * should use the confirm-only extractors (`extractRiskTarget`, `extractStyleTarget`,
+ * `extractRebalanceTarget`) keyed off the classifier's category.
+ */
+export function detectAccountAction(
+  message: string,
+  context?: { riskTolerance?: string; investorStyle?: string }
+): AccountAction | null {
+  const p = parseAccountAction(message, context);
+  if (!p) return null;
+
+  if (p.hasRiskChange && !p.noOpRiskChange && !p.hypothetical) return { type: 'change_risk', risk: p.riskLevel! };
+
   // Explicit "change style to <something>" but target isn't a valid style →
   // ask with buttons (invalid_style is rendered with the style picker).
-  if ((styleMatch || makeForm || styleAfterMatch) && rawStyle && !style && !rebalanceMatch) {
-    return { type: 'invalid_style', requested: rawStyle.trim() };
+  if ((p.styleMatch || p.makeForm || p.styleAfterMatch) && p.rawStyle && !p.style && !p.rebalanceMatch) {
+    return { type: 'invalid_style', requested: p.rawStyle.trim() };
   }
 
-  const hasChange = (!!styleMatch || !!makeForm || !!styleAfterMatch) && !!style;
-  const hasRebalance = rebalanceMatch;
+  const hasChange = (!!p.styleMatch || !!p.makeForm || !!p.styleAfterMatch) && !!p.style;
+  const hasRebalance = p.rebalanceMatch;
 
-  if (hasChange && hasRebalance && !hypothetical) return { type: 'change_and_rebalance', style: style! };
-  if (hasChange && !hypothetical) return { type: 'change_style', style: style! };
-  if (hasRebalance && !hypothetical) return { type: 'rebalance', style: rebStyle };
-  if (styleChangeAskMatch && !hypothetical) return { type: 'change_style_ask' };
+  if (hasChange && hasRebalance && !p.hypothetical) return { type: 'change_and_rebalance', style: p.style! };
+  if (hasChange && !p.hypothetical) return { type: 'change_style', style: p.style! };
+  if (hasRebalance && !p.hypothetical) return { type: 'rebalance', style: p.rebStyle };
+  if (p.styleChangeAskMatch && !p.hypothetical) return { type: 'change_style_ask' };
   return null;
 }
 
@@ -410,6 +494,10 @@ export function detectScopedRebalanceMode(
   carry.assetClass = detectAssetClass(last) || detectAssetClass(prevAssistant);
   return carry;
 }
+
+/** Phase-1 confirm-only extractor: rebalance scope (cash-only / custom amount /
+ *  full portfolio + asset class). Alias of `detectScopedRebalanceMode` — pure. */
+export const extractRebalanceScope = detectScopedRebalanceMode;
 
 /** Detect an asset-class choice (ETF / stock / mix) in a rebalance message. */
 export function detectAssetClass(message: string): AssetClass | null {
