@@ -19,6 +19,7 @@ import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSumm
 import StrategyCards from '@/components/ai/StrategyCards';
 import { parsePortfolioBlocks } from '@/lib/portfolio-blocks';
 import type { PortfolioBlock } from '@/lib/portfolio-types';
+import { deriveDownloadPayload } from '@/lib/export/derive-export';
 import { parseClarifyMarkers, questionsToOptions, ClarifyingOptions, ClarifyStepper, type ClarifyingOption, type ClarifyingQuestion } from '@/components/ai/ClarifyingOptions';
 import { SummaryCard } from '@/components/ai/SummaryCard';
 import { PositionCards } from '@/components/ai/PositionCards';
@@ -886,11 +887,20 @@ export function AITab({ messages, setMessages }: AITabProps) {
             lastMessages = lastMessages.slice(0, -1);
           }
           if (lastMessages.length > 0) {
-            setMessages(lastMessages.map(m => ({
-              role: m.role as 'user' | 'ai',
-              content: m.content,
-              id: m.id, // preserve DB id so action buttons / CLARIFY / strategy selection survive remount
-            })));
+            setMessages(lastMessages.map(m => {
+              const base = {
+                role: m.role as 'user' | 'ai',
+                content: m.content,
+                id: m.id, // preserve DB id so action buttons / CLARIFY / strategy selection survive remount
+              };
+              // Reconstruct the Download button for structured responses so it
+              // survives a page reload (markers/table are stored raw in content).
+              if (m.role === 'ai') {
+                const download = deriveDownloadPayload(m.content);
+                if (download) return { ...base, download };
+              }
+              return base;
+            }));
             setCurrentSessionId(targetSession.id);
           }
         }
@@ -1818,7 +1828,14 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               onClick={() => {
                 const msgs = loadPreviousSession();
                 if (msgs) {
-                  setMessages(msgs);
+                  setMessages(msgs.map(m => {
+                    const base = { role: m.role, content: m.content };
+                    if (m.role === 'ai') {
+                      const download = deriveDownloadPayload(m.content);
+                      if (download) return { ...base, download };
+                    }
+                    return base;
+                  }));
                   wasAtBottomRef.current = true;
                   scrollToBottom(false);
                 }
