@@ -1,6 +1,6 @@
 # AI Advisor Grounding & Account-Action Design
 
-**Status:** Phase 1 implemented. Phase 2 (account-action tools + intents) **implemented**. Phase 3 (light-path "solid check") **implemented**. Phase 4 outstanding (needs explicit go-ahead — real money).
+**Status:** Phase 1 implemented. Phase 2 (account-action tools + intents) **implemented**. Phase 3 (light-path "solid check") **implemented**. Phase 4 (rebalance execution rewire) **implemented**.
 
 ## Problem
 The AI Advisor ("Vantage AI") answers account/profile questions on a **light path** with no
@@ -78,11 +78,13 @@ On any mismatch the backstop appends an honest `⚠️ *Correction: …*` note t
  ticker) is not caught — only explicit ticker ownership claims are. (Full pipeline already
  validates `[PORTFOLIO:]` blocks.)
 
-### Phase 4 — Rebalance execution rewire (proposed, touches REAL orders — report-before-fix)
-`/api/strategies/rebalancing/execute` currently uses the **legacy direct-Alpaca path**
-(`getBrokerContext` + `makeAlpacaRequest`) — the same dead path DCA had for SnapTrade users.
-Rewire to `resolveSnapTradeCredentials` + `SnapTradeBroker.placeOrder` so "rebalance" actually
-executes for SnapTrade users. Requires explicit go-ahead (real money).
+### Phase 4 — Rebalance execution rewire (IMPLEMENTED, real orders — explicit go-ahead given)
+`/api/strategies/rebalancing/execute` no longer uses the legacy direct-Alpaca path
+(`getBrokerContext` + `makeAlpacaRequest`). Rewired to `resolveSnapTradeCredentials` +
+`SnapTradeBroker.placeOrder` — the same engine as `/api/broker/execute-trade` and the DCA
+scheduler — so rebalance now executes for SnapTrade users. Per-leg order mapping, persist-row
+construction, and outcome/error handling are extracted into `lib/broker/rebalance-executor.ts`
+(unit-tested in `tests/rebalance-executor.test.ts`).
 
 ## Key files
 - `app/api/chat/route.ts` — routing, tools, pipeline split.
