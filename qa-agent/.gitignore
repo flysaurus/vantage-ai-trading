@@ -6,3 +6,4 @@ logs/
 .env
 *.tsbuildinfo
 dist/
+.critique-cache/
