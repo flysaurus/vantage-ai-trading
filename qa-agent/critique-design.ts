@@ -55,7 +55,7 @@ export interface CritiqueResult {
 
 const TOKENS_PATH = path.join(__dirname, 'design-tokens-context.md');
 const CACHE_DIR = path.join(__dirname, '.critique-cache');
-const DEFAULT_MODEL = 'gemini-3.1-pro';
+const DEFAULT_MODEL = 'gemini-3.1-pro-preview';
 
 // The critique rubric — verbatim, per the tool contract. Do not reword.
 const RUBRIC =
