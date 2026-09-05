@@ -23,6 +23,7 @@ import { deriveDownloadPayload } from '@/lib/export/derive-export';
 import { parseClarifyMarkers, questionsToOptions, ClarifyingOptions, ClarifyStepper, type ClarifyingOption, type ClarifyingQuestion } from '@/components/ai/ClarifyingOptions';
 import { SummaryCard } from '@/components/ai/SummaryCard';
 import { PositionCards } from '@/components/ai/PositionCards';
+import { ExportControls } from '@/components/ai/ExportControls';
 import { HoldingsCallout } from '@/components/ai/HoldingsCallout';
 import { ProgressIndicator, type ChecklistItem } from '@/components/ai/ProgressIndicator';
 import TradeTicket from '@/components/portfolio/TradeTicket';
@@ -2529,47 +2530,14 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   on ANY such message (not just the last), so historical plans stay
                   exportable within the session. */}
               {msg.download && (
-                <div style={{ display: 'flex', gap: '8px', marginTop: '12px', alignItems: 'center' }}>
-                  <button
-                    onClick={() => handleDownloadExport(msg.download!)}
-                    style={{
-                      background: 'rgba(34,211,238,0.12)',
-                      border: '1px solid rgba(34,211,238,0.35)',
-                      borderRadius: '8px',
-                      color: '#22d3ee',
-                      fontSize: '13px',
-                      fontWeight: 600,
-                      padding: '8px 14px',
-                      cursor: 'pointer',
-                      fontFamily: 'inherit',
-                    }}
-                  >
-                    ⬇️ Download .xlsx
-                  </button>
-                  {canShareFiles && (
-                    <button
-                      onClick={() => handleShareExport(msg.download!)}
-                      style={{
-                        background: 'rgba(34,211,238,0.08)',
-                        border: '1px solid rgba(34,211,238,0.35)',
-                        borderRadius: '8px',
-                        color: '#22d3ee',
-                        fontSize: '13px',
-                        fontWeight: 600,
-                        padding: '8px 14px',
-                        cursor: 'pointer',
-                        fontFamily: 'inherit',
-                      }}
-                    >
-                      📤 Share
-                    </button>
-                  )}
-                  {msg.download.rows.length > 0 && (
-                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
-                      {msg.download.rows.length} line{msg.download.rows.length === 1 ? '' : 's'} · {msg.download.title}
-                    </span>
-                  )}
-                </div>
+                <ExportControls
+                  onDownload={() => handleDownloadExport(msg.download!)}
+                  onShare={() => handleShareExport(msg.download!)}
+                  canShare={canShareFiles}
+                  caption={msg.download.rows.length > 0
+                    ? `${msg.download.rows.length} line${msg.download.rows.length === 1 ? '' : 's'} · ${msg.download.title}`
+                    : null}
+                />
               )}
               {/* Inline trade buttons (Demo/Gold only) */}
               {(() => {
