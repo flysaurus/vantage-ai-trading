@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -343,9 +343,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // message object (unlike the single dataCallout/rebalanceAction states).
   const downloadRef = useRef<DownloadPayload | null>(null);
 
-  // Build the export File (blob + filename) once, shared by both the
-  // download (save) and share (native share sheet) paths — one fetch, no
-  // duplicate CSV generation on mobile.
+  // Build the export File (blob + filename) once — one fetch, no duplicate
+  // CSV generation regardless of how many times the user clicks Download.
   const buildExportFile = useCallback(async (payload: DownloadPayload): Promise<{ file: File; filename: string } | null> => {
     try {
       const res = await fetch('/api/ai/export', {
@@ -386,62 +385,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
     if (!result) return;
     triggerSave(result.file, result.filename);
   }, [buildExportFile, triggerSave]);
-
-  // Share via the native OS share sheet (Web Share API) — on phones this opens
-  // AirDrop / Messages / WhatsApp / Save-to-Files, which is far easier to find
-  // than a silent download. Falls back to a plain save where file-share is
-  // unsupported (most desktop browsers).
-  const handleShareExport = useCallback(async (payload: DownloadPayload) => {
-    const result = await buildExportFile(payload);
-    if (!result) return;
-    const { file, filename } = result;
-    const nav = typeof navigator !== 'undefined'
-      ? (navigator as Navigator & { share?: (data: ShareData) => Promise<void>; canShare?: (data: ShareData) => boolean })
-      : null;
-    if (nav && typeof nav.share === 'function') {
-      // Probe FILE-share capability specifically (not text/URL share). Some
-      // browsers (e.g. desktop Chrome) expose navigator.share but reject
-      // files; sharing there would send only the filename with no file.
-      const canShareFilesHere = typeof nav.canShare === 'function' ? nav.canShare({ files: [file] }) : true;
-      if (canShareFilesHere) {
-        // Include `text` alongside `files` so a text-only share target still
-        // delivers a meaningful caption instead of a bare filename.
-        const shareData: ShareData = {
-          files: [file],
-          title: filename,
-          text: payload.title || filename,
-        };
-        try {
-          await nav.share(shareData);
-          return;
-        } catch (err) {
-          // AbortError = user dismissed the sheet — not an error, stay silent.
-          if (err instanceof Error && err.name === 'AbortError') return;
-          // Other share failures (e.g. target rejected the file) fall through to save.
-        }
-      }
-    }
-    triggerSave(file, filename);
-  }, [buildExportFile, triggerSave]);
-
-  // Web Share API file capability — probed once. navigator.share alone isn't
-  // enough: several desktop browsers expose it but reject `files`, which would
-  // render a Share button that can only share the filename. Probe with a tiny
-  // real File so the Share pill only appears where a file can actually be shared.
-  const canShareFiles = useMemo(() => {
-    if (typeof navigator === 'undefined') return false;
-    const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void>; canShare?: (data: ShareData) => boolean };
-    if (typeof nav.share !== 'function') return false;
-    if (typeof nav.canShare === 'function') {
-      try {
-        const probe = new File(['x'], 'vantage-share-probe.txt', { type: 'text/plain' });
-        return nav.canShare({ files: [probe] });
-      } catch {
-        return false;
-      }
-    }
-    return true; // no canShare API → older mobile browser; assume file share works
-  }, []);
 
   // ── Sequential clarifying-question stepper ──
   // When an AI response contains multiple [CLARIFY:{...}] markers,
@@ -2557,8 +2500,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               {msg.download && (
                 <ExportControls
                   onDownload={() => handleDownloadExport(msg.download!)}
-                  onShare={() => handleShareExport(msg.download!)}
-                  canShare={canShareFiles}
                   caption={msg.download.rows.length > 0
                     ? `${msg.download.rows.length} line${msg.download.rows.length === 1 ? '' : 's'} · ${msg.download.title}`
                     : null}
