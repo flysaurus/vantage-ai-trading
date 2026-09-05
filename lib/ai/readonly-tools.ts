@@ -18,6 +18,9 @@ export interface ReadonlyToolContext {
   investorStyle: string;
   /** Canonical account id ('demo' | 'snaptrade:<conn_id>') the user is acting on. */
   accountId?: string | null;
+  /** True when the active account is a read-only live broker connection — order
+   *  placement is unavailable, so proposals must show a download-only disclosure. */
+  readOnly?: boolean;
   /** Set by executeReadonlyTool when getRebalancePlan computes a plan, so the
    *  caller can attach a downloadable export payload to the model's prose
    *  summary of that plan (the model narrates, but never emits markers). */
@@ -130,7 +133,7 @@ export async function executeReadonlyTool(
         // a downloadable .xlsx payload — the model only summarizes the JSON in
         // prose and emits no markers, so the marker-gated exporter never fires.
         if (ctx) ctx.capturedRebalancePlan = plan;
-        return JSON.stringify({ ...plan, summary: formatRebalancePlanAnswer(plan) });
+        return JSON.stringify({ ...plan, summary: formatRebalancePlanAnswer(plan, { readOnly: ctx?.readOnly }) });
       }
 
       case 'listDcaSchedules': {

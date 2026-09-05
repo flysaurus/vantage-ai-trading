@@ -1173,7 +1173,19 @@ export function formatStylePickPrompt(currentStyle: string): string {
   ].join('\n');
 }
 
-export function formatRebalancePlanAnswer(plan: RebalancePlan): string {
+export function formatRebalancePlanAnswer(
+  plan: RebalancePlan,
+  opts?: { readOnly?: boolean },
+): string {
+  const readOnly = !!opts?.readOnly;
+  // Read-only connections can't place orders — never point the user at "execute
+  // the rebalance". Show a download-only disclosure instead.
+  const buyHint = readOnly
+    ? `⚠️ Execution isn't available on your read-only connection — this is a proposal you can review and download.`
+    : `⚠️ I haven't executed anything. Say "execute the rebalance" to place these buys.`;
+  const fullHint = readOnly
+    ? `⚠️ Execution isn't available on your read-only connection — this is a proposal you can review and download.`
+    : `⚠️ I haven't executed anything — this is a proposal. Say "execute the rebalance" to place these trades.`;
   if (plan.lines.length === 0) {
     if (plan.customAmount != null) {
       return `That amount is too small to split into the **${plan.styleName}** targets (each buy would be under $1). Try a larger amount, or say "rebalance my portfolio" for the full plan.`;
@@ -1194,7 +1206,7 @@ export function formatRebalancePlanAnswer(plan: RebalancePlan): string {
       '',
       `**Summary:** ${count} buy${count === 1 ? '' : 's'} — ${usd(totalBuy)} to deploy · ${usd(remaining)} stays in cash.`,
       '',
-      `⚠️ I haven't executed anything. Say "execute the rebalance" to place these buys.`,
+      buyHint,
     ].join('\n');
   }
   if (plan.customAmount != null) {
@@ -1206,7 +1218,7 @@ export function formatRebalancePlanAnswer(plan: RebalancePlan): string {
       '',
       `**Summary:** ${count} buy${count === 1 ? '' : 's'} — ${usd(totalBuy)} to deploy · ${usd(remaining)} stays in cash.`,
       '',
-      `⚠️ I haven't executed anything. Say "execute the rebalance" to place these buys.`,
+      buyHint,
     ].join('\n');
   }
   const cashLine = plan.lines.find((l) => l.symbol.toUpperCase() === 'CASH');
@@ -1229,7 +1241,7 @@ export function formatRebalancePlanAnswer(plan: RebalancePlan): string {
     '',
     `**Summary:** ${count} trades — ${usd(totalBuy)} to buy · ${usd(totalSell)} to sell.`,
     '',
-    `⚠️ I haven't executed anything — this is a proposal. Say "execute the rebalance" to place these trades.`,
+    fullHint,
   );
   return parts.join('\n');
 }

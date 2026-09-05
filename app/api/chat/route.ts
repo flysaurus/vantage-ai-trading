@@ -1162,6 +1162,9 @@ export async function POST(req: Request) {
       : null;
     const retryAttempt: number = typeof retryAttemptRaw === 'number' ? retryAttemptRaw : 0;
     const retryFailures: ValidationFailure[] | undefined = Array.isArray(retryFailuresRaw) ? retryFailuresRaw : undefined;
+    // Read-only live broker connection (Fidelity view-only etc.): order placement
+    // is blocked, so plan proposals must say "download only" — never "execute".
+    const isReadOnlyAccount = !!(accountMeta && !accountMeta.isDemo && !accountMeta.tradingEnabled);
 
     // ── Usage limit check (type depends on mode) ──
     const userId = await getOptionalUserId();
@@ -1414,7 +1417,7 @@ export async function POST(req: Request) {
             const plan = computeRebalancePlan(portfolioSnapshot, targetStyle);
             return textSSEResponse(`✅ Your investor style is now **${styleLabel(style)}**.
 
-` + formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' }, undefined, planToExportPayload(plan));
+` + formatRebalancePlanAnswer(plan, { readOnly: isReadOnlyAccount }), { kind: 'rebalance_plan' }, undefined, planToExportPayload(plan));
           }
           return textSSEResponse(formatStyleChangeAnswer(style, profile.riskTolerance), { kind: 'style_changed' });
         }
@@ -1462,7 +1465,7 @@ export async function POST(req: Request) {
             customAmount: scope.customAmount ?? undefined,
             assetClass,
           });
-          return textSSEResponse(formatRebalancePlanAnswer(plan), { kind: 'rebalance_plan' }, undefined, planToExportPayload(plan));
+          return textSSEResponse(formatRebalancePlanAnswer(plan, { readOnly: isReadOnlyAccount }), { kind: 'rebalance_plan' }, undefined, planToExportPayload(plan));
         }
         if (detectCashOnlyRebalance(lastMessage)) {
           return textSSEResponse(formatAssetClassPrompt('cash-only'), { kind: 'rebalance_asset' });
@@ -1955,6 +1958,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
       // Account segregation: thread the acting account so money tools (e.g.
       // DCA create) write strategy rows under the correct account.
       accountId: accountMeta?.accountId ?? null,
+      readOnly: isReadOnlyAccount,
     };
 
     // ── Build initial conversation ────────────────────────────
