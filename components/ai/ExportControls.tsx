@@ -5,7 +5,7 @@
 // plans, portfolio builds, basket previews, DCA schedules). ONE reusable
 // component used identically regardless of response type.
 //
-// The export is a plain CSV blob download (anchor + `download` attribute),
+// The export is a plain .xlsx blob download (anchor + `download` attribute),
 // so it behaves the same on every platform — Windows/macOS/Linux desktop
 // browsers, mobile Safari/Chrome — with no dependency on the Web Share API.
 // ─────────────────────────────────────────────────────────────
@@ -42,9 +42,9 @@ export function ExportControls({ onDownload, caption }: ExportControlsProps) {
   return (
     <div style={{ marginTop: '12px' }}>
       <div style={{ display: 'flex', width: '100%' }}>
-        <button type="button" onClick={onDownload} style={downloadStyle} aria-label="Download .csv">
+        <button type="button" onClick={onDownload} style={downloadStyle} aria-label="Download .xlsx">
           <Download size={ICON_SIZE} strokeWidth={2} aria-hidden />
-          Download .csv
+          Download .xlsx
         </button>
       </div>
       {caption && (

@@ -344,7 +344,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const downloadRef = useRef<DownloadPayload | null>(null);
 
   // Build the export File (blob + filename) once — one fetch, no duplicate
-  // CSV generation regardless of how many times the user clicks Download.
+  // .xlsx generation regardless of how many times the user clicks Download.
   const buildExportFile = useCallback(async (payload: DownloadPayload): Promise<{ file: File; filename: string } | null> => {
     try {
       const res = await fetch('/api/ai/export', {
@@ -358,8 +358,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }
       const blob = await res.blob();
       const cd = res.headers.get('Content-Disposition') || '';
-      const filename = cd.match(/filename="([^"]+)"/)?.[1] || 'vantage-export.csv';
-      const type = blob.type || 'text/csv';
+      const filename = cd.match(/filename="([^"]+)"/)?.[1] || 'vantage-export.xlsx';
+      const type = blob.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       const file = new File([blob], filename, { type });
       return { file, filename };
     } catch {

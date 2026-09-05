@@ -19,7 +19,7 @@ import { extractRiskTarget, extractStyleTarget, extractRebalanceTarget, computeR
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { planToExportPayload } from '@/lib/export/rebalance-export'
 import { buildMarkerExportPayload } from '@/lib/export/marker-export'
-import type { ExportPayload } from '@/lib/export/csv'
+import type { ExportPayload } from '@/lib/export/xlsx'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
 import { MONEY_TOOLS, executeMoneyTool } from '@/lib/ai/money-tools'
@@ -2582,7 +2582,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // ── Marker-gated downloadable export ──
         // Structured responses (portfolio builds, basket previews, position
         // analyses) carry [PORTFOLIO:]/[POSITION:]/[RECOMMEND:] markers. Extract
-        // a downloadable .csv payload from them (never from prose) so the
+        // a downloadable .xlsx payload from them (never from prose) so the
         // client can render a Download button. Skipped on rejected responses.
         if (!validationRejected) {
           // Prefer a captured rebalance plan — the model summarized getRebalancePlan's

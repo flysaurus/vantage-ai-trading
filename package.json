@@ -19,6 +19,7 @@
     "argon2": "^0.44.0",
     "crypto-js": "^4.2.0",
     "date-fns": "^4.1.0",
+    "exceljs": "^4.4.0",
     "html2canvas": "^1.4.1",
     "jsonwebtoken": "^9.0.3",
     "lightweight-charts": "^5.2.0",

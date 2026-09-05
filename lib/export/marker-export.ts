@@ -1,5 +1,5 @@
 import { parsePortfolioBlocks } from '@/lib/portfolio-blocks';
-import type { ExportPayload, ExportRow } from './csv';
+import type { ExportPayload, ExportRow } from './xlsx';
 
 /**
  * Build a downloadable export payload from the STRUCTURED markers in an AI

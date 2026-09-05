@@ -1,5 +1,5 @@
 import type { RebalancePlan } from '@/lib/ai/account-actions';
-import type { ExportPayload, ExportRow } from './csv';
+import type { ExportPayload, ExportRow } from './xlsx';
 
 /**
  * Convert a deterministic rebalance plan into the shared export payload.
