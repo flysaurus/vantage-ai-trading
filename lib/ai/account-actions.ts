@@ -870,6 +870,11 @@ export function isDcaCreationCommand(m: string): boolean {
   if (!s || s.length > 240) return false;
   if (/\b(set\s*up|create|start|begin|establish|initiate|launch|make|add)\b/.test(s) && /\b(dca|dollar[\s-]?cost[\s-]?averaging|recurring|automatic(?:al)?ly?|auto[\s-]?(?:invest|buy)|weekly|monthly|daily|scheduled)\b/.test(s)) return true;
   if (/\bschedule\b/.test(s) && /\b(?:a|an|some|the)?\s*(?:dca|dollar[\s-]?cost[\s-]?averaging|recurring|weekly|monthly|daily|automatic|regular)\s*(?:buy|invest|plan|contribution)?\b/.test(s)) return true;
+  // "invest/buy $X into TICKER [weekly/monthly/using DCA/...]" — an explicit
+  // dollar amount plus a recurring/DCA signal is a creation command (stages a
+  // schedule). The amount requirement excludes questions like "how much should
+  // I invest weekly" (no amount) from being treated as creation.
+  if (/\b(invest|buy)\b/.test(s) && /\d/.test(s) && /\b(dca|dollar[\s-]?cost[\s-]?averaging|recurring|weekly|bi[\s-]?weekly|monthly|daily|every\s+(day|week|month|two\s+weeks)|scheduled)\b/.test(s)) return true;
   return false;
 }
 

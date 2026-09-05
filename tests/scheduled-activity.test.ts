@@ -73,6 +73,12 @@ describe('isDcaCreationCommand', () => {
     'start a weekly DCA',
     'schedule a monthly investment',
     'add a daily DCA on VOO',
+    // invest/buy + amount + recurring/DCA signal
+    'invest $100 weekly into VOO',
+    'Invest 100$ in VOO for me using DCA',
+    'buy $200 of VOO every month',
+    'invest 500 in VOO monthly',
+    'buy VOO weekly for $100',
   ])('is a creation command: %s', (m) => {
     expect(isDcaCreationCommand(m)).toBe(true);
   });
@@ -85,6 +91,9 @@ describe('isDcaCreationCommand', () => {
     'what is a DCA',
     'cancel my pending DCA on AAPL',
     'how much did my DCA earn so far',
+    // questions (no explicit amount) are NOT creation commands
+    'how much should I invest weekly',
+    'what should I buy next',
   ])('is NOT a creation command: %s', (m) => {
     expect(isDcaCreationCommand(m)).toBe(false);
   });
