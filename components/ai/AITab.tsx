@@ -3285,8 +3285,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   key={action.label}
                   onClick={action.onClick}
                   style={{
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.07)',
+                    background: '#1a2235',
+                    border: '1px solid #2a3448',
                     borderRadius: '12px',
                     padding: '13px 10px',
                     display: 'flex',
