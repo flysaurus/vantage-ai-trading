@@ -56,9 +56,9 @@ export function ExportControls({ onDownload, onShare, canShare, caption }: Expor
   return (
     <div style={{ marginTop: '12px' }}>
       <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-        <button type="button" onClick={onDownload} style={downloadStyle} aria-label="Download .xlsx">
+        <button type="button" onClick={onDownload} style={downloadStyle} aria-label="Download .csv">
           <Download size={ICON_SIZE} strokeWidth={2} aria-hidden />
-          Download .xlsx
+          Download .csv
         </button>
         {canShare && (
           <button type="button" onClick={onShare} style={shareStyle} aria-label="Share">

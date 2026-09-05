@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
-import { buildExportWorkbook, exportFilenameStem, type ExportPayload } from '@/lib/export/xlsx';
+import { buildExportCsv, exportFilenameStem, type ExportPayload } from '@/lib/export/csv';
 
 export const maxDuration = 60;
 
 /**
  * POST /api/ai/export
  * Body: { title, subtitle?, thesis?, grandTotal?, rows: ExportRow[] }
- * Generates the shared Excel (.xlsx) download for AI Advisor structured
+ * Generates the shared CSV download for AI Advisor structured
  * responses (rebalance plans, portfolio builds, basket previews, etc.).
  *
  * Auth-gated; the payload is derived from the user's own conversation, so no
@@ -53,20 +53,21 @@ export async function POST(req: NextRequest) {
     rows,
   };
 
-  let buffer: Buffer;
+  let csv: string;
   try {
-    buffer = await buildExportWorkbook(payload);
+    csv = buildExportCsv(payload);
   } catch (err) {
-    console.error('[export] workbook build failed:', err);
+    console.error('[export] CSV build failed:', err);
     return NextResponse.json({ error: 'Failed to generate export' }, { status: 500 });
   }
 
-  const filename = `${exportFilenameStem(title)}.xlsx`;
-  const bodyBytes = new Uint8Array(buffer);
+  const filename = `${exportFilenameStem(title)}.csv`;
+  // Prepend a UTF-8 BOM so Excel/Sheets detect the encoding (non-ASCII names).
+  const bodyBytes = Buffer.from('\uFEFF' + csv, 'utf-8');
   return new NextResponse(bodyBytes, {
     status: 200,
     headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="${filename}"`,
       'Content-Length': String(bodyBytes.length),
       'Cache-Control': 'no-store',

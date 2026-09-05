@@ -130,7 +130,7 @@ export async function executeReadonlyTool(
         const style = normalizeStyleKey(input?.style) || investorStyle || 'lynch';
         const plan = computeRebalancePlan(portfolioSnapshot, style);
         // Expose the structured plan to the caller (chat route) so it can attach
-        // a downloadable .xlsx payload — the model only summarizes the JSON in
+        // a downloadable .csv payload — the model only summarizes the JSON in
         // prose and emits no markers, so the marker-gated exporter never fires.
         if (ctx) ctx.capturedRebalancePlan = plan;
         return JSON.stringify({ ...plan, summary: formatRebalancePlanAnswer(plan, { readOnly: ctx?.readOnly }) });

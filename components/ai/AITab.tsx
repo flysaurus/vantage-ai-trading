@@ -345,7 +345,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   // Build the export File (blob + filename) once, shared by both the
   // download (save) and share (native share sheet) paths — one fetch, no
-  // duplicate xlsx generation on mobile.
+  // duplicate CSV generation on mobile.
   const buildExportFile = useCallback(async (payload: DownloadPayload): Promise<{ file: File; filename: string } | null> => {
     try {
       const res = await fetch('/api/ai/export', {
@@ -359,8 +359,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }
       const blob = await res.blob();
       const cd = res.headers.get('Content-Disposition') || '';
-      const filename = cd.match(/filename="([^"]+)"/)?.[1] || 'vantage-export.xlsx';
-      const type = blob.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const filename = cd.match(/filename="([^"]+)"/)?.[1] || 'vantage-export.csv';
+      const type = blob.type || 'text/csv';
       const file = new File([blob], filename, { type });
       return { file, filename };
     } catch {

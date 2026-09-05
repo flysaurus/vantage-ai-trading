@@ -11,11 +11,11 @@
 //      (no per-leg qty/price — those live only in the server's RebalancePlan),
 //      but preserves ticker / action / amount / company / grand total.
 //
-// Client-safe: no Node/fs/supabase/exceljs imports (type-only from ./xlsx).
+// Client-safe: no Node/fs/supabase imports (type-only from ./csv).
 // ──────────────────────────────────────────────────────────────
 
 import { buildMarkerExportPayload } from './marker-export';
-import type { ExportPayload, ExportRow } from './xlsx';
+import type { ExportPayload, ExportRow } from './csv';
 
 const ACTION_SET: ReadonlySet<string> = new Set(['buy', 'sell', 'hold']);
 
