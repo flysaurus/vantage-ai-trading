@@ -395,28 +395,53 @@ export function AITab({ messages, setMessages }: AITabProps) {
     const result = await buildExportFile(payload);
     if (!result) return;
     const { file, filename } = result;
-    const nav = typeof navigator !== 'undefined' ? navigator : null;
+    const nav = typeof navigator !== 'undefined'
+      ? (navigator as Navigator & { share?: (data: ShareData) => Promise<void>; canShare?: (data: ShareData) => boolean })
+      : null;
     if (nav && typeof nav.share === 'function') {
-      const shareData: ShareData = { files: [file], title: filename };
-      if (typeof nav.canShare === 'function' && nav.canShare(shareData)) {
+      // Probe FILE-share capability specifically (not text/URL share). Some
+      // browsers (e.g. desktop Chrome) expose navigator.share but reject
+      // files; sharing there would send only the filename with no file.
+      const canShareFilesHere = typeof nav.canShare === 'function' ? nav.canShare({ files: [file] }) : true;
+      if (canShareFilesHere) {
+        // Include `text` alongside `files` so a text-only share target still
+        // delivers a meaningful caption instead of a bare filename.
+        const shareData: ShareData = {
+          files: [file],
+          title: filename,
+          text: payload.title || filename,
+        };
         try {
           await nav.share(shareData);
           return;
         } catch (err) {
           // AbortError = user dismissed the sheet — not an error, stay silent.
           if (err instanceof Error && err.name === 'AbortError') return;
-          // Other share failures (e.g. no target app) fall through to save.
+          // Other share failures (e.g. target rejected the file) fall through to save.
         }
       }
     }
     triggerSave(file, filename);
   }, [buildExportFile, triggerSave]);
 
-  // Web Share API presence is static per browser — compute once.
-  const canShareFiles = useMemo(
-    () => typeof navigator !== 'undefined' && typeof (navigator as any).share === 'function',
-    [],
-  );
+  // Web Share API file capability — probed once. navigator.share alone isn't
+  // enough: several desktop browsers expose it but reject `files`, which would
+  // render a Share button that can only share the filename. Probe with a tiny
+  // real File so the Share pill only appears where a file can actually be shared.
+  const canShareFiles = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void>; canShare?: (data: ShareData) => boolean };
+    if (typeof nav.share !== 'function') return false;
+    if (typeof nav.canShare === 'function') {
+      try {
+        const probe = new File(['x'], 'vantage-share-probe.txt', { type: 'text/plain' });
+        return nav.canShare({ files: [probe] });
+      } catch {
+        return false;
+      }
+    }
+    return true; // no canShare API → older mobile browser; assume file share works
+  }, []);
 
   // ── Sequential clarifying-question stepper ──
   // When an AI response contains multiple [CLARIFY:{...}] markers,
