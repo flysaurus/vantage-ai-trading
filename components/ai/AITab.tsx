@@ -3277,10 +3277,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 { label: 'Market Pulse', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); handleMarketPulse(e); } },
                 { label: 'Strategy Ideas', live: false, onClick: () => { setShowExplore(false); sendToChat('Based on my current portfolio and market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas.'); } },
                 { label: 'Rebalance', live: false, reason: isReadOnly ? 'Download plan on view-only accounts' : undefined, onClick: () => { setShowExplore(false); sendToChat('rebalance'); } },
-                { label: 'DCA', live: false, reason: isReadOnly ? 'Unavailable — view-only account' : undefined, onClick: () => { setShowExplore(false); sendToChat('Set up a dollar-cost averaging (DCA) plan'); } },
+                { label: 'DCA', live: false, onClick: () => { setShowExplore(false); sendToChat('Set up a dollar-cost averaging (DCA) plan'); } },
                 { label: 'Tax Check', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); sendToChat('Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.', e); } },
                 { label: 'Alerts', live: false, onClick: () => { setShowExplore(false); sendMessage('Scan my portfolio for urgent alerts', 'alerts'); wasAtBottomRef.current = true; scrollToBottom(true); } },
-              ].map((action) => (
+              ].filter((a) => !(isReadOnly && a.label === 'DCA')).map((action) => (
                 <div
                   key={action.label}
                   onClick={action.onClick}

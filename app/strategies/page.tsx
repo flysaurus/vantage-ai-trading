@@ -18,6 +18,7 @@ export default function StrategiesPage() {
   const router = useRouter();
   const [activeSchedules, setActiveSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isReadOnly, setIsReadOnly] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -29,6 +30,20 @@ export default function StrategiesPage() {
         }
       } catch { /* ignore */ }
       finally { setLoading(false); }
+    })();
+  }, []);
+
+  // Hide DCA entirely on read-only (view-only) broker connections.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiGet('/api/broker/status');
+        if (res.ok) {
+          const s = await res.json();
+          const connected = s.connected || s.isConnected || false;
+          setIsReadOnly(connected && s.trading_enabled === false);
+        }
+      } catch { /* ignore */ }
     })();
   }, []);
 
@@ -75,7 +90,7 @@ export default function StrategiesPage() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {STRATEGIES.map(s => (
+        {STRATEGIES.filter(s => !(isReadOnly && s.key === 'dca')).map(s => (
           <div
             key={s.key}
             onClick={() => s.available ? router.push(s.path) : null}
