@@ -107,6 +107,14 @@ describe('executeReadonlyTool — getRebalancePlan', () => {
     expect(r.equity).toBe(0);
     expect(Array.isArray(r.lines)).toBe(true);
   });
+
+  it('captures the structured plan on the context for the download payload', async () => {
+    const c = ctx();
+    await executeReadonlyTool('getRebalancePlan', { style: 'livermore' }, c);
+    expect(c.capturedRebalancePlan).toBeTruthy();
+    expect(c.capturedRebalancePlan!.styleName).toBeTruthy();
+    expect(Array.isArray(c.capturedRebalancePlan!.lines)).toBe(true);
+  });
 });
 
 describe('executeReadonlyTool — supabase-backed list tools', () => {

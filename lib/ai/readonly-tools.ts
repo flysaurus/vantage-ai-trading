@@ -8,7 +8,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getInvestorStyleTargets } from '@/lib/investor-style-targets';
 import { computeRebalancePlan, formatRebalancePlanAnswer } from '@/lib/ai/account-actions';
-import type { PortfolioSnapshot } from '@/lib/ai/account-actions';
+import type { PortfolioSnapshot, RebalancePlan } from '@/lib/ai/account-actions';
 import { parseAccountScope, applyAccountScopeFilter } from '@/lib/account-scope';
 
 export interface ReadonlyToolContext {
@@ -18,6 +18,10 @@ export interface ReadonlyToolContext {
   investorStyle: string;
   /** Canonical account id ('demo' | 'snaptrade:<conn_id>') the user is acting on. */
   accountId?: string | null;
+  /** Set by executeReadonlyTool when getRebalancePlan computes a plan, so the
+   *  caller can attach a downloadable export payload to the model's prose
+   *  summary of that plan (the model narrates, but never emits markers). */
+  capturedRebalancePlan?: RebalancePlan | null;
 }
 
 const STYLE_KEYS = ['buffett', 'lynch', 'livermore', 'munger', 'soros'];
@@ -122,6 +126,10 @@ export async function executeReadonlyTool(
       case 'getRebalancePlan': {
         const style = normalizeStyleKey(input?.style) || investorStyle || 'lynch';
         const plan = computeRebalancePlan(portfolioSnapshot, style);
+        // Expose the structured plan to the caller (chat route) so it can attach
+        // a downloadable .xlsx payload — the model only summarizes the JSON in
+        // prose and emits no markers, so the marker-gated exporter never fires.
+        if (ctx) ctx.capturedRebalancePlan = plan;
         return JSON.stringify({ ...plan, summary: formatRebalancePlanAnswer(plan) });
       }
 

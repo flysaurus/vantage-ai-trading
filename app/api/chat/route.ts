@@ -2581,7 +2581,14 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // a downloadable .xlsx payload from them (never from prose) so the
         // client can render a Download button. Skipped on rejected responses.
         if (!validationRejected) {
-          const downloadPayload = buildMarkerExportPayload(responseText);
+          // Prefer a captured rebalance plan — the model summarized getRebalancePlan's
+          // JSON in prose and emitted no markers, so the marker-gated exporter would
+          // miss it. Attach the deterministic plan payload so the Download button
+          // always appears for rebalance (read-only AND trading-enabled accounts).
+          const rebalanceDownload = toolCtx.capturedRebalancePlan
+            ? planToExportPayload(toolCtx.capturedRebalancePlan)
+            : null;
+          const downloadPayload = rebalanceDownload ?? buildMarkerExportPayload(responseText);
           if (downloadPayload) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ download: downloadPayload })}\n\n`));
           }
