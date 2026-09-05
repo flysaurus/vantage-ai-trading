@@ -39,11 +39,16 @@ export type TabId = 'ai' | 'invest' | 'portfolio' | 'watchlist' | 'settings';
 interface TabStore {
   activeTab: TabId;
   setTab: (tab: TabId) => void;
+  /** Ticker to focus/expand in the Portfolio tab (set cross-tab, consumed + cleared by PortfolioTab). */
+  focusPosition: string | null;
+  setFocusPosition: (symbol: string | null) => void;
 }
 
 export const useTabStore = create<TabStore>((set) => ({
   activeTab: 'ai',
   setTab: (tab) => set({ activeTab: tab }),
+  focusPosition: null,
+  setFocusPosition: (symbol) => set({ focusPosition: symbol }),
 }));
 
 // ─── Market Data ───

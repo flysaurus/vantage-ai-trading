@@ -138,6 +138,7 @@ function formatItem(row: any) {
     variant: row.variant,
     icon: row.icon,
     meta: row.meta,
+    action: row.meta?.action || null,
     createdAt: row.created_at,
     dismissedUntil: row.dismissed_until,
   };

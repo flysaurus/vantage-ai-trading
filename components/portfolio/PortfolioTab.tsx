@@ -6,6 +6,7 @@ import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import { useAccounts } from '@/context/AccountContext';
+import { useTabStore } from '@/store';
 import type { Position, AccountSummary } from '@/types';
 import { availableCash as computeAvailableCash } from '@/lib/available-cash';
 import type { Basket } from '@/context/PortfolioContext';
@@ -869,6 +870,7 @@ export function PortfolioTab() {
   const { isConnected } = useBroker();
   const { activeAccount, activeAccountId } = useAccounts();
   const { user } = useAuth();
+  const { focusPosition, setFocusPosition } = useTabStore();
 
   // Hard boundary: Demo must NEVER show broker data. Scope data source by active account.
   const isShowingDemo = activeAccount?.isDemo ?? false;
@@ -911,6 +913,26 @@ export function PortfolioTab() {
     return () => document.removeEventListener('mousedown', handler);
   }, [dailyExpanded, weeklyExpanded]);
   const positions: Position[] = displayAccount?.positions || [];
+
+  // ── Cross-tab focus: expand + scroll to a ticker's position card ──
+  // Set by the AI Noticed REVIEW_POSITION CTA (AITab → setFocusPosition + setTab('portfolio')).
+  useEffect(() => {
+    if (!focusPosition) return;
+    const target = focusPosition.toUpperCase();
+    const pos = positions.find((p: any) => (p.symbol || '').toUpperCase() === target);
+    if (!pos) return; // positions still loading — retry on next positions change
+    const symbol = pos.symbol;
+    setExpandedSymbols((prev) => {
+      const next = new Set(prev);
+      next.add(symbol);
+      return next;
+    });
+    const timer = setTimeout(() => {
+      document.getElementById(`position-${symbol}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setFocusPosition(null);
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [focusPosition, positions, setFocusPosition]);
 
   // Hydrate missing company names + sectors from API
   const [enrichedPositions, setEnrichedPositions] = useState<Position[]>(positions);
@@ -1425,22 +1447,23 @@ export function PortfolioTab() {
             {filteredPositions
               .filter((pos: any) => !basketSymbolMap.has(pos.symbol))
               .map((pos: any) => (
-                <PositionCardV3
-                  key={pos.symbol}
-                  pos={pos}
-                  isSelected={selectedSymbols.has(pos.symbol)}
-                  isExpanded={expandedSymbols.has(pos.symbol)}
-                  onToggleSelect={() => toggleSelect(pos.symbol)}
-                  onToggleExpand={() => toggleExpand(pos.symbol)}
-                  onBuy={() => {
-                    console.log('[BUY] setTradeTicket firing for', pos.symbol, 'cash:', displayAccount?.cash);
-                    setTradeTicket({ symbol: pos.symbol, side: 'BUY', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: computeAvailableCash(displayAccount) });
-                  }}
-                  onSell={(lots) => setTradeTicket({ symbol: pos.symbol, side: 'SELL', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: 0, lots })}
-                  showCheckbox={selectMode}
-                  connectionId={null}
-                  brokerLabel={brokerLabel}
-                />
+                <div key={pos.symbol} id={`position-${pos.symbol}`}>
+                  <PositionCardV3
+                    pos={pos}
+                    isSelected={selectedSymbols.has(pos.symbol)}
+                    isExpanded={expandedSymbols.has(pos.symbol)}
+                    onToggleSelect={() => toggleSelect(pos.symbol)}
+                    onToggleExpand={() => toggleExpand(pos.symbol)}
+                    onBuy={() => {
+                      console.log('[BUY] setTradeTicket firing for', pos.symbol, 'cash:', displayAccount?.cash);
+                      setTradeTicket({ symbol: pos.symbol, side: 'BUY', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: computeAvailableCash(displayAccount) });
+                    }}
+                    onSell={(lots) => setTradeTicket({ symbol: pos.symbol, side: 'SELL', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: 0, lots })}
+                    showCheckbox={selectMode}
+                    connectionId={null}
+                    brokerLabel={brokerLabel}
+                  />
+                </div>
               ))}
 
             {/* No items at all */}

@@ -24,6 +24,8 @@ import { parseClarifyMarkers, questionsToOptions, ClarifyingOptions, ClarifyStep
 import { SummaryCard } from '@/components/ai/SummaryCard';
 import { PositionCards } from '@/components/ai/PositionCards';
 import { ExportControls } from '@/components/ai/ExportControls';
+import ActionButton from '@/components/ai/ActionButton';
+import { useTabStore } from '@/store';
 import { HoldingsCallout } from '@/components/ai/HoldingsCallout';
 import { ProgressIndicator, type ChecklistItem } from '@/components/ai/ProgressIndicator';
 import TradeTicket from '@/components/portfolio/TradeTicket';
@@ -156,6 +158,7 @@ interface NoticedItem {
   variant: 'accent' | 'warn' | 'gain';
   icon: string;
   meta: Record<string, any>;
+  action?: string | null;
   createdAt: string;
   dismissedUntil: string | null;
 }
@@ -213,6 +216,7 @@ const PLACEHOLDERS = [
 
 export function AITab({ messages, setMessages }: AITabProps) {
   const router = useRouter();
+  const { setTab, setFocusPosition } = useTabStore();
   const { account: liveAccount, executeTrade, brokerMeta } = useLivePortfolio();
   const { isConnected } = useBroker();
   // Canonical account source of truth. brokerMeta is derived (and goes null/stale
@@ -3193,6 +3197,15 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                           ×
                         </span>
                       </div>
+                      {/* Inline CTA — deterministic [ACTION:...] marker from the rules engine */}
+                      {item.action && (
+                        <ActionButton
+                          action={item.action}
+                          onRebalance={() => { setShowExplore(false); sendToChat('rebalance'); }}
+                          onReviewPosition={(ticker) => { setShowExplore(false); setFocusPosition(ticker); setTab('portfolio'); }}
+                          onDismiss={() => setSnoozeTarget(snoozeTarget === item.id ? null : item.id)}
+                        />
+                      )}
                       {/* Snooze popover */}
                       {snoozeTarget === item.id && (
                         <>

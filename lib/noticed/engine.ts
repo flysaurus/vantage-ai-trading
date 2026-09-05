@@ -51,6 +51,12 @@ export interface NoticedTrigger {
   title: string;
   variant: 'accent' | 'warn' | 'gain';
   icon: string;
+  /**
+   * Deterministic CTA marker carried as `meta.action` — never free-text.
+   * 'REBALANCE' → concentration-risk / allocation drift.
+   * 'REVIEW_POSITION:<TICKER>' → single-position flag.
+   * Absent = no inline CTA.
+   */
   meta: Record<string, any>;
   follow_up: string;
   context: string;
@@ -118,7 +124,7 @@ export function findNewTriggers(
           title: `${pos.symbol} ${bandLabel}%`,
           variant: isPositive ? 'gain' : 'warn',
           icon: isPositive ? '📈' : '📉',
-          meta: { symbol: pos.symbol, threshold: band, currentPnlPct: Math.round(pnlPct * 10) / 10, marketValue: pos.marketValue },
+          meta: { symbol: pos.symbol, threshold: band, currentPnlPct: Math.round(pnlPct * 10) / 10, marketValue: pos.marketValue, action: `REVIEW_POSITION:${pos.symbol}` },
           follow_up: isPositive
             ? `Should I take profits on ${pos.symbol}?`
             : `Is ${pos.symbol} still worth holding?`,
@@ -178,6 +184,7 @@ export function findDriftTriggers(
         targetPct,
         deviation: Math.round(deviation),
         totalValue,
+        action: 'REBALANCE',
       },
       follow_up: `How should I rebalance my ${sector} exposure?`,
       context: `${sector}: ${Math.round(currentPct)}% vs ${targetPct}% target (${direction} by ${Math.abs(Math.round(deviation))}%). Portfolio: $${totalValue.toLocaleString()}. Style: ${investorStyle}.`,
@@ -306,7 +313,7 @@ export async function findSentimentShiftTriggers(
         title: `${symbol} headlines turning negative`,
         variant: 'warn',
         icon: '📰',
-        meta: { symbol, negativeCount: negativeHeadlines.length, totalHeadlines: headlines.length, sample },
+        meta: { symbol, negativeCount: negativeHeadlines.length, totalHeadlines: headlines.length, sample, action: `REVIEW_POSITION:${symbol}` },
         follow_up: `What's happening with ${symbol}?`,
         context: `${symbol}: ${negativeHeadlines.length} of ${headlines.length} recent headlines scored negative by FinBERT. Headlines: ${sample}`,
       });
@@ -424,10 +431,22 @@ export async function runNoticedPipeline(
       .eq('user_id', userId)
       .in('trigger_key', (resolvedItems as any[]).map((r: any) => r.trigger_key));
 
+    const triggerByKey = new Map(allTriggers.map((t) => [t.trigger_key, t]));
     for (const item of resolvedItems as any[]) {
+      const fresh = triggerByKey.get(item.trigger_key);
+      const update: any = { regenerated_count: (item.regenerated_count || 0) + 1 };
+      if (fresh) {
+        // Refresh deterministic fields (incl. meta.action CTA marker) from the
+        // freshly-computed trigger so re-fired items carry the current action.
+        update.meta = fresh.meta;
+        update.variant = fresh.variant;
+        update.icon = fresh.icon;
+        update.title = fresh.title;
+        update.follow_up = fresh.follow_up;
+      }
       await supabase
         .from('noticed_items')
-        .update({ regenerated_count: (item.regenerated_count || 0) + 1 })
+        .update(update)
         .eq('id', item.id);
     }
   }
