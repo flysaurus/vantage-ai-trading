@@ -75,8 +75,64 @@ async function waitForAppLoad(page: Page) {
   await page.waitForTimeout(2000);
 }
 
-// Mock /api/auth/me to return a demo user — bypasses onboarding
+// ─── Supabase auth mock (bypasses onboarding) ────────────────
+const SUPABASE_REF = 'ixjnuoslbzytubpplkot';
+const SUPABASE_COOKIE = `sb-${SUPABASE_REF}-auth-token`;
+const QA_USER = {
+  id: 'demo-qa-user',
+  aud: 'authenticated',
+  role: 'authenticated',
+  email: 'qa@vantage.test',
+  email_confirmed_at: '2024-01-01T00:00:00Z',
+  app_metadata: { provider: 'email', providers: ['email'] },
+  user_metadata: { first_name: 'QA', last_name: 'Agent', investor_style: 'buffett', pending_choice: 'demo' },
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+};
+
 async function setupDemoMode(page: Page) {
+  // Seed a valid Supabase session cookie BEFORE the app hydrates.
+  // @supabase/ssr stores the session in `sb-<ref>-auth-token` as
+  // `base64-` + base64url(JSON.stringify(session)).
+  const session = {
+    access_token: 'demo-access-token',
+    token_type: 'bearer',
+    expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    refresh_token: 'demo-refresh-token',
+    user: QA_USER,
+  };
+  const cookieValue =
+    'base64-' + Buffer.from(JSON.stringify(session), 'utf8').toString('base64url');
+  await page.addInitScript(
+    ({ cookieName, cookieValue }) => {
+      document.cookie = `${cookieName}=${cookieValue}; path=/; SameSite=Lax`;
+      try {
+        localStorage.setItem('vantage:skipAccountSelect:v2', '1');
+        localStorage.setItem('vantage:activeAccount', 'demo');
+      } catch {}
+    },
+    { cookieName: SUPABASE_COOKIE, cookieValue }
+  );
+
+  // Intercept Supabase auth endpoints so getUser() returns our QA user.
+  await page.route('**/auth/v1/user', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(QA_USER),
+    });
+  });
+  await page.route('**/auth/v1/token**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(session),
+    });
+  });
+
+  // Mock /api/auth/me with the CURRENT snake_case profile shape
+  // (useAppState reads investor_style / first_name / last_name / demo_start_at).
   await page.route('**/api/auth/me', async (route) => {
     await route.fulfill({
       status: 200,
@@ -85,11 +141,48 @@ async function setupDemoMode(page: Page) {
         user: {
           id: 'demo-qa-user',
           email: 'qa@vantage.test',
-          displayName: 'QA Agent',
-          investorStyle: 'buffett',
+          first_name: 'QA',
+          last_name: 'Agent',
+          investor_style: 'buffett',
+          risk_tolerance: 'balanced',
+          tier: 'demo',
+          demo_start_at: '2024-01-01T00:00:00Z',
+          demo_expires_at: null,
+          connection_type: null,
+          connection_status: null,
+          investor_style_onboarded: true,
           investorStyleOnboarded: true,
-          createdAt: '2024-01-01T00:00:00Z',
+          investorStyle: 'buffett',
+          riskTolerance: 'balanced',
+          displayName: 'QA Agent',
+          connection_initiated_at: null,
+          email_verified: true,
+          mfa_enabled: false,
+          mfa_method: null,
         },
+      }),
+    });
+  });
+
+  // Mock /api/accounts to return the Demo Portfolio account. Server routes
+  // validate the Supabase JWT (a fake cookie can't satisfy requireAuth), so we
+  // intercept this route to seed the client-side demo account list.
+  await page.route('**/api/accounts', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        accounts: [{
+          id: 'demo',
+          name: 'Demo Portfolio',
+          broker: 'Vantage Demo',
+          isDemo: true,
+          tradingEnabled: true,
+          totalValue: 100000,
+          buyingPower: 100000,
+          cash: 100000,
+          environment: 'demo',
+        }],
       }),
     });
   });
