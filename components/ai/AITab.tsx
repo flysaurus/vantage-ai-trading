@@ -386,6 +386,52 @@ export function AITab({ messages, setMessages }: AITabProps) {
     triggerSave(result.file, result.filename);
   }, [buildExportFile, triggerSave]);
 
+  // Web Share API availability — probed on mount (hydration-safe) so the Share
+  // pill only renders where navigator.share exists. The handler re-checks file
+  // capability at click time and falls back to a download otherwise.
+  const [canShareFiles, setCanShareFiles] = useState(false);
+  useEffect(() => {
+    if (typeof navigator !== 'undefined') {
+      setCanShareFiles(typeof (navigator as Navigator & { share?: unknown }).share === 'function');
+    }
+  }, []);
+
+  // Share the built .xlsx via the Web Share API with the actual File attached.
+  // Falls back to a plain download when the platform can't share files.
+  const handleShareExport = useCallback(async (payload: DownloadPayload) => {
+    const result = await buildExportFile(payload);
+    if (!result) return;
+    const { file, filename } = result;
+
+    const nav = typeof navigator !== 'undefined'
+      ? (navigator as Navigator & { share?: (data: ShareData) => Promise<void>; canShare?: (data: ShareData) => boolean })
+      : null;
+
+    if (nav && typeof nav.share === 'function') {
+      const canShareFilesHere = typeof nav.canShare === 'function'
+        ? (() => { try { return nav.canShare!({ files: [file] }); } catch { return false; } })()
+        : true;
+
+      if (canShareFilesHere) {
+        const shareData: ShareData = {
+          files: [file],
+          title: filename,
+          text: payload.title || filename,
+        };
+        try {
+          await nav.share(shareData);
+          return;
+        } catch (err) {
+          // AbortError = user dismissed the share sheet — stay silent.
+          if (err instanceof Error && err.name === 'AbortError') return;
+          // Any other failure (target rejected the file, no target, etc.) → download.
+        }
+      }
+    }
+
+    triggerSave(file, filename);
+  }, [buildExportFile, triggerSave]);
+
   // ── Sequential clarifying-question stepper ──
   // When an AI response contains multiple [CLARIFY:{...}] markers,
   // they are queued and revealed one at a time instead of all at once.
@@ -2500,6 +2546,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               {msg.download && (
                 <ExportControls
                   onDownload={() => handleDownloadExport(msg.download!)}
+                  onShare={() => handleShareExport(msg.download!)}
+                  canShare={canShareFiles}
                   caption={msg.download.rows.length > 0
                     ? `${msg.download.rows.length} line${msg.download.rows.length === 1 ? '' : 's'} · ${msg.download.title}`
                     : null}
