@@ -156,6 +156,55 @@ async function setupDemoMode(page: Page) {
     });
   });
 
+  // Mock /api/ai/noticed (POST) — return two cached items with deterministic
+  // action markers so the inline CTA tap-through can run without a real DB/LLM.
+  const noticedItems = [
+    {
+      id: 'n-drift-1',
+      triggerKey: 'drift:technology',
+      triggerType: 'portfolio_drift',
+      title: 'Technology 42% vs 15% target',
+      body: 'Your Technology exposure is running hot at 42% vs your 15% Buffett target.',
+      followUp: 'How should I rebalance my Technology exposure?',
+      variant: 'warn',
+      icon: '⚖️',
+      meta: { sector: 'Technology', currentPct: 42, targetPct: 15, action: 'REBALANCE' },
+      action: 'REBALANCE',
+      createdAt: new Date().toISOString(),
+      dismissedUntil: null,
+    },
+    {
+      id: 'n-sent-1',
+      triggerKey: 'sentiment:AAPL',
+      triggerType: 'sentiment_shift',
+      title: 'AAPL headlines turning negative',
+      body: '3 of 5 recent AAPL headlines scored negative.',
+      followUp: "What's happening with AAPL?",
+      variant: 'warn',
+      icon: '📰',
+      meta: { symbol: 'AAPL', action: 'REVIEW_POSITION:AAPL' },
+      action: 'REVIEW_POSITION:AAPL',
+      createdAt: new Date().toISOString(),
+      dismissedUntil: null,
+    },
+  ];
+  await page.route('**/api/ai/noticed', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: noticedItems,
+          newCount: noticedItems.length,
+          haikuGenerated: 0,
+          budgetRemaining: 100,
+        }),
+      });
+    } else {
+      await route.continue();
+    }
+  });
+
   await page.goto(APP_URL, { waitUntil: 'load', timeout: 30000 }).catch(() => {
     console.log('page.goto: load timeout, continuing');
   });
@@ -494,5 +543,83 @@ test.describe('Settings — Functional', () => {
 
     expect(hasInvestorStyle).toBe(true);
     expect(hasRiskTolerance).toBe(true);
+  });
+});
+
+// ─── AI TAB — NOTICED CTA TAP-THROUGH ───
+// Exercises the deterministic [ACTION:...] inline CTAs added to the AI Noticed
+// feed. The /api/ai/noticed mock (in setupDemoMode) returns two cached items
+// with action markers so the flow runs without a real DB/LLM.
+test.describe('AI Tab — Noticed CTA tap-through', () => {
+
+  test.beforeEach(async ({ page }) => {
+    await setupDemoMode(page);
+    await goToTab(page, 'AI');
+  });
+
+  async function openExplore(page: Page) {
+    await page.waitForSelector('.vantage-input-bar button', { timeout: 15000 }).catch(() => {});
+    await page.locator('.vantage-input-bar button').first().click();
+    await page.waitForTimeout(1500);
+  }
+
+  test('renders Rebalance + Review AAPL CTAs from deterministic markers', async ({ page }) => {
+    await openExplore(page);
+
+    const rebalanceBtn = page.getByRole('button', { name: 'Rebalance', exact: true });
+    const reviewBtn = page.getByRole('button', { name: 'Review AAPL', exact: true });
+
+    await rebalanceBtn.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+    const hasRebalance = (await rebalanceBtn.count()) > 0;
+    const hasReview = (await reviewBtn.count()) > 0;
+
+    console.log('Noticed CTAs:', { hasRebalance, hasReview });
+    expect(hasRebalance).toBe(true);
+    expect(hasReview).toBe(true);
+  });
+
+  test('Rebalance CTA closes Explore and routes rebalance to chat', async ({ page }) => {
+    await openExplore(page);
+
+    const rebalanceBtn = page.getByRole('button', { name: 'Rebalance', exact: true });
+    await rebalanceBtn.click();
+
+    // Explore sheet closes → the CTA handler (setShowExplore(false) + sendToChat) fired.
+    await expect(rebalanceBtn).toHaveCount(0);
+
+    // User message 'rebalance' lands in the chat.
+    await page.waitForTimeout(1500);
+    const bodyText = await page.evaluate(() => document.body.innerText);
+    console.log('Rebalance routed to chat:', bodyText.toLowerCase().includes('rebalance'));
+    expect(bodyText.toLowerCase()).toContain('rebalance');
+  });
+
+  test('Review AAPL CTA navigates to Portfolio and expands the card', async ({ page }) => {
+    await openExplore(page);
+
+    await page.getByRole('button', { name: 'Review AAPL', exact: true }).click();
+
+    // Cross-tab focus switched us to Portfolio and rendered the AAPL card.
+    const aaplCard = page.locator('#position-AAPL');
+    await aaplCard.waitFor({ state: 'visible', timeout: 10000 });
+
+    // Expanded card reveals the Lots & Cost Basis section.
+    await expect(aaplCard.locator('text=Lots & Cost Basis').first()).toBeVisible({ timeout: 5000 });
+  });
+
+  test('Dismiss CTA opens the snooze popover (unchanged behavior)', async ({ page }) => {
+    await openExplore(page);
+
+    await page.getByRole('button', { name: 'Dismiss', exact: true }).first().click();
+    await page.waitForTimeout(500);
+
+    const has3d = (await page.locator('text=Remind in 3 days').count()) > 0;
+    const has1w = (await page.locator('text=Remind in 1 week').count()) > 0;
+    const hasPermanent = (await page.locator("text=Don't remind again").count()) > 0;
+
+    console.log('Snooze popover:', { has3d, has1w, hasPermanent });
+    expect(has3d).toBe(true);
+    expect(has1w).toBe(true);
+    expect(hasPermanent).toBe(true);
   });
 });
