@@ -378,7 +378,7 @@ export function TradeTab() {
           <div style={{ fontSize: '10px', color: '#94a3b8', letterSpacing: '0.08em', marginBottom: '10px', padding: '0 16px' }}>
             AVAILABLE
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', padding: '0 16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isReadOnly ? '1fr' : '1fr 1fr', gap: '8px', padding: '0 16px' }}>
             <button
               onClick={() => setShowBuildBasket(true)}
               style={{
@@ -393,22 +393,22 @@ export function TradeTab() {
               <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: '600', marginBottom: '2px' }}>Build Basket</div>
               <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.2' }}>AI-curated themed portfolios</div>
             </button>
-            <button
-              onClick={() => { if (!isReadOnly) router.push('/strategies/setup/dca'); }}
-              disabled={isReadOnly}
-              style={{
-                background: '#1a2235',
-                border: '1px solid rgba(34,211,238,0.3)',
-                borderRadius: '10px',
-                padding: '10px 8px',
-                cursor: isReadOnly ? 'not-allowed' : 'pointer',
-                textAlign: 'center',
-                opacity: isReadOnly ? 0.55 : 1,
-              }}
-            >
-              <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: '600', marginBottom: '2px' }}>DCA</div>
-              <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.2' }}>{isReadOnly ? 'Read-only — unavailable' : 'Dollar cost averaging'}</div>
-            </button>
+            {!isReadOnly && (
+              <button
+                onClick={() => router.push('/strategies/setup/dca')}
+                style={{
+                  background: '#1a2235',
+                  border: '1px solid rgba(34,211,238,0.3)',
+                  borderRadius: '10px',
+                  padding: '10px 8px',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                }}
+              >
+                <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: '600', marginBottom: '2px' }}>DCA</div>
+                <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.2' }}>Dollar cost averaging</div>
+              </button>
+            )}
           </div>
         </div>
         {/* ACTIVE — user's live DCA schedules (edit via the DCA setup page) */}
