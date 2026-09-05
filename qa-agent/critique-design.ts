@@ -19,6 +19,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 
+// Minimal .env loader (no dotenv dependency — avoids the TS7016 type mess).
+// Loads qa-agent/.env if present, so GOOGLE_API_KEY can be dropped in locally
+// OR provided as a real env var on the VPS. Existing env vars always win.
+function loadDotEnv(file: string) {
+  if (!fs.existsSync(file)) return;
+  for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (m && process.env[m[1]] === undefined) {
+      process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+    }
+  }
+}
+loadDotEnv(path.join(__dirname, '.env'));
+
 // ── Types ──────────────────────────────────────────────────────
 
 export interface CritiqueIssue {
