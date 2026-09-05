@@ -1,0 +1,61 @@
+{
+  "$comment": "Screen map for the capture_screenshot tool. screen_key is fuzzy-matched against each entry's `description` (never the key), reusing the ticker-resolver's tokenize + Levenshtein approach. `route` maps to a bottom-nav tab. `actions` run in order via the primitive handlers (scrollTo / tap / waitFor / sendMessage).",
+  "default": "portfolio",
+  "threshold": 0.6,
+  "screens": [
+    {
+      "key": "portfolio",
+      "description": "portfolio",
+      "route": "portfolio",
+      "default": true,
+      "actions": []
+    },
+    {
+      "key": "portfolio.chwy_expanded",
+      "description": "the expanded chewy card",
+      "route": "portfolio",
+      "actions": [
+        { "type": "scrollTo", "selector": "#position-CHWY" },
+        { "type": "tap", "selector": "#position-CHWY" },
+        { "type": "waitFor", "ms": 900 }
+      ]
+    },
+    {
+      "key": "portfolio.aapl_card",
+      "description": "the apple position card",
+      "route": "portfolio",
+      "actions": [
+        { "type": "scrollTo", "selector": "#position-AAPL" },
+        { "type": "waitFor", "ms": 400 }
+      ]
+    },
+    {
+      "key": "portfolio.aapl_expanded",
+      "description": "the expanded apple card",
+      "route": "portfolio",
+      "actions": [
+        { "type": "scrollTo", "selector": "#position-AAPL" },
+        { "type": "tap", "selector": "#position-AAPL" },
+        { "type": "waitFor", "ms": 900 }
+      ]
+    },
+    {
+      "key": "watchlist",
+      "description": "the watchlist",
+      "route": "watchlist",
+      "actions": []
+    },
+    {
+      "key": "ai.chat",
+      "description": "the ai chat",
+      "route": "ai",
+      "actions": []
+    },
+    {
+      "key": "settings",
+      "description": "settings",
+      "route": "settings",
+      "actions": []
+    }
+  ]
+}
