@@ -34,6 +34,8 @@ interface RequestBody {
   positions: PositionPayload[];
   investorStyle?: string;
   forceRegen?: boolean;
+  /** Canonical account id ('demo' | 'snaptrade:<conn_id>') scoping the cache. */
+  accountId?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -131,6 +133,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Account-scoped cache subject (default demo) so one account's narrative
+  // never serves another account's request.
+  const accountId = (typeof body.accountId === 'string' && body.accountId) ? body.accountId : 'demo';
+  const cacheSubject = `risk_narrative:${accountId}`;
+
   try {
     // ── Resolve dynamic ETF sector weights (Yahoo → Supabase cache) ──
     // Best-effort; falls back to static profile / single sector on failure.
@@ -199,7 +206,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         .from('ai_facts')
         .select('*')
         .eq('user_id', userId)
-        .eq('subject', 'risk_narrative')
+        .eq('subject', cacheSubject)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(1);
@@ -270,7 +277,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ? `${hash}|DIAGNOSIS: ${narrative}\nSUGGESTION: ${suggestion}`
         : `${hash}|${narrative}`;
       await writeFact(userId, {
-        subject: 'risk_narrative',
+        subject: cacheSubject,
         fact_type: 'observation',
         claim: cachePayload,
         source: 'risk-narrative',

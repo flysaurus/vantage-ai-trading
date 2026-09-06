@@ -4,6 +4,10 @@
  * QStash-scheduled endpoint that runs the Noticed rules engine across ALL
  * active users and generates Haiku observations for new triggers.
  *
+ * Account-scoped: each user's portfolio is analysed PER ACCOUNT ('demo' +
+ * each connected SnapTrade broker) so triggers fire on the real per-account
+ * book, never a blended user-level merge.
+ *
  * Throttled: processes users in batches with pacing between batches to
  * avoid flooding the Claude API.
  *
@@ -14,8 +18,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import type { NoticedRuleInput, NoticedTrigger } from '@/lib/noticed/engine';
+import type { NoticedRuleInput } from '@/lib/noticed/engine';
 import { runNoticedPipeline } from '@/lib/noticed/engine';
+import { parseAccountScope, applyAccountScopeFilter } from '@/lib/account-scope';
 
 // ── Auth ──
 const ALLOWED_SECRETS = [
@@ -121,12 +126,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   });
 }
 
-// ── Per-user processing ──
+// ── Per-user processing (loops over the user's accounts) ──
 async function processUser(
   userId: string,
   supabase: any,
 ): Promise<{ triggers: number; haikuGenerated: number; skippedBudget: boolean }> {
-  // ── Fetch user's investor style + concentration thresholds ──
+  // ── User-level fetches (shared across the user's accounts) ──
   let investorStyle: string | null = null;
   let concSinglePct: number | null = null;
   let concTop3Pct: number | null = null;
@@ -140,35 +145,6 @@ async function processUser(
     concSinglePct = userRow?.conc_single_pct ?? null;
     concTop3Pct = userRow?.conc_top3_pct ?? null;
   } catch { /* ignore */ }
-
-  // ── Fetch positions ──
-  const { data: positions } = await supabase
-    .from('positions')
-    .select('*')
-    .eq('user_id', userId)
-    .neq('qty', 0);
-
-  if (!positions || positions.length === 0) {
-    // Distinguish "no positions" from "positions unavailable"
-    // A connected broker with zero positions may have holdingsUnavailable=true
-    let connectedBroker: string | null = null;
-    try {
-      const { data: brokerConn } = await supabase
-        .from('broker_connections')
-        .select('connection_type')
-        .eq('user_id', userId)
-        .eq('status', 'connected')
-        .maybeSingle();
-      connectedBroker = brokerConn?.connection_type || null;
-    } catch { /* ignore */ }
-
-    if (connectedBroker) {
-      console.log(`[portfolio-agent] User ${userId.slice(0, 8)} has broker ${connectedBroker} but 0 positions — skipping (may be holdingsUnavailable)`);
-    } else {
-      console.log(`[portfolio-agent] User ${userId.slice(0, 8)} has 0 positions (demo, genuinely empty) — skipping`);
-    }
-    return { triggers: 0, haikuGenerated: 0, skippedBudget: false };
-  }
 
   // ── Fetch watchlist symbols ──
   let watchlistSymbols: string[] = [];
@@ -190,49 +166,133 @@ async function processUser(
     watchlistSymbols = [...symbols];
   } catch { /* ignore */ }
 
+  // ── Enumerate accounts: demo + each connected SnapTrade broker ──
+  const accountIds: string[] = ['demo'];
+  try {
+    const { data: connections } = await supabase
+      .from('broker_connections')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('connection_type', 'snaptrade')
+      .eq('status', 'connected');
+    for (const conn of (connections || [])) {
+      if (conn.id) accountIds.push(`snaptrade:${conn.id}`);
+    }
+  } catch { /* ignore */ }
+
+  let totalTriggers = 0;
+  let totalHaiku = 0;
+  let anySkippedBudget = false;
+
+  for (const accountId of accountIds) {
+    try {
+      const result = await processAccount(userId, accountId, supabase, {
+        investorStyle,
+        concSinglePct,
+        concTop3Pct,
+        watchlistSymbols,
+      });
+      totalTriggers += result.triggers;
+      totalHaiku += result.haikuGenerated;
+      if (result.skippedBudget) anySkippedBudget = true;
+    } catch (err: any) {
+      console.error(`[portfolio-agent] Error processing account ${accountId.slice(0, 12)}:`, err.message);
+    }
+  }
+
+  return {
+    triggers: totalTriggers,
+    haikuGenerated: totalHaiku,
+    skippedBudget: anySkippedBudget,
+  };
+}
+
+// ── Per-account processing ──
+async function processAccount(
+  userId: string,
+  accountId: string,
+  supabase: any,
+  ctx: {
+    investorStyle: string | null;
+    concSinglePct: number | null;
+    concTop3Pct: number | null;
+    watchlistSymbols: string[];
+  },
+): Promise<{ triggers: number; haikuGenerated: number; skippedBudget: boolean }> {
+  const scope = parseAccountScope(accountId);
+
+  // ── Fetch positions scoped to this account ──
+  let positionsQuery = supabase
+    .from('positions')
+    .select('*')
+    .eq('user_id', userId)
+    .neq('qty', 0);
+  if (scope) positionsQuery = applyAccountScopeFilter(positionsQuery, scope);
+  const { data: positions } = await positionsQuery;
+
+  if (!positions || positions.length === 0) {
+    console.log(`[portfolio-agent] Account ${accountId.slice(0, 12)} has 0 positions — skipping`);
+    return { triggers: 0, haikuGenerated: 0, skippedBudget: false };
+  }
+
   // ── Compute account values from positions ──
   let equity = 0;
-  let cash = 0;
   let totalPnl = 0;
-  let dayPnl = 0;
-
   for (const pos of positions) {
     equity += Number(pos.market_value || 0);
     totalPnl += Number(pos.unrealized_pnl || 0);
   }
 
-  // Try to get cash from user's account settings or use a default
+  // ── Cash: demo → demo_portfolio_state.cash_balance; broker → snap account cash ──
+  let cash = 0;
   try {
-    const { data: portfolioSettings } = await supabase
-      .from('users')
-      .select('portfolio_cash, day_pnl')
-      .eq('id', userId)
-      .single();
-    
-    if (portfolioSettings?.portfolio_cash) {
-      cash = Number(portfolioSettings.portfolio_cash);
-    }
-    if (portfolioSettings?.day_pnl) {
-      dayPnl = Number(portfolioSettings.day_pnl);
+    if (scope?.isDemo) {
+      const { data: demoState } = await supabase
+        .from('demo_portfolio_state')
+        .select('cash_balance')
+        .eq('user_id', userId)
+        .maybeSingle();
+      cash = Number(demoState?.cash_balance ?? 0);
+    } else if (scope?.connectionId) {
+      const { data: conn } = await supabase
+        .from('broker_connections')
+        .select('snaptrade_accounts')
+        .eq('user_id', userId)
+        .eq('id', scope.connectionId)
+        .maybeSingle();
+      const snapAccounts = (conn?.snaptrade_accounts as any[]) || [];
+      cash = snapAccounts.reduce((sum: number, a: any) => sum + (Number(a?.cash) || 0), 0);
     }
   } catch { /* ignore */ }
 
-  // Fallback: estimate cash as 20% of equity
+  let dayPnl = 0;
+  try {
+    const { data: portfolioSettings } = await supabase
+      .from('users')
+      .select('day_pnl')
+      .eq('id', userId)
+      .single();
+    if (portfolioSettings?.day_pnl) dayPnl = Number(portfolioSettings.day_pnl);
+  } catch { /* ignore */ }
+
+  // Fallback: estimate cash as 25% of equity (no per-account cash available)
   if (cash === 0 && equity > 0) {
-    cash = Math.round(equity * 0.25); // rough estimate
+    cash = Math.round(equity * 0.25);
   }
 
   const totalValue = equity + cash;
   const totalPnlPct = totalValue > 0 ? (totalPnl / (totalValue - totalPnl)) * 100 : 0;
   const dayPnlPct = totalValue > 0 ? (dayPnl / totalValue) * 100 : 0;
 
-  // ── Get days since last trade ──
+  // ── Days since last trade (scoped to account) ──
   let daysSinceLastTrade = 999;
   try {
-    const { data: lastTrade } = await supabase
+    let lastTradeQuery = supabase
       .from('orders')
       .select('filled_at')
-      .eq('user_id', userId)
+      .eq('user_id', userId);
+    if (scope) lastTradeQuery = applyAccountScopeFilter(lastTradeQuery, scope);
+    const { data: lastTrade } = await lastTradeQuery
       .order('filled_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -262,33 +322,35 @@ async function processUser(
       totalPnlPercent: Number(p.unrealized_pnl_pct || 0),
       sector: p.sector || undefined,
     })),
-    watchlistSymbols,
+    watchlistSymbols: ctx.watchlistSymbols,
     daysSinceLastTrade,
   };
 
-  // ── Get existing trigger keys ──
+  // ── Get existing trigger keys (scoped to account) ──
   const { data: existing } = await supabase
     .from('noticed_items')
     .select('trigger_key')
     .eq('user_id', userId)
+    .eq('account_id', accountId)
     .eq('resolved', false);
 
   const existingKeys = new Set<string>((existing || []).map((e: any) => e.trigger_key));
 
   // ── Run the pipeline ──
-  const { trulyNew, haikuGenerated, budgetRemaining } = await runNoticedPipeline({
+  const { trulyNew, haikuGenerated } = await runNoticedPipeline({
     userId,
+    accountId,
     input,
-    investorStyle,
+    investorStyle: ctx.investorStyle,
     existingKeys,
     supabase,
-    concSinglePct,
-    concTop3Pct,
+    concSinglePct: ctx.concSinglePct,
+    concTop3Pct: ctx.concTop3Pct,
   });
 
   const skippedBudget = trulyNew.length > 0 && !haikuGenerated;
   if (skippedBudget) {
-    console.log(`[portfolio-agent] User ${userId.slice(0, 8)} budget exhausted — ${trulyNew.length} triggers used fallback`);
+    console.log(`[portfolio-agent] Account ${accountId.slice(0, 12)} budget exhausted — ${trulyNew.length} triggers used fallback`);
   }
 
   return {

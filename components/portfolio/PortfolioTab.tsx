@@ -1142,7 +1142,7 @@ export function PortfolioTab() {
         }}>
           {/* Risk Exposure — collapsible, summary-line shown collapsed */}
           {RiskNarrativeCard ? (
-            <RiskNarrativeCard positions={enrichedPositions} readOnly={isReadOnly} account={displayAccount} />
+            <RiskNarrativeCard positions={enrichedPositions} readOnly={isReadOnly} account={displayAccount} accountId={activeAccountId || 'demo'} />
           ) : (
             <div style={{
               padding: '20px 16px',

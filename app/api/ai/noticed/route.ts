@@ -18,11 +18,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const userId = await getOptionalUserId();
   if (!userId) return NextResponse.json({ items: [] });
 
+  const accountId = req.nextUrl.searchParams.get('accountId') || 'demo';
+
   const supabase = createServerClient() as any;
   const { data: items } = await supabase
     .from('noticed_items')
     .select('*')
     .eq('user_id', userId)
+    .eq('account_id', accountId)
     .eq('resolved', false)
     .or(`dismissed_until.is.null,dismissed_until.lt.${new Date().toISOString().replace('Z', '')}`)
     .order('created_at', { ascending: false })
@@ -46,6 +49,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const portfolio = body.portfolio as PortfolioAccount | undefined;
     const positions = (body.positions || []) as PortfolioPosition[];
     const watchlistSymbols = (body.watchlistSymbols || []) as string[];
+    // Canonical account id ('demo' | 'snaptrade:<conn_id>'), default demo.
+    const accountId = (typeof body.accountId === 'string' && body.accountId) ? body.accountId : 'demo';
 
     if (!portfolio) {
       return NextResponse.json({ items: [], error: 'Missing portfolio data' }, { status: 400 });
@@ -75,11 +80,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       daysSinceLastTrade,
     };
 
-    // ── Get existing trigger keys ──
+    // ── Get existing trigger keys (scoped to account) ──
     const { data: existing } = await supabase
       .from('noticed_items')
       .select('trigger_key')
       .eq('user_id', userId)
+      .eq('account_id', accountId)
       .eq('resolved', false);
 
     const existingKeys = new Set<string>((existing || []).map((e: any) => e.trigger_key));
@@ -102,6 +108,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // ── Run the full noticed pipeline ──
     const { trulyNew, haikuGenerated, budgetRemaining } = await runNoticedPipeline({
       userId,
+      accountId,
       input,
       investorStyle,
       existingKeys,
@@ -115,6 +122,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .from('noticed_items')
       .select('*')
       .eq('user_id', userId)
+      .eq('account_id', accountId)
       .eq('resolved', false)
       .or(`dismissed_until.is.null,dismissed_until.lt.${new Date().toISOString().replace('Z', '')}`)
       .order('created_at', { ascending: false })

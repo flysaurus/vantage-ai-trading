@@ -33,6 +33,8 @@ export interface RiskNarrativeCardProps {
   investorStyle?: string;
   /** True when the account cannot place orders (read-only connection). */
   readOnly?: boolean;
+  /** Canonical account id ('demo' | 'snaptrade:<conn_id>') scoping the cache. */
+  accountId?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -91,6 +93,7 @@ export default function RiskNarrativeCard({
   positions,
   investorStyle,
   readOnly = false,
+  accountId = 'demo',
 }: RiskNarrativeCardProps) {
   const [data, setData] = useState<NarrativeResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -119,6 +122,7 @@ export default function RiskNarrativeCard({
         })),
         investorStyle: investorStyle || undefined,
         forceRegen: force || undefined,
+        accountId: accountId || 'demo',
       };
 
       const res = await fetch('/api/risk-narrative', {

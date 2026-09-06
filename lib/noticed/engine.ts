@@ -513,6 +513,8 @@ export async function generateObservations(
 // ── User processing context (built by cron endpoint, consumed by processUserTriggers) ──
 export interface UserProcessingContext {
   userId: string;
+  /** Canonical account id ('demo' | 'snaptrade:<conn_id>') scoping this pipeline run. */
+  accountId: string;
   input: NoticedRuleInput;
   investorStyle: string | null;
   existingKeys: Set<string>;
@@ -532,14 +534,14 @@ export async function runNoticedPipeline(
   haikuGenerated: boolean;
   budgetRemaining: number;
 }> {
-  const { input, existingKeys, investorStyle, supabase, userId } = ctx;
+  const { input, existingKeys, investorStyle, supabase, userId, accountId } = ctx;
 
   // ── Resolve idle-cash inputs (available cash + streak + read-only) ──
   // Runs on every pipeline pass (both POST + cron). Records today's cash
   // snapshot so the streak reflects the current trading day.
   if (input.availableCash == null && input.account.cash != null) {
     try {
-      const resolved = await resolveIdleCash(supabase, userId, input.account.cash);
+      const resolved = await resolveIdleCash(supabase, userId, accountId, input.account.cash);
       input.availableCash = resolved.availableCash;
       input.idleCashStreak = resolved.idleCashStreak;
       input.isReadOnly = resolved.isReadOnly;
@@ -574,6 +576,7 @@ export async function runNoticedPipeline(
     .from('noticed_items')
     .select('id, trigger_key, regenerated_count')
     .eq('user_id', userId)
+    .eq('account_id', accountId)
     .eq('resolved', true)
     .in('trigger_key', allKeys);
 
@@ -583,6 +586,7 @@ export async function runNoticedPipeline(
       .from('noticed_items')
       .update({ resolved: false, dismissed_until: null, last_checked_at: new Date().toISOString() })
       .eq('user_id', userId)
+      .eq('account_id', accountId)
       .in('trigger_key', (resolvedItems as any[]).map((r: any) => r.trigger_key));
 
     const triggerByKey = new Map(allTriggers.map((t) => [t.trigger_key, t]));
@@ -626,6 +630,7 @@ export async function runNoticedPipeline(
         const obs = observations.get(trigger.trigger_key);
         await supabase.from('noticed_items').upsert({
           user_id: userId,
+          account_id: accountId,
           trigger_type: trigger.trigger_type,
           trigger_key: trigger.trigger_key,
           title: trigger.title,
@@ -638,7 +643,7 @@ export async function runNoticedPipeline(
           resolved: false,
           dismissed_until: null,
           last_checked_at: new Date().toISOString(),
-        }, { onConflict: 'user_id,trigger_key' });
+        }, { onConflict: 'user_id,account_id,trigger_key' });
       }
 
       // Log generation
@@ -662,6 +667,7 @@ export async function runNoticedPipeline(
       for (const trigger of trulyNew) {
         await supabase.from('noticed_items').upsert({
           user_id: userId,
+          account_id: accountId,
           trigger_type: trigger.trigger_type,
           trigger_key: trigger.trigger_key,
           title: trigger.title,
@@ -674,7 +680,7 @@ export async function runNoticedPipeline(
           resolved: false,
           dismissed_until: null,
           last_checked_at: new Date().toISOString(),
-        }, { onConflict: 'user_id,trigger_key' });
+        }, { onConflict: 'user_id,account_id,trigger_key' });
       }
 
       // Log skip
@@ -704,6 +710,7 @@ export async function runNoticedPipeline(
     .from('noticed_items')
     .select('trigger_key')
     .eq('user_id', userId)
+    .eq('account_id', accountId)
     .eq('resolved', false)
     .or(`dismissed_until.is.null,dismissed_until.lt.${nowIso}`);
 
@@ -717,6 +724,7 @@ export async function runNoticedPipeline(
         .from('noticed_items')
         .update({ resolved: true, last_checked_at: new Date().toISOString() })
         .eq('user_id', userId)
+        .eq('account_id', accountId)
         .in('trigger_key', toResolve);
     }
   }

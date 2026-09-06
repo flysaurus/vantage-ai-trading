@@ -676,6 +676,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           totalPnlPercent: p.totalPnlPercent || 0,
         })),
         watchlistSymbols: [], // TODO: pass from watchlist context when available
+        accountId,
       });
       if (res.ok) {
         const data = await res.json();
@@ -686,7 +687,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     } finally {
       setNoticedLoaded(true);
     }
-  }, [liveAccount]);
+  }, [liveAccount, accountId]);
 
   useEffect(() => {
     if (liveAccount && !noticedLoaded) {

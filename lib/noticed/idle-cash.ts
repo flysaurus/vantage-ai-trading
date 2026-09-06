@@ -12,6 +12,7 @@
 
 import { availableCash, sumOpenReservedAmount } from '@/lib/available-cash';
 import { deriveTradingCapability, isReadOnlyCapability } from '@/lib/broker/trading-capability';
+import { parseAccountScope, applyAccountScopeFilter } from '@/lib/account-scope';
 
 export const IDLE_CASH_THRESHOLD = 500; // dollars of available cash
 export const IDLE_CASH_MIN_DAYS = 3;     // consecutive trading days
@@ -45,13 +46,17 @@ function previousTradingDay(d: Date): Date {
 export async function computeOpenReservedAmount(
   supabase: any,
   userId: string,
+  accountId: string,
 ): Promise<number> {
   try {
-    const { data: openOrders } = await supabase
+    const scope = parseAccountScope(accountId);
+    let query = supabase
       .from('orders')
       .select('status, side, requested_amount, requested_qty, order_unit, notional, qty, filled_price, filled_qty')
       .eq('user_id', userId)
       .in('status', OPEN_DB_STATUSES);
+    if (scope) query = applyAccountScopeFilter(query, scope);
+    const { data: openOrders } = await query;
     if (!openOrders || openOrders.length === 0) return 0;
     return sumOpenReservedAmount(
       (openOrders as any[]).map((o) => ({
@@ -76,10 +81,11 @@ export async function computeOpenReservedAmount(
 
 // ── Daily snapshot recording ───────────────────────────────────────────
 
-/** Upsert today's available-cash snapshot (idempotent by user_id + date). */
+/** Upsert today's available-cash snapshot (idempotent by user_id + account_id + date). */
 export async function recordCashSnapshot(
   supabase: any,
   userId: string,
+  accountId: string,
   availableCashAmount: number,
 ): Promise<void> {
   const date = etDateKey(new Date());
@@ -87,11 +93,12 @@ export async function recordCashSnapshot(
     await supabase.from('daily_cash_snapshots').upsert(
       {
         user_id: userId,
+        account_id: accountId,
         date,
         available_cash: Math.max(0, Number(availableCashAmount) || 0),
         updated_at: new Date().toISOString(),
       },
-      { onConflict: 'user_id,date' },
+      { onConflict: 'user_id,account_id,date' },
     );
   } catch (err: any) {
     console.warn('[idle-cash] snapshot write failed:', err?.message || err);
@@ -108,6 +115,7 @@ export async function recordCashSnapshot(
 export async function computeIdleCashStreak(
   supabase: any,
   userId: string,
+  accountId: string,
   threshold: number = IDLE_CASH_THRESHOLD,
 ): Promise<number> {
   try {
@@ -115,6 +123,7 @@ export async function computeIdleCashStreak(
       .from('daily_cash_snapshots')
       .select('date, available_cash')
       .eq('user_id', userId)
+      .eq('account_id', accountId)
       .order('date', { ascending: false })
       .limit(120);
     if (!data || data.length === 0) return 0;
@@ -146,23 +155,17 @@ export async function computeIdleCashStreak(
 export async function isReadOnlyAccount(
   supabase: any,
   userId: string,
+  accountId: string,
 ): Promise<boolean> {
   try {
-    const { data: demoPos } = await supabase
-      .from('positions')
-      .select('is_demo')
-      .eq('user_id', userId)
-      .limit(1);
-    const isDemo = (demoPos && demoPos.length > 0)
-      ? demoPos[0].is_demo === true
-      : false;
-    if (isDemo) return false;
+    const scope = parseAccountScope(accountId);
+    if (scope?.isDemo) return false;
 
     const { data: conn } = await supabase
       .from('broker_connections')
       .select('trading_enabled')
       .eq('user_id', userId)
-      .eq('status', 'connected')
+      .eq('id', scope?.connectionId ?? '')
       .maybeSingle();
     const tradingEnabled = conn?.trading_enabled !== false; // default true
     return isReadOnlyCapability(
@@ -186,12 +189,13 @@ export interface IdleCashResolution {
 export async function resolveIdleCash(
   supabase: any,
   userId: string,
+  accountId: string,
   settledCash: number,
 ): Promise<IdleCashResolution> {
-  const reserved = await computeOpenReservedAmount(supabase, userId);
+  const reserved = await computeOpenReservedAmount(supabase, userId, accountId);
   const avail = availableCash({ cash: settledCash }, reserved);
-  await recordCashSnapshot(supabase, userId, avail);
-  const streak = await computeIdleCashStreak(supabase, userId);
-  const readOnly = await isReadOnlyAccount(supabase, userId);
+  await recordCashSnapshot(supabase, userId, accountId, avail);
+  const streak = await computeIdleCashStreak(supabase, userId, accountId);
+  const readOnly = await isReadOnlyAccount(supabase, userId, accountId);
   return { availableCash: avail, idleCashStreak: streak, isReadOnly: readOnly };
 }

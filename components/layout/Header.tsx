@@ -99,13 +99,13 @@ export function Header() {
 
   const fetchNoticed = useCallback(async () => {
     try {
-      const res = await apiGet('/api/ai/noticed');
+      const res = await apiGet(`/api/ai/noticed?accountId=${encodeURIComponent(activeAccountId || 'demo')}`);
       if (res.ok) {
         const data = await res.json();
         setNoticedItems(data.items || []);
       }
     } catch { /* ignore */ }
-  }, []);
+  }, [activeAccountId]);
 
   // ── Noticed card actions (mirror the AI Advisor "+" sheet) ──
   const handleNoticedRebalance = () => {
