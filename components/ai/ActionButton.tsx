@@ -7,6 +7,7 @@ import React from 'react';
 // DETERMINISTICALLY by the rules engine (never free-text LLM parsing):
 //   'REBALANCE'                 → concentration-risk / allocation drift
 //   'REVIEW_POSITION:<TICKER>'  → single-position flag
+//   'INVEST_CASH:<amount>'      → idle-cash suggestion (dollar amount)
 // Primary CTA uses the existing cyan-fill token; secondary "Dismiss"
 // reuses the existing snooze flow unchanged.
 
@@ -14,6 +15,7 @@ interface ActionButtonProps {
   action: string;
   onRebalance?: () => void;
   onReviewPosition?: (ticker: string) => void;
+  onInvestCash?: (amount: number) => void;
   onDismiss?: () => void;
   disabled?: boolean;
 }
@@ -22,6 +24,7 @@ export default function ActionButton({
   action,
   onRebalance,
   onReviewPosition,
+  onInvestCash,
   onDismiss,
   disabled = false,
 }: ActionButtonProps) {
@@ -36,6 +39,13 @@ export default function ActionButton({
     if (ticker) {
       primaryLabel = `Review ${ticker}`;
       onPrimary = () => onReviewPosition?.(ticker);
+    }
+  } else if (action.startsWith('INVEST_CASH:')) {
+    const raw = action.slice('INVEST_CASH:'.length).trim();
+    const amount = Number(raw);
+    if (Number.isFinite(amount) && amount > 0) {
+      primaryLabel = `Invest $${amount.toLocaleString()}`;
+      onPrimary = () => onInvestCash?.(amount);
     }
   }
 

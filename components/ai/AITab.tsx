@@ -3203,6 +3203,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                           action={item.action}
                           onRebalance={() => { setShowExplore(false); sendToChat('rebalance'); }}
                           onReviewPosition={(ticker) => { setShowExplore(false); setFocusPosition(ticker); setTab('portfolio'); }}
+                          onInvestCash={(amount) => { setShowExplore(false); sendToChat(`Build me a portfolio with my $${amount.toLocaleString()} of idle cash.`); }}
                           onDismiss={() => setSnoozeTarget(snoozeTarget === item.id ? null : item.id)}
                         />
                       )}

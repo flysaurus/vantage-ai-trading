@@ -13,6 +13,7 @@ import { checkUsageLimit } from '@/lib/ai-guard';
 import { STYLE_SECTOR_TARGETS, NON_SECTOR_BUCKETS } from '@/lib/risk-narrative';
 import type { SystemBlock } from '@/lib/ai-provider';
 import { PORTFOLIO_AGENT_SAFETY_BLOCKS } from '@/lib/ai/shared-safety-blocks';
+import { IDLE_CASH_THRESHOLD, IDLE_CASH_MIN_DAYS, resolveIdleCash } from './idle-cash';
 
 // ── Config ──
 const FINBERT_URL = process.env.FINBERT_URL || 'http://127.0.0.1:8765';
@@ -43,6 +44,12 @@ export interface NoticedRuleInput {
   positions: PortfolioPosition[];
   watchlistSymbols: string[];
   daysSinceLastTrade: number;
+  /** Spendable cash (settled cash − open reservations). Computed by the pipeline. */
+  availableCash?: number | null;
+  /** True when the account is read-only (skip the idle-cash invest prompt). */
+  isReadOnly?: boolean;
+  /** Consecutive trading days availableCash has stayed above the threshold. */
+  idleCashStreak?: number;
 }
 
 export interface NoticedTrigger {
@@ -83,25 +90,39 @@ export function buildPortfolioSummary(input: NoticedRuleInput): string {
 export function findNewTriggers(
   input: NoticedRuleInput,
   existingKeys: Set<string>,
+  investorStyle?: string | null,
 ): NoticedTrigger[] {
   const triggers: NoticedTrigger[] = [];
-  const { account, positions, daysSinceLastTrade } = input;
-  const totalValue = account.equity + account.cash;
+  const { account, positions } = input;
 
-  // ── 1. Idle Cash ──
-  const cashPct = totalValue > 0 ? (account.cash / totalValue) * 100 : 0;
-  if (cashPct > 50 && daysSinceLastTrade > 7) {
+  // ── 1. Idle Cash (dollar threshold + consecutive trading-day streak) ──
+  // Replaces the old percentage heuristic (cashPct > 50 && daysSinceLastTrade > 7)
+  // with the shared availableCash helper + a 3-trading-day streak. Read-only
+  // accounts are skipped via the shared trading-capability check.
+  const availableCash = typeof input.availableCash === 'number' ? input.availableCash : null;
+  if (
+    availableCash !== null &&
+    availableCash > IDLE_CASH_THRESHOLD &&
+    (input.idleCashStreak ?? 0) >= IDLE_CASH_MIN_DAYS &&
+    !input.isReadOnly
+  ) {
     const key = 'idle_cash';
     if (!existingKeys.has(key)) {
+      const amount = Math.floor(availableCash);
       triggers.push({
         trigger_type: 'idle_cash',
         trigger_key: key,
-        title: `${cashPct.toFixed(0)}% cash idle`,
+        title: `$${amount.toLocaleString()} cash idle`,
         variant: 'warn',
-        icon: '⚠️',
-        meta: { cashPct: Math.round(cashPct), daysIdle: daysSinceLastTrade, cashBalance: account.cash },
-        follow_up: 'What should I do with my idle cash?',
-        context: `Cash: ${cashPct.toFixed(0)}% ($${account.cash.toLocaleString()}) idle for ${daysSinceLastTrade} days since last trade. Total portfolio: $${totalValue.toLocaleString()}.`,
+        icon: '💤',
+        meta: {
+          amount,
+          cashBalance: amount,
+          daysIdle: input.idleCashStreak,
+          action: `INVEST_CASH:${amount}`,
+        },
+        follow_up: `Want to put $${amount.toLocaleString()} to work?`,
+        context: `$${amount.toLocaleString()} in available cash (after open orders) has been idle for ${input.idleCashStreak} consecutive trading days. Investor style: ${investorStyle || 'unspecified'}.`,
       });
     }
   }
@@ -408,8 +429,22 @@ export async function runNoticedPipeline(
 }> {
   const { input, existingKeys, investorStyle, supabase, userId } = ctx;
 
+  // ── Resolve idle-cash inputs (available cash + streak + read-only) ──
+  // Runs on every pipeline pass (both POST + cron). Records today's cash
+  // snapshot so the streak reflects the current trading day.
+  if (input.availableCash == null && input.account.cash != null) {
+    try {
+      const resolved = await resolveIdleCash(supabase, userId, input.account.cash);
+      input.availableCash = resolved.availableCash;
+      input.idleCashStreak = resolved.idleCashStreak;
+      input.isReadOnly = resolved.isReadOnly;
+    } catch (err: any) {
+      console.warn('[noticed] idle-cash resolve failed:', err?.message || err);
+    }
+  }
+
   // Run all rule engines
-  let allTriggers: NoticedTrigger[] = findNewTriggers(input, existingKeys);
+  let allTriggers: NoticedTrigger[] = findNewTriggers(input, existingKeys, investorStyle);
   allTriggers = allTriggers.concat(findDriftTriggers(input, existingKeys, investorStyle));
   allTriggers = allTriggers.concat(await findEarningsTriggers(input, existingKeys));
   allTriggers = allTriggers.concat(await findSentimentShiftTriggers(input, existingKeys));
@@ -542,13 +577,16 @@ export async function runNoticedPipeline(
     }
   }
 
-  // Resolve stale items
+  // Resolve stale items (skip currently-dismissed items so snooze/dismiss
+  // suppresses re-firing during the same trigger period).
   const allTriggerKeys = new Set(allTriggers.map(t => t.trigger_key));
+  const nowIso = new Date().toISOString().replace('Z', '');
   const { data: staleItems } = await supabase
     .from('noticed_items')
     .select('trigger_key')
     .eq('user_id', userId)
-    .eq('resolved', false);
+    .eq('resolved', false)
+    .or(`dismissed_until.is.null,dismissed_until.lt.${nowIso}`);
 
   if (staleItems) {
     const toResolve = (staleItems as any[])

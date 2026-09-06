@@ -31,7 +31,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         dismissedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
         break;
       case 'permanent':
-        dismissedUntil = '1970-01-01T00:00:00Z'; // sentinel for permanent
+        dismissedUntil = '9999-12-31T23:59:59Z'; // far-future sentinel for permanent
         break;
       default:
         return NextResponse.json({ error: 'Invalid dismissType. Use 3d, 1w, or permanent.' }, { status: 400 });

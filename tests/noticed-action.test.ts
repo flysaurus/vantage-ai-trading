@@ -8,6 +8,7 @@
 // `meta.action` (never via free-text LLM parsing):
 //   - portfolio_drift   → 'REBALANCE'
 //   - position_milestone → 'REVIEW_POSITION:<TICKER>'
+//   - idle_cash         → 'INVEST_CASH:<amount>'
 // ═══════════════════════════════════════════════════════════════
 
 import { describe, it, expect } from 'vitest';
@@ -78,7 +79,9 @@ describe('noticed engine — deterministic action markers', () => {
     }
   });
 
-  it('idle_cash emits NO action (only the two mapped types get CTAs)', () => {
+  it('idle_cash does NOT fire without availableCash/streak (old heuristic removed)', () => {
+    // Legacy trigger used cashPct>50 && daysSinceLastTrade>7. That is gone:
+    // without an explicit availableCash + streak the trigger must not fire.
     const input = makeInput({
       account: {
         cash: 90000,
@@ -88,12 +91,51 @@ describe('noticed engine — deterministic action markers', () => {
         dayPnl: 0,
         dayPnlPercent: 0,
       },
-      daysSinceLastTrade: 30, // > 7, and cash is 90% > 50%
+      daysSinceLastTrade: 30,
     });
 
     const triggers = findNewTriggers(input, new Set());
     const idle = triggers.find((t) => t.trigger_type === 'idle_cash');
+    expect(idle).toBeUndefined();
+  });
+
+  it('idle_cash emits [ACTION:INVEST_CASH:<amount>] above threshold + streak', () => {
+    const input = makeInput({
+      availableCash: 8423.7,
+      idleCashStreak: 4,
+      isReadOnly: false,
+    });
+
+    const triggers = findNewTriggers(input, new Set(), 'buffett');
+    const idle = triggers.find((t) => t.trigger_type === 'idle_cash');
     expect(idle).toBeDefined();
-    expect(idle!.meta.action).toBeUndefined();
+    expect(idle!.meta.action).toBe('INVEST_CASH:8423');
+    expect(idle!.meta.amount).toBe(8423);
+    expect(idle!.meta.daysIdle).toBe(4);
+    expect(idle!.context).toContain('buffett');
+  });
+
+  it('idle_cash is skipped for read-only accounts', () => {
+    const input = makeInput({
+      availableCash: 10000,
+      idleCashStreak: 5,
+      isReadOnly: true,
+    });
+
+    const triggers = findNewTriggers(input, new Set());
+    const idle = triggers.find((t) => t.trigger_type === 'idle_cash');
+    expect(idle).toBeUndefined();
+  });
+
+  it('idle_cash is skipped when streak < 3 trading days', () => {
+    const input = makeInput({
+      availableCash: 10000,
+      idleCashStreak: 2,
+      isReadOnly: false,
+    });
+
+    const triggers = findNewTriggers(input, new Set());
+    const idle = triggers.find((t) => t.trigger_type === 'idle_cash');
+    expect(idle).toBeUndefined();
   });
 });
