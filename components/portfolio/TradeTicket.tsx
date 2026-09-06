@@ -13,6 +13,7 @@ import { useAccounts } from '@/context/AccountContext';
 import { X } from 'lucide-react';
 import { getActiveLotCount, consumeLotsFIFO, type Lot } from '@/lib/fifo-engine';
 import FIFOExplainer, { hasSeenFIFOExplainer, markFIFOExplainerSeen } from '@/components/disclosure/FIFOExplainer';
+import type { WashSaleResult } from '@/lib/wash-sale';
 
 export type TimeInForce = 'day' | 'gtc' | 'ioc' | 'fok';
 
@@ -26,6 +27,11 @@ export const TIF_LABELS: Record<TimeInForce, { label: string; desc: string }> = 
 const formatLotDate = (dateStr: string): string => {
   const d = new Date(dateStr);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+};
+
+const formatWashSaleDate = (dateStr: string): string => {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 };
 
 interface TradeTicketProps {
@@ -66,6 +72,10 @@ export default function TradeTicket({
 }: TradeTicketProps) {
   const { activeAccount } = useAccounts();
   const isReadOnlyBroker = activeAccount && !activeAccount.isDemo && !activeAccount.tradingEnabled;
+  // Wash-sale check account scoping: demo → account_id NULL / orders.is_demo;
+  // live → broker_connections.id (activeAccount.connectionId).
+  const washAccountId = activeAccount && !activeAccount.isDemo ? activeAccount.connectionId ?? null : null;
+  const washIsDemo = Boolean(activeAccount?.isDemo);
   console.log('[TradeTicket] render', { isOpen, symbol, side, currentPrice, availableCash, initialShares, initialAmount, variant, supportsFractional });
   
   const isAIVariant = variant === 'ai';
@@ -81,6 +91,7 @@ export default function TradeTicket({
   const oldestLotDate = sortedActiveLots.length > 0 ? formatLotDate(sortedActiveLots[0].filled_at) : '';
   const secondLotDate = sortedActiveLots.length > 1 ? formatLotDate(sortedActiveLots[1].filled_at) : '';
   const [showFIFOExplainer, setShowFIFOExplainer] = useState(false);
+  const [washSale, setWashSale] = useState<WashSaleResult | null>(null);
 
   // One-time explainer: first time a multi-lot sell is attempted.
   useEffect(() => {
@@ -171,6 +182,48 @@ export default function TradeTicket({
       return null; // qty exceeds available lots — validation handles the message
     }
   }, [isMultiLotSell, activeLots, qty]);
+
+  // ── Wash-sale advisory (SELL side, deterministic, non-blocking) ──
+  // Re-evaluates (debounced) as qty / effective price change. Never blocks
+  // the Confirm button; the banner is informational only.
+  useEffect(() => {
+    if (!isOpen || side !== 'SELL') {
+      setWashSale(null);
+      return;
+    }
+    if (qty <= 0 || effectivePrice <= 0) {
+      setWashSale(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/wash-sale', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            symbol,
+            sellQty: qty,
+            salePrice: effectivePrice,
+            accountId: washAccountId,
+            isDemo: washIsDemo,
+          }),
+        });
+        if (cancelled) return;
+        if (res.ok) {
+          setWashSale((await res.json()) as WashSaleResult);
+        } else {
+          setWashSale(null);
+        }
+      } catch {
+        if (!cancelled) setWashSale(null);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [isOpen, side, symbol, qty, effectivePrice, washAccountId, washIsDemo]);
   
   // ── Fractional warning ──
   const fractionalGap = !supportsFractional && forceDollarMode && rawInput > 0 && effectivePrice > 0;
@@ -288,6 +341,31 @@ export default function TradeTicket({
             <X size={18} />
           </button>
         </div>
+
+        {/* ── Wash-sale advisory (SELL side, non-blocking) ── */}
+        {washSale?.isWashSale && washSale.recentBuy && (
+          <div style={{
+            padding: '12px 14px', marginBottom: 16,
+            background: 'rgba(251,191,36,0.10)',
+            border: '1px solid rgba(251,191,36,0.35)',
+            borderRadius: 12,
+          }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 15, lineHeight: 1.2 }}>⚠️</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#fbbf24', marginBottom: 4 }}>
+                  Wash-sale advisory
+                </div>
+                <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>
+                  Selling <b style={{ color: '#ffffff' }}>{symbol}</b> may trigger a wash sale — you bought {symbol} on {formatWashSaleDate(washSale.recentBuy.filledAt)} (within the last 30 days), so this loss may not be tax-deductible this year.
+                </div>
+                <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 4 }}>
+                  This checks same-ticker purchases only — substantially identical securities (e.g. VOO vs IVV) are not detected.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── AI variant: locked Market · Day badge ── */}
         {isAIVariant && (
