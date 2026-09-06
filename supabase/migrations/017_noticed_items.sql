@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS noticed_items (
   trigger_key     TEXT NOT NULL,   -- stable dedup key, e.g. 'idle_cash' | 'MILESTONE_AAPL_+15' | 'EARNINGS_MSFT_2026-08-15'
   title           TEXT,
   body            TEXT NOT NULL,   -- Haiku-generated 1-2 sentence observation
+  fallback        BOOLEAN NOT NULL DEFAULT false,  -- true when budget-exhausted deterministic text used
   follow_up       TEXT,            -- pre-fill chat question, e.g. "What should I do with my idle cash?"
   variant         TEXT NOT NULL DEFAULT 'accent',  -- 'accent' | 'warn' | 'gain'
   icon            TEXT DEFAULT '📊',
