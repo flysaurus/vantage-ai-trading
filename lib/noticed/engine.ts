@@ -11,7 +11,7 @@ import { callChatAI } from '@/lib/ai-provider';
 import { AGENT_PRINCIPLES } from '@/lib/ai-principles';
 import { checkUsageLimit } from '@/lib/ai-guard';
 import { STYLE_SECTOR_TARGETS, NON_SECTOR_BUCKETS } from '@/lib/risk-narrative';
-import { decomposePositionValue } from '@/lib/etf-sectors';
+import { decomposePositionValue, resolveEtfWeightsForPositions } from '@/lib/etf-sectors';
 import type { SystemBlock } from '@/lib/ai-provider';
 import { PORTFOLIO_AGENT_SAFETY_BLOCKS } from '@/lib/ai/shared-safety-blocks';
 import { IDLE_CASH_THRESHOLD, IDLE_CASH_MIN_DAYS, resolveIdleCash } from './idle-cash';
@@ -166,6 +166,7 @@ export function findDriftTriggers(
   input: NoticedRuleInput,
   existingKeys: Set<string>,
   investorStyle: string | null,
+  etfWeights?: Map<string, Record<string, number>>,
 ): NoticedTrigger[] {
   const triggers: NoticedTrigger[] = [];
   if (!investorStyle) return triggers;
@@ -175,10 +176,11 @@ export function findDriftTriggers(
 
   const sectorValues = new Map<string, number>();
   for (const pos of input.positions) {
-    // Decompose broad-market ETFs (SPY/VOO/QQQ/…) into underlying sector
-    // weights so a 100%-SPY portfolio reads as ~31% Technology, ~13% Financials,
-    // etc. — not 100% "Broad Market" (invisible to drift).
-    const decomposed = decomposePositionValue(pos.symbol, pos.sector, pos.marketValue);
+    // Decompose broad-market ETFs into underlying sector weights (dynamic
+    // `etfWeights` when available, else static profile, else single sector) so
+    // a 100%-SPY portfolio reads as ~31% Technology, ~13% Financials, etc.
+    const resolved = etfWeights?.get((pos.symbol || '').toUpperCase());
+    const decomposed = decomposePositionValue(pos.symbol, pos.sector, pos.marketValue, resolved);
     for (const [bucket, value] of Object.entries(decomposed)) {
       sectorValues.set(bucket, (sectorValues.get(bucket) || 0) + value);
     }
@@ -536,10 +538,20 @@ export async function runNoticedPipeline(
     }
   }
 
+  // ── Resolve dynamic ETF sector weights (Yahoo → Supabase cache) ──
+  // Only fund-ish positions are looked up; individual stocks keep their single
+  // sector. Resolution is best-effort and never throws (falls back to static).
+  let etfWeights = new Map<string, Record<string, number>>();
+  try {
+    etfWeights = await resolveEtfWeightsForPositions(input.positions, supabase);
+  } catch (err: any) {
+    console.warn('[noticed] ETF weight resolve failed:', err?.message || err);
+  }
+
   // Run all rule engines
   let allTriggers: NoticedTrigger[] = findNewTriggers(input, existingKeys, investorStyle);
   allTriggers = allTriggers.concat(findConcentrationTriggers(input, existingKeys));
-  allTriggers = allTriggers.concat(findDriftTriggers(input, existingKeys, investorStyle));
+  allTriggers = allTriggers.concat(findDriftTriggers(input, existingKeys, investorStyle, etfWeights));
   allTriggers = allTriggers.concat(await findEarningsTriggers(input, existingKeys));
   allTriggers = allTriggers.concat(await findSentimentShiftTriggers(input, existingKeys));
 

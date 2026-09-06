@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { computeRiskMetrics, evaluateRiskTriggers } from '@/lib/risk-narrative';
+import { resolveEtfWeightsForPositions } from '@/lib/etf-sectors';
 import { callChatAI } from '@/lib/ai-provider';
 import { writeFact } from '@/lib/ai/facts';
 import { createServerClient } from '@/lib/supabase';
@@ -130,8 +131,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
+    // ── Resolve dynamic ETF sector weights (Yahoo → Supabase cache) ──
+    // Best-effort; falls back to static profile / single sector on failure.
+    let etfWeights = new Map<string, Record<string, number>>();
+    try {
+      const supabase = createServerClient();
+      etfWeights = await resolveEtfWeightsForPositions(body.positions, supabase);
+    } catch (err: any) {
+      console.warn('[risk-narrative] ETF weight resolve failed:', err?.message || err);
+    }
+
     // ── Layer 4a: Compute metrics ──
-    const metrics = computeRiskMetrics(body.positions, body.investorStyle);
+    const metrics = computeRiskMetrics(body.positions, body.investorStyle, etfWeights);
 
     // ── Layer 4b: Evaluate triggers ──
     const triggers = evaluateRiskTriggers(metrics);

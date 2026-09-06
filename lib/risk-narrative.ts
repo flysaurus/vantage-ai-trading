@@ -108,6 +108,7 @@ interface PositionInput {
 function computeSectorConcentration(
   positions: PositionInput[],
   totalValue: number,
+  etfWeights?: Map<string, Record<string, number>>,
 ): { sector: string; pct: number }[] {
   if (totalValue === 0) return [];
 
@@ -115,10 +116,10 @@ function computeSectorConcentration(
 
   for (const pos of positions) {
     const mv = pos.qty * pos.currentPrice;
-    // Decompose broad-market ETFs into underlying sector weights (and normalize
-    // GICS names → style buckets) so sector concentration + drift match the
-    // noticed engine's view.
-    const decomposed = decomposePositionValue(pos.symbol, pos.sector, mv);
+    // Decompose broad-market ETFs into underlying sector weights (dynamic
+    // `etfWeights` when available, else static profile, else single sector).
+    const resolved = etfWeights?.get((pos.symbol || '').toUpperCase());
+    const decomposed = decomposePositionValue(pos.symbol, pos.sector, mv, resolved);
     for (const [bucket, value] of Object.entries(decomposed)) {
       sectorMap.set(bucket, (sectorMap.get(bucket) || 0) + value);
     }
@@ -139,6 +140,7 @@ function computeSectorConcentration(
 export function computeRiskMetrics(
   positions: PositionInput[],
   investorStyle?: string,
+  etfWeights?: Map<string, Record<string, number>>,
 ): RiskMetrics {
   // ── Total portfolio value ──
   const totalValue = positions.reduce(
@@ -150,6 +152,7 @@ export function computeRiskMetrics(
   const sectorConcentration = computeSectorConcentration(
     positions,
     totalValue,
+    etfWeights,
   );
 
   // ── 2. Top-N concentration ──
