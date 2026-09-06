@@ -126,15 +126,19 @@ async function processUser(
   userId: string,
   supabase: any,
 ): Promise<{ triggers: number; haikuGenerated: number; skippedBudget: boolean }> {
-  // ── Fetch user's investor style ──
+  // ── Fetch user's investor style + concentration thresholds ──
   let investorStyle: string | null = null;
+  let concSinglePct: number | null = null;
+  let concTop3Pct: number | null = null;
   try {
     const { data: userRow } = await supabase
       .from('users')
-      .select('investor_style')
+      .select('investor_style, conc_single_pct, conc_top3_pct')
       .eq('id', userId)
       .single();
     investorStyle = userRow?.investor_style || null;
+    concSinglePct = userRow?.conc_single_pct ?? null;
+    concTop3Pct = userRow?.conc_top3_pct ?? null;
   } catch { /* ignore */ }
 
   // ── Fetch positions ──
@@ -278,6 +282,8 @@ async function processUser(
     investorStyle,
     existingKeys,
     supabase,
+    concSinglePct,
+    concTop3Pct,
   });
 
   const skippedBudget = trulyNew.length > 0 && !haikuGenerated;

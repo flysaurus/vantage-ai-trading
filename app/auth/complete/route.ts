@@ -81,6 +81,8 @@ export async function GET(request: NextRequest) {
         last_name: meta.last_name ?? '',
         investor_style: meta.investor_style ?? null,
         risk_tolerance: meta.risk_tolerance ?? null,
+        conc_single_pct: meta.conc_single_pct ? Number(meta.conc_single_pct) : null,
+        conc_top3_pct: meta.conc_top3_pct ? Number(meta.conc_top3_pct) : null,
         investor_style_onboarded: true,
         tier: 'demo',
         first_open: new Date().toISOString(),

@@ -30,6 +30,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       investorStyle,
       investorStyleOnboarded,
       investorStyleSetAt,
+      concSinglePct,
+      concTop3Pct,
     } = body as {
       userId?: string;
       email?: string;
@@ -38,6 +40,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       investorStyle?: string;
       investorStyleOnboarded?: boolean;
       investorStyleSetAt?: string;
+      concSinglePct?: number | null;
+      concTop3Pct?: number | null;
     };
 
     if (!userId) {
@@ -63,6 +67,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
+    // Validate concentration thresholds (whole %, 1-100; null resets to style default)
+    for (const v of [concSinglePct, concTop3Pct]) {
+      if (v === undefined) continue;
+      if (v !== null && (typeof v !== 'number' || !Number.isFinite(v) || v < 1 || v > 100)) {
+        return NextResponse.json(
+          { error: 'Concentration thresholds must be between 1 and 100' },
+          { status: 400 }
+        );
+      }
+    }
+
     // Build update payload (snake_case)
     const updates: Record<string, unknown> = {};
     if (email !== undefined) updates.email = email;
@@ -72,6 +87,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       updates.investor_style = investorStyle;
       updates.investor_style_set_at = new Date().toISOString();
     }
+    if (concSinglePct !== undefined) updates.conc_single_pct = concSinglePct;
+    if (concTop3Pct !== undefined) updates.conc_top3_pct = concTop3Pct;
     if (investorStyleOnboarded !== undefined) {
       updates.investor_style_onboarded = investorStyleOnboarded;
       // Auto-set timestamp when onboarding is completed, unless explicitly provided
@@ -88,7 +105,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .from('users')
       .update(updates)
       .eq('id', userId)
-      .select('id, email, display_name, avatar_url, investor_style, investor_style_onboarded, updated_at')
+      .select('id, email, display_name, avatar_url, investor_style, investor_style_onboarded, conc_single_pct, conc_top3_pct, updated_at')
       .single();
 
     if (error) {
@@ -109,6 +126,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       avatarUrl: data.avatar_url,
       investorStyle: data.investor_style || 'buffett',
       investorStyleOnboarded: data.investor_style_onboarded ?? false,
+      concSinglePct: data.conc_single_pct ?? null,
+      concTop3Pct: data.conc_top3_pct ?? null,
       updatedAt: data.updated_at,
     });
   } catch (err: any) {

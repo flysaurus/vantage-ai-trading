@@ -19,6 +19,7 @@ import { QuizQuestion } from '@/components/onboarding/QuizQuestion';
 import BrokerChoiceStep from '@/components/onboarding/BrokerChoiceStep';
 import ConnectionOptionsStep from '@/components/onboarding/ConnectionOptionsStep';
 import { StyleReveal } from '@/components/onboarding/StyleReveal';
+import ConcentrationStep from '@/components/onboarding/ConcentrationStep';
 import { QUIZ_QUESTIONS, scoreQuiz } from '@/lib/onboarding/quiz-logic';
 import type { InvestorStyleKey, RiskTolerance } from '@/lib/onboarding/onboarding-state';
 
@@ -30,6 +31,7 @@ type OnboardingScreen =
   | 'arrival'
   | 'quiz'
   | 'reveal'
+  | 'concentration'
   | 'broker-choice'
   | 'connection-options'
   | 'create-account';
@@ -50,6 +52,8 @@ interface OnboardingState {
   direction: QuizDirection;
   pendingChoice: PendingChoice;
   pendingConnectionType: PendingConnectionType;
+  concSinglePct: number | null;
+  concTop3Pct: number | null;
 }
 
 // ── sessionStorage key ─────────────────────────────────────
@@ -74,6 +78,8 @@ function serialiseState(state: OnboardingState) {
       firstName: state.firstName,
       lastName: state.lastName,
       currentQuizQuestion: state.currentQuizQuestion,
+      concSinglePct: state.concSinglePct,
+      concTop3Pct: state.concTop3Pct,
     }));
   } catch {}
 }
@@ -105,6 +111,8 @@ function deserialiseState(): Partial<OnboardingState> | null {
       riskTolerance: parsed.riskTolerance ?? null,
       firstName: parsed.firstName ?? '',
       lastName: parsed.lastName ?? '',
+      concSinglePct: parsed.concSinglePct ?? null,
+      concTop3Pct: parsed.concTop3Pct ?? null,
     };
   } catch {
     return null;
@@ -125,6 +133,8 @@ function createDefaultState(initialScreen?: OnboardingScreen): OnboardingState {
     direction: 'forward',
     pendingChoice: null,
     pendingConnectionType: null,
+    concSinglePct: null,
+    concTop3Pct: null,
   };
 }
 
@@ -238,9 +248,22 @@ export default function OnboardingFlow({ initialScreen }: OnboardingFlowProps) {
     });
   }, []);
 
-  // reveal → broker-choice
+  // reveal → concentration question
   const handleRevealCTA = useCallback(() => {
-    goTo('broker-choice');
+    goTo('concentration');
+  }, []);
+
+  // concentration → broker-choice (store chosen thresholds)
+  const handleConcentrationSelect = useCallback((single: number, top3: number) => {
+    goTo('broker-choice', 'forward', {
+      concSinglePct: single,
+      concTop3Pct: top3,
+    });
+  }, []);
+
+  // concentration back → reveal
+  const handleConcentrationBack = useCallback(() => {
+    goTo('reveal', 'back');
   }, []);
 
   // reveal back → quiz Q5
@@ -265,9 +288,9 @@ export default function OnboardingFlow({ initialScreen }: OnboardingFlowProps) {
     });
   }, []);
 
-  // broker-choice back → style-reveal
+  // broker-choice back → concentration question
   const handleBrokerChoiceBack = useCallback(() => {
-    goTo('reveal', 'back');
+    goTo('concentration', 'back');
   }, []);
 
   // connection-options: user selects a broker
@@ -339,6 +362,16 @@ export default function OnboardingFlow({ initialScreen }: OnboardingFlowProps) {
           lastName=""
           onBack={handleRevealBack}
           onCreateAccount={handleRevealCTA}
+        />
+      );
+
+    case 'concentration':
+      if (!state.investorStyle) return null;
+      return (
+        <ConcentrationStep
+          style={state.investorStyle}
+          onSelect={handleConcentrationSelect}
+          onBack={handleConcentrationBack}
         />
       );
 

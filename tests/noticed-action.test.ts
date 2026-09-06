@@ -247,4 +247,51 @@ describe('noticed engine — deterministic action markers', () => {
     const triggers = findConcentrationTriggers(input, new Set());
     expect(triggers).toEqual([]);
   });
+
+  const concPositions = () => [
+    { symbol: 'SPY', qty: 1, marketValue: 35700, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Broad Market' },
+    { symbol: 'VOO', qty: 1, marketValue: 20000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Broad Market' },
+    { symbol: 'QQQ', qty: 1, marketValue: 8700, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Broad Market' },
+    { symbol: 'JNJ', qty: 1, marketValue: 8000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Healthcare' },
+    { symbol: 'JPM', qty: 1, marketValue: 7600, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Financial Services' },
+    { symbol: 'KO', qty: 1, marketValue: 5000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Consumer Defensive' },
+    { symbol: 'PG', qty: 1, marketValue: 4000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Consumer Defensive' },
+    { symbol: 'UNH', qty: 1, marketValue: 4000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Healthcare' },
+    { symbol: 'MSFT', qty: 1, marketValue: 4000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Technology' },
+    { symbol: 'CVX', qty: 1, marketValue: 3000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Energy' },
+  ];
+
+  it('honours custom single-position threshold (35.7% SPY fires below 40, not below 10)', () => {
+    const input = makeInput({
+      account: { cash: 0, equity: 100000, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 },
+      positions: concPositions(),
+    });
+
+    // Custom single threshold of 40 → SPY at 35.7% does NOT trigger.
+    const highThreshold = findConcentrationTriggers(input, new Set(), 40, 50);
+    expect(highThreshold.find((t) => t.trigger_type === 'concentration_single')).toBeUndefined();
+
+    // Custom single threshold of 10 → SPY at 35.7% DOES trigger.
+    const lowThreshold = findConcentrationTriggers(input, new Set(), 10, 50);
+    const single = lowThreshold.find((t) => t.trigger_type === 'concentration_single');
+    expect(single).toBeDefined();
+    expect(single!.meta.action).toBe('REVIEW_POSITION:SPY');
+  });
+
+  it('honours custom top-3 threshold (64.4% fires below 70, not below 40)', () => {
+    const input = makeInput({
+      account: { cash: 0, equity: 100000, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 },
+      positions: concPositions(),
+    });
+
+    // Custom top-3 threshold of 70 → 64.4% does NOT trigger.
+    const highThreshold = findConcentrationTriggers(input, new Set(), 20, 70);
+    expect(highThreshold.find((t) => t.trigger_type === 'concentration_top3')).toBeUndefined();
+
+    // Custom top-3 threshold of 40 → 64.4% DOES trigger.
+    const lowThreshold = findConcentrationTriggers(input, new Set(), 20, 40);
+    const top3 = lowThreshold.find((t) => t.trigger_type === 'concentration_top3');
+    expect(top3).toBeDefined();
+    expect(top3!.meta.action).toBe('REBALANCE');
+  });
 });

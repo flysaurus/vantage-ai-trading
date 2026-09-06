@@ -52,6 +52,8 @@ interface OnboardingData {
   risk: RiskTolerance;
   firstName: string;
   lastName: string;
+  concSinglePct?: number | null;
+  concTop3Pct?: number | null;
 }
 
 function readOnboardingData(): OnboardingData | null {
@@ -73,6 +75,8 @@ function readOnboardingData(): OnboardingData | null {
         risk: parsed.riskTolerance || null,
         firstName: parsed.firstName ?? '',
         lastName: parsed.lastName ?? '',
+        concSinglePct: parsed.concSinglePct ?? null,
+        concTop3Pct: parsed.concTop3Pct ?? null,
       } as OnboardingData;
     }
 
@@ -153,6 +157,8 @@ export default function CreateAccountPage() {
   // ── Computed ─────────────────────────────────────────────
   const style = onboardingData?.style || 'buffett';
   const risk = onboardingData?.risk || 'moderate';
+  const concSinglePct = onboardingData?.concSinglePct ?? null;
+  const concTop3Pct = onboardingData?.concTop3Pct ?? null;
   const styleContent = getStyleContent(style);
   const styleEmoji = getStyleEmoji(style);
   const shortLabel = styleContent.shortLabel;
@@ -484,6 +490,8 @@ export default function CreateAccountPage() {
           last_name: lastName.trim(),
           investor_style: style,
           risk_tolerance: risk,
+          conc_single_pct: concSinglePct,
+          conc_top3_pct: concTop3Pct,
         }),
       });
 
@@ -535,6 +543,8 @@ export default function CreateAccountPage() {
           queryParams: {
             investor_style: style,
             risk_tolerance: risk,
+            conc_single_pct: concSinglePct != null ? String(concSinglePct) : '',
+            conc_top3_pct: concTop3Pct != null ? String(concTop3Pct) : '',
             pending_choice: pendingChoice ?? '',
             pending_connection_type: pendingConnectionType ?? '',
           },
@@ -551,7 +561,7 @@ export default function CreateAccountPage() {
       setApiError('Google sign-in coming soon. Please use email for now.');
       setSubmitting(false);
     }
-  }, [style, risk, pendingChoice, pendingConnectionType]);
+  }, [style, risk, concSinglePct, concTop3Pct, pendingChoice, pendingConnectionType]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && canSubmit) {

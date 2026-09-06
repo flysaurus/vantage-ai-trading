@@ -13,6 +13,8 @@ interface SetupBody {
   last_name?: string | null;
   investor_style?: string | null;
   risk_tolerance?: string | null;
+  conc_single_pct?: number | null;
+  conc_top3_pct?: number | null;
   demo_start_at?: boolean | null; // signal to set demo_start_at if null
 }
 
@@ -79,6 +81,8 @@ export async function POST(req: NextRequest) {
     last_name: setupLastName || undefined,
     investor_style: body.investor_style || undefined,
     risk_tolerance: body.risk_tolerance || undefined,
+    conc_single_pct: body.conc_single_pct ?? undefined,
+    conc_top3_pct: body.conc_top3_pct ?? undefined,
     investor_style_onboarded: true,
     tier: 'demo',
     first_open: now,

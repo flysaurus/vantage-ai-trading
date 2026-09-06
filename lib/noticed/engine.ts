@@ -15,6 +15,11 @@ import { decomposePositionValue, resolveEtfWeightsForPositions } from '@/lib/etf
 import type { SystemBlock } from '@/lib/ai-provider';
 import { PORTFOLIO_AGENT_SAFETY_BLOCKS } from '@/lib/ai/shared-safety-blocks';
 import { IDLE_CASH_THRESHOLD, IDLE_CASH_MIN_DAYS, resolveIdleCash } from './idle-cash';
+import {
+  DEFAULT_CONC_SINGLE_PCT,
+  DEFAULT_CONC_TOP3_PCT,
+  resolveConcentrationThresholds,
+} from '@/lib/concentration';
 
 // ── Config ──
 const FINBERT_URL = process.env.FINBERT_URL || 'http://127.0.0.1:8765';
@@ -234,12 +239,14 @@ export function findDriftTriggers(
 // Distinct from sector drift: catches broad-market ETF dominance / single-name
 // bets that the drift engine can't see (it skips 'Broad Market' + non-target
 // buckets and only compares per-sector weights vs style targets).
-const CONC_SINGLE_PCT = 20; // largest single position >20% → REVIEW_POSITION CTA
-const CONC_TOP3_PCT = 50;   // top-3 holdings >50% → REBALANCE CTA
+// Thresholds are per-user customisable; callers pass resolved values (or the
+// global defaults below are used).
 
 export function findConcentrationTriggers(
   input: NoticedRuleInput,
   existingKeys: Set<string>,
+  concSinglePct: number = DEFAULT_CONC_SINGLE_PCT,
+  concTop3Pct: number = DEFAULT_CONC_TOP3_PCT,
 ): NoticedTrigger[] {
   const triggers: NoticedTrigger[] = [];
   const positions = input.positions;
@@ -258,7 +265,7 @@ export function findConcentrationTriggers(
   // ── Single-position concentration ──
   const largest = sorted[0];
   const largestPct = (largest.marketValue / totalValue) * 100;
-  if (largestPct > CONC_SINGLE_PCT) {
+  if (largestPct > concSinglePct) {
     const key = `CONC_SINGLE_${largest.symbol}`;
     if (!existingKeys.has(key)) {
       const pct = Math.round(largestPct * 10) / 10;
@@ -285,7 +292,7 @@ export function findConcentrationTriggers(
   const top3 = sorted.slice(0, 3);
   const top3Value = top3.reduce((sum, p) => sum + (p.marketValue || 0), 0);
   const top3Pct = (top3Value / totalValue) * 100;
-  if (top3Pct > CONC_TOP3_PCT) {
+  if (top3Pct > concTop3Pct) {
     const key = 'CONC_TOP3';
     if (!existingKeys.has(key)) {
       const pct = Math.round(top3Pct * 10) / 10;
@@ -510,6 +517,9 @@ export interface UserProcessingContext {
   investorStyle: string | null;
   existingKeys: Set<string>;
   supabase: any;
+  /** Per-user position-concentration thresholds (whole %, 0-100). Null = use style default. */
+  concSinglePct?: number | null;
+  concTop3Pct?: number | null;
 }
 
 // ── Run full noticed pipeline for one user, returning processed results ──
@@ -548,9 +558,12 @@ export async function runNoticedPipeline(
     console.warn('[noticed] ETF weight resolve failed:', err?.message || err);
   }
 
+  // ── Resolve per-user concentration thresholds (user → style → default) ──
+  const conc = resolveConcentrationThresholds(investorStyle, ctx.concSinglePct, ctx.concTop3Pct);
+
   // Run all rule engines
   let allTriggers: NoticedTrigger[] = findNewTriggers(input, existingKeys, investorStyle);
-  allTriggers = allTriggers.concat(findConcentrationTriggers(input, existingKeys));
+  allTriggers = allTriggers.concat(findConcentrationTriggers(input, existingKeys, conc.single, conc.top3));
   allTriggers = allTriggers.concat(findDriftTriggers(input, existingKeys, investorStyle, etfWeights));
   allTriggers = allTriggers.concat(await findEarningsTriggers(input, existingKeys));
   allTriggers = allTriggers.concat(await findSentimentShiftTriggers(input, existingKeys));

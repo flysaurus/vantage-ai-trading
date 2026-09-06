@@ -8,6 +8,12 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 
 import { isLearningEnabled, setLearningEnabled as saveLearningPref } from '@/lib/learning/preferences';
+import {
+  CONCENTRATION_PRESETS,
+  suggestedPresetForStyle,
+  resolveConcentrationThresholds,
+  type ConcentrationPreset,
+} from '@/lib/concentration';
 
 const INVESTOR_STYLES = [
   { id: 'lynch', name: 'Peter Lynch', subtitle: 'Growth Focus', description: 'Find growth before Wall Street does. GARP investing.', emoji: '📈' },
@@ -47,6 +53,17 @@ export function SettingsTab() {
   });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  // ── Concentration thresholds (position-concentration alerts) ──
+  const [concSingle, setConcSingle] = useState<string>(() => {
+    const styleDef = resolveConcentrationThresholds(user?.investorStyle ?? null, null, null);
+    return String(user?.concSinglePct ?? styleDef.single);
+  });
+  const [concTop3, setConcTop3] = useState<string>(() => {
+    const styleDef = resolveConcentrationThresholds(user?.investorStyle ?? null, null, null);
+    return String(user?.concTop3Pct ?? styleDef.top3);
+  });
+  const [savingConc, setSavingConc] = useState(false);
 
   const [learningEnabled, setLearningEnabled] = useState(isLearningEnabled);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -112,6 +129,70 @@ export function SettingsTab() {
     const styleId = confirmDialog.value;
     setConfirmDialog(null);
     selectStyle(styleId);
+  }
+
+  // ── Concentration thresholds ───────────────────────────
+  const styleDefaults = resolveConcentrationThresholds(
+    selectedStyle || user?.investorStyle || null,
+    null,
+    null,
+  );
+  const suggestedPreset = suggestedPresetForStyle(selectedStyle || user?.investorStyle || null);
+
+  async function persistConcentration(single: number | null, top3: number | null) {
+    const userId = user?.id as string | undefined;
+    if (!userId) return false;
+    setSavingConc(true);
+    try {
+      const res = await apiPost('/api/db/users/update', {
+        userId,
+        concSinglePct: single,
+        concTop3Pct: top3,
+      });
+      if (res.ok) {
+        try { await refreshUser(); } catch {}
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      setSavingConc(false);
+    }
+  }
+
+  function applyConcentrationPreset(preset: ConcentrationPreset) {
+    setConcSingle(String(preset.single));
+    setConcTop3(String(preset.top3));
+    persistConcentration(preset.single, preset.top3).then((ok) => {
+      if (ok) setToast(`Concentration alerts set to ${preset.label}`);
+      setTimeout(() => setToast(null), 3500);
+    });
+  }
+
+  function saveConcentrationCustom() {
+    const single = concSingle.trim() === '' ? null : Number(concSingle);
+    const top3 = concTop3.trim() === '' ? null : Number(concTop3);
+    for (const v of [single, top3]) {
+      if (v !== null && (!Number.isFinite(v) || v < 1 || v > 100)) {
+        setToast('Thresholds must be whole numbers between 1 and 100');
+        setTimeout(() => setToast(null), 3500);
+        return;
+      }
+    }
+    persistConcentration(single, top3).then((ok) => {
+      if (ok) setToast('Concentration alerts saved');
+      setTimeout(() => setToast(null), 3500);
+    });
+  }
+
+  function resetConcentrationToStyleDefault() {
+    setConcSingle(String(styleDefaults.single));
+    setConcTop3(String(styleDefaults.top3));
+    persistConcentration(null, null).then((ok) => {
+      if (ok) setToast('Reset to your style default');
+      setTimeout(() => setToast(null), 3500);
+    });
   }
 
   const sectionHeader = (label: string) => (
@@ -390,6 +471,135 @@ export function SettingsTab() {
         >
           Retake Quiz
         </button>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          1b. CONCENTRATION ALERTS
+          ═══════════════════════════════════════════════════════ */}
+      {sectionHeader('Concentration Alerts')}
+
+      <div style={{ margin: '0 16px 12px 16px' }}>
+        <div
+          style={{
+            padding: '14px 16px',
+            background: '#1a2235',
+            borderRadius: '10px',
+          }}
+        >
+          <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.5, margin: '0 0 14px 0' }}>
+            Get nudged when one position — or your top three — grows past your comfort zone.
+            Style default: <span style={{ color: '#22d3ee' }}>{CONCENTRATION_PRESETS.find((p) => p.id === suggestedPreset)?.label}</span>.
+          </p>
+
+          {/* Preset pills */}
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', flexWrap: 'wrap' }}>
+            {CONCENTRATION_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                onClick={() => applyConcentrationPreset(preset)}
+                disabled={savingConc}
+                style={{
+                  flex: '1 1 auto',
+                  minWidth: '0',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(255,255,255,0.10)',
+                  background: 'transparent',
+                  color: '#e2e8f0',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: savingConc ? 'default' : 'pointer',
+                  opacity: savingConc ? 0.6 : 1,
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Custom inputs */}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+            <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Single position %</span>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={concSingle}
+                onChange={(e) => setConcSingle(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(255,255,255,0.10)',
+                  background: 'rgba(255,255,255,0.03)',
+                  color: '#ffffff',
+                  fontSize: '15px',
+                  fontFamily: 'var(--font-sans)',
+                }}
+              />
+            </label>
+            <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Top 3 holdings %</span>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={concTop3}
+                onChange={(e) => setConcTop3(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(255,255,255,0.10)',
+                  background: 'rgba(255,255,255,0.03)',
+                  color: '#ffffff',
+                  fontSize: '15px',
+                  fontFamily: 'var(--font-sans)',
+                }}
+              />
+            </label>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              onClick={saveConcentrationCustom}
+              disabled={savingConc}
+              style={{
+                flex: 1,
+                padding: '10px 0',
+                borderRadius: '8px',
+                border: 'none',
+                background: '#22d3ee',
+                color: '#062a33',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: savingConc ? 'default' : 'pointer',
+                opacity: savingConc ? 0.6 : 1,
+              }}
+            >
+              {savingConc ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              onClick={resetConcentrationToStyleDefault}
+              disabled={savingConc}
+              style={{
+                padding: '10px 12px',
+                borderRadius: '8px',
+                border: '1px solid rgba(255,255,255,0.10)',
+                background: 'transparent',
+                color: '#94a3b8',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: savingConc ? 'default' : 'pointer',
+                opacity: savingConc ? 0.6 : 1,
+              }}
+            >
+              Use style default
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* ═══════════════════════════════════════════════════════

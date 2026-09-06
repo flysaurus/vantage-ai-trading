@@ -84,15 +84,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const existingKeys = new Set<string>((existing || []).map((e: any) => e.trigger_key));
 
-    // ── Get investor style for drift detection ──
+    // ── Get investor style + concentration thresholds for drift/concentration detection ──
     let investorStyle: string | null = null;
+    let concSinglePct: number | null = null;
+    let concTop3Pct: number | null = null;
     try {
       const { data: userRow } = await supabase
         .from('users')
-        .select('investor_style')
+        .select('investor_style, conc_single_pct, conc_top3_pct')
         .eq('id', userId)
         .single();
       investorStyle = userRow?.investor_style || null;
+      concSinglePct = userRow?.conc_single_pct ?? null;
+      concTop3Pct = userRow?.conc_top3_pct ?? null;
     } catch { /* ignore */ }
 
     // ── Run the full noticed pipeline ──
@@ -102,6 +106,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       investorStyle,
       existingKeys,
       supabase,
+      concSinglePct,
+      concTop3Pct,
     });
 
     // ── Return visible items ──
