@@ -42,6 +42,9 @@ interface TabStore {
   /** Ticker to focus/expand in the Portfolio tab (set cross-tab, consumed + cleared by PortfolioTab). */
   focusPosition: string | null;
   setFocusPosition: (symbol: string | null) => void;
+  /** Pending chat prompt to auto-send when the AI tab next mounts (set cross-tab, consumed by AITab). */
+  pendingPrompt: string | null;
+  setPendingPrompt: (prompt: string | null) => void;
 }
 
 export const useTabStore = create<TabStore>((set) => ({
@@ -49,6 +52,8 @@ export const useTabStore = create<TabStore>((set) => ({
   setTab: (tab) => set({ activeTab: tab }),
   focusPosition: null,
   setFocusPosition: (symbol) => set({ focusPosition: symbol }),
+  pendingPrompt: null,
+  setPendingPrompt: (prompt) => set({ pendingPrompt: prompt }),
 }));
 
 // ─── Market Data ───

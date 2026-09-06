@@ -1789,6 +1789,22 @@ export function AITab({ messages, setMessages }: AITabProps) {
     }
   };
 
+  // ── Cross-tab prompt (bell → AI tab): consume a pendingPrompt set by the Header bell ──
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
+  useEffect(() => {
+    const { pendingPrompt, setPendingPrompt } = useTabStore.getState();
+    if (pendingPrompt) {
+      setPendingPrompt(null);
+      const t = setTimeout(() => {
+        sendMessageRef.current(pendingPrompt);
+        wasAtBottomRef.current = true;
+        scrollToBottom(true);
+      }, 50);
+      return () => clearTimeout(t);
+    }
+  }, []);
+
   // ── Market Pulse: fetch live quotes before sending ──
   const handleMarketPulse = async (e: React.MouseEvent) => {
     const el = e.currentTarget as HTMLElement;

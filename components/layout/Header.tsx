@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, Settings, X } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
+import ActionButton from '@/components/ai/ActionButton';
 import { useTabStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
 import { useAccounts } from '@/context/AccountContext';
@@ -17,6 +18,17 @@ interface Notification {
   action_url?: string;
   is_read: boolean;
   created_at: string;
+}
+
+interface NoticedItem {
+  id: string;
+  triggerType: string;
+  title: string;
+  body: string;
+  variant: 'accent' | 'warn' | 'gain';
+  icon: string;
+  action?: string | null;
+  createdAt: string;
 }
 
 function timeAgo(dateStr: string): string {
@@ -46,12 +58,13 @@ function shortenLabel(label: string): string {
 }
 
 export function Header() {
-  const { setTab } = useTabStore();
+  const { setTab, setFocusPosition, setPendingPrompt } = useTabStore();
   const router = useRouter();
   const { activeAccountId } = useAccounts();
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [noticedItems, setNoticedItems] = useState<NoticedItem[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [orderNotifsEnabled, setOrderNotifsEnabled] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -84,6 +97,42 @@ export function Header() {
     } catch { /* ignore */ }
   };
 
+  const fetchNoticed = useCallback(async () => {
+    try {
+      const res = await apiGet('/api/ai/noticed');
+      if (res.ok) {
+        const data = await res.json();
+        setNoticedItems(data.items || []);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // ── Noticed card actions (mirror the AI Advisor "+" sheet) ──
+  const handleNoticedRebalance = () => {
+    setShowDropdown(false);
+    setPendingPrompt('rebalance');
+    setTab('ai');
+  };
+
+  const handleNoticedReview = (ticker: string) => {
+    setShowDropdown(false);
+    setFocusPosition(ticker);
+    setTab('portfolio');
+  };
+
+  const handleNoticedInvest = (amount: number) => {
+    setShowDropdown(false);
+    setPendingPrompt(`Build me a portfolio with my $${amount.toLocaleString()} of idle cash.`);
+    setTab('ai');
+  };
+
+  const handleNoticedDismiss = async (itemId: string) => {
+    setNoticedItems(prev => prev.filter(i => i.id !== itemId));
+    try {
+      await apiPost('/api/ai/noticed/dismiss', { itemId, dismissType: 'permanent' });
+    } catch { /* ignore */ }
+  };
+
   const fetchNotifPref = useCallback(async () => {
     try {
       const res = await apiGet('/api/notifications/preferences');
@@ -107,12 +156,14 @@ export function Header() {
   useEffect(() => {
     fetchUnread();
     fetchNotifPref();
+    fetchNoticed();
     const interval = setInterval(() => {
       fetchUnread();
+      fetchNoticed();
       setMarketStatus(getMarketStatus());
     }, 60000);
     return () => clearInterval(interval);
-  }, [fetchUnread, fetchNotifPref]);
+  }, [fetchUnread, fetchNotifPref, fetchNoticed]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -128,7 +179,10 @@ export function Header() {
 
   const handleBellClick = () => {
     setShowDropdown(prev => !prev);
-    if (!showDropdown) fetchList();
+    if (!showDropdown) {
+      fetchList();
+      fetchNoticed();
+    }
   };
 
   return (
@@ -155,7 +209,7 @@ export function Header() {
           aria-label="Notifications"
         >
           <Bell size={22} />
-          {unreadCount > 0 && (
+          {(unreadCount + noticedItems.length) > 0 && (
             <span style={{
               position: 'absolute', top: -2, right: -2,
               minWidth: 16, height: 16, padding: '0 4px',
@@ -164,7 +218,7 @@ export function Header() {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               border: '2px solid #0a0f1e',
             }}>
-              {unreadCount > 9 ? '9+' : unreadCount}
+              {(unreadCount + noticedItems.length) > 9 ? '9+' : unreadCount + noticedItems.length}
             </span>
           )}
         </button>
@@ -221,11 +275,55 @@ export function Header() {
             </div>
           </div>
 
+          {/* ── AI Noticed (Suggested for you) ── */}
+          {noticedItems.length > 0 && (
+            <>
+              <div style={{
+                padding: '12px 14px 4px', fontSize: 10, fontWeight: 700,
+                letterSpacing: '0.06em', color: '#22d3ee', textTransform: 'uppercase',
+              }}>
+                ✨ Suggested for you
+              </div>
+              {noticedItems.map((item) => {
+                const borderColor = item.variant === 'warn' ? '#f59e0b' : item.variant === 'gain' ? '#22c55e' : '#22d3ee';
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      padding: '8px 0',
+                      borderBottom: '1px solid rgba(255,255,255,0.04)',
+                      borderLeft: `3px solid ${borderColor}`,
+                    }}
+                  >
+                    <div style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 6,
+                      fontSize: 12, color: '#f1f5f9', padding: '0 14px', marginBottom: 4,
+                    }}>
+                      <span style={{ flexShrink: 0 }}>{item.icon}</span>
+                      <span style={{ flex: 1, lineHeight: 1.4 }}>{item.body}</span>
+                    </div>
+                    {item.action && (
+                      <ActionButton
+                        action={item.action}
+                        onRebalance={handleNoticedRebalance}
+                        onReviewPosition={handleNoticedReview}
+                        onInvestCash={handleNoticedInvest}
+                        onDismiss={() => handleNoticedDismiss(item.id)}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          )}
+
           {/* Items */}
           {notifications.length === 0 ? (
-            <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: '#e2e8f0' }}>
-              No notifications yet
-            </div>
+            (noticedItems.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: '#e2e8f0' }}>
+                No notifications yet
+              </div>
+            ) : null)
           ) : (
             notifications.map(n => (
               <div
