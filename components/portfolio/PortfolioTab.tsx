@@ -874,6 +874,8 @@ export function PortfolioTab() {
 
   // Hard boundary: Demo must NEVER show broker data. Scope data source by active account.
   const isShowingDemo = activeAccount?.isDemo ?? false;
+  // Read-only = live broker connection without trading access (demo is always full).
+  const isReadOnly = !isShowingDemo && !(activeAccount?.tradingEnabled ?? false);
 
   // Source attribution: position cards show "Synced from {broker}" for live
   // accounts (null for demo, where Vantage itself is the broker).
@@ -1140,7 +1142,7 @@ export function PortfolioTab() {
         }}>
           {/* Risk Exposure — collapsible, summary-line shown collapsed */}
           {RiskNarrativeCard ? (
-            <RiskNarrativeCard positions={enrichedPositions} account={displayAccount} />
+            <RiskNarrativeCard positions={enrichedPositions} readOnly={isReadOnly} account={displayAccount} />
           ) : (
             <div style={{
               padding: '20px 16px',

@@ -15,6 +15,7 @@ import { createHash } from 'crypto';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { computeRiskMetrics, evaluateRiskTriggers } from '@/lib/risk-narrative';
 import { resolveEtfWeightsForPositions } from '@/lib/etf-sectors';
+import { computeDeterministicActions } from '@/lib/risk-narrative-action';
 import { callChatAI } from '@/lib/ai-provider';
 import { writeFact } from '@/lib/ai/facts';
 import { createServerClient } from '@/lib/supabase';
@@ -141,17 +142,43 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       console.warn('[risk-narrative] ETF weight resolve failed:', err?.message || err);
     }
 
+    // ── Fetch per-user style + concentration thresholds (for deterministic CTA) ──
+    let investorStyle = body.investorStyle || null;
+    let concSinglePct: number | null = null;
+    let concTop3Pct: number | null = null;
+    try {
+      const supabase = createServerClient() as any;
+      const { data: userRow } = await supabase
+        .from('users')
+        .select('investor_style, conc_single_pct, conc_top3_pct')
+        .eq('id', userId)
+        .single();
+      investorStyle = userRow?.investor_style || investorStyle || null;
+      concSinglePct = userRow?.conc_single_pct ?? null;
+      concTop3Pct = userRow?.conc_top3_pct ?? null;
+    } catch { /* ignore — falls back to body/defaults */ }
+
     // ── Layer 4a: Compute metrics ──
-    const metrics = computeRiskMetrics(body.positions, body.investorStyle, etfWeights);
+    const metrics = computeRiskMetrics(body.positions, investorStyle ?? undefined, etfWeights);
 
     // ── Layer 4b: Evaluate triggers ──
     const triggers = evaluateRiskTriggers(metrics);
+
+    // ── Layer 4c: Deterministic CTA actions (same rules as Noticed) ──
+    const actions = computeDeterministicActions(
+      body.positions,
+      investorStyle,
+      concSinglePct,
+      concTop3Pct,
+      etfWeights,
+    );
 
     // ── No triggers → well diversified, no AI needed ──
     if (triggers.length === 0) {
       return NextResponse.json({
         narrative: null,
         triggers: [],
+        actions,
         cached: false,
         generatedAt: null,
         sectorCount: new Set(
@@ -191,6 +218,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             narrative,
             suggestion,
             triggers,
+            actions,
             cached: true,
             generatedAt: fact.created_at,
           });
@@ -229,6 +257,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         narrative: null,
         suggestion: null,
         triggers,
+        actions,
         cached: false,
         aiError: true,
         generatedAt: null,
@@ -256,6 +285,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       narrative,
       suggestion,
       triggers,
+      actions,
       cached: false,
       generatedAt: new Date().toISOString(),
     });

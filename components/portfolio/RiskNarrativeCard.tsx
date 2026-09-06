@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import type { Position } from '@/types';
+import ActionButton from '@/components/ai/ActionButton';
+import { useTabStore } from '@/store';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -16,6 +18,8 @@ interface NarrativeResponse {
   narrative: string | null;
   suggestion?: string | null;
   triggers: RiskTrigger[];
+  /** Deterministic CTA markers from the rules engine (REBALANCE / REVIEW_POSITION:<TICKER>). */
+  actions?: string[];
   cached: boolean;
   sectorCount?: number;
   aiError?: boolean;
@@ -27,6 +31,8 @@ interface NarrativeResponse {
 export interface RiskNarrativeCardProps {
   positions: Position[];
   investorStyle?: string;
+  /** True when the account cannot place orders (read-only connection). */
+  readOnly?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -84,12 +90,15 @@ function formatTime(iso: string | null | undefined): string {
 export default function RiskNarrativeCard({
   positions,
   investorStyle,
+  readOnly = false,
 }: RiskNarrativeCardProps) {
   const [data, setData] = useState<NarrativeResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const generatingRef = useRef(false);
+
+  const { setTab, setFocusPosition, setPendingPrompt } = useTabStore();
 
   // ── Auto-fire: evaluate risk on portfolio load (unmetered) ──
   // `force` bypasses the server-side ai_facts cache (manual regenerate).
@@ -207,6 +216,7 @@ export default function RiskNarrativeCard({
   }
 
   const hasTriggers = data.triggers.length > 0;
+  const actions = data.actions || [];
 
   return (
     <div
@@ -345,6 +355,28 @@ export default function RiskNarrativeCard({
       >
         {displayText}
       </p>
+
+      {/* Inline CTA — deterministic marker from the rules engine, same as Noticed */}
+      {actions.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          {actions.map((action) => (
+            <ActionButton
+              key={action}
+              action={action}
+              readOnly={readOnly}
+              showDismiss={false}
+              flush
+              onRebalance={() => {
+                setPendingPrompt('rebalance');
+                setTab('ai');
+              }}
+              onReviewPosition={(ticker) => {
+                setFocusPosition(ticker);
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Expanded trigger details */}
       {expanded && hasTriggers && (

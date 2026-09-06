@@ -18,6 +18,17 @@ interface ActionButtonProps {
   onInvestCash?: (amount: number) => void;
   onDismiss?: () => void;
   disabled?: boolean;
+  /**
+   * True when the account cannot place orders (read-only connection).
+   * REBALANCE relabels to "Download rebalance plan" so the user knows they
+   * get a downloadable proposal instead of live execution.
+   */
+  readOnly?: boolean;
+  /** Hide the secondary "Dismiss" button (e.g. persistent inline cards). */
+  showDismiss?: boolean;
+  /** Render inline (no outer horizontal/bottom padding) for cards that already
+   *  provide their own padding — e.g. the Portfolio-tab RiskNarrativeCard. */
+  flush?: boolean;
 }
 
 export default function ActionButton({
@@ -27,12 +38,15 @@ export default function ActionButton({
   onInvestCash,
   onDismiss,
   disabled = false,
+  readOnly = false,
+  showDismiss = true,
+  flush = false,
 }: ActionButtonProps) {
   let primaryLabel = '';
   let onPrimary: (() => void) | undefined;
 
   if (action === 'REBALANCE') {
-    primaryLabel = 'Rebalance';
+    primaryLabel = readOnly ? 'Download rebalance plan' : 'Rebalance';
     onPrimary = onRebalance;
   } else if (action.startsWith('REVIEW_POSITION:')) {
     const ticker = action.slice('REVIEW_POSITION:'.length).trim();
@@ -78,7 +92,10 @@ export default function ActionButton({
   };
 
   return (
-    <div style={{ display: 'flex', gap: '8px', padding: '0 14px 10px', marginTop: '-2px' }}>
+    <div style={flush
+      ? { display: 'flex', gap: '8px', flexWrap: 'wrap' }
+      : { display: 'flex', gap: '8px', padding: '0 14px 10px', marginTop: '-2px' }
+    }>
       <button
         type="button"
         style={primaryStyle}
@@ -90,17 +107,19 @@ export default function ActionButton({
       >
         {primaryLabel}
       </button>
-      <button
-        type="button"
-        style={dismissStyle}
-        disabled={disabled}
-        onClick={(e) => {
-          e.stopPropagation();
-          onDismiss?.();
-        }}
-      >
-        Dismiss
-      </button>
+      {showDismiss && (
+        <button
+          type="button"
+          style={dismissStyle}
+          disabled={disabled}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDismiss?.();
+          }}
+        >
+          Dismiss
+        </button>
+      )}
     </div>
   );
 }
