@@ -241,6 +241,87 @@ export function findDriftTriggers(
   return triggers.slice(0, 5);
 }
 
+// ── Rules: portfolio concentration (single-holding + top-N) ──
+// Distinct from sector drift: catches broad-market ETF dominance / single-name
+// bets that the drift engine can't see (it skips 'Broad Market' + non-target
+// buckets and only compares per-sector weights vs style targets).
+const CONC_SINGLE_PCT = 20; // largest single position >20% → REVIEW_POSITION CTA
+const CONC_TOP3_PCT = 50;   // top-3 holdings >50% → REBALANCE CTA
+
+export function findConcentrationTriggers(
+  input: NoticedRuleInput,
+  existingKeys: Set<string>,
+): NoticedTrigger[] {
+  const triggers: NoticedTrigger[] = [];
+  const positions = input.positions;
+  if (!positions || positions.length === 0) return triggers;
+
+  // Invested-only denominator: this is about HOLDING concentration, so cash
+  // does not dilute the single-name / top-3 weight the way it would a sector
+  // allocation target.
+  const totalValue = positions.reduce((sum, p) => sum + (p.marketValue || 0), 0);
+  if (totalValue <= 0) return triggers;
+
+  const sorted = [...positions].sort(
+    (a, b) => (b.marketValue || 0) - (a.marketValue || 0),
+  );
+
+  // ── Single-position concentration ──
+  const largest = sorted[0];
+  const largestPct = (largest.marketValue / totalValue) * 100;
+  if (largestPct > CONC_SINGLE_PCT) {
+    const key = `CONC_SINGLE_${largest.symbol}`;
+    if (!existingKeys.has(key)) {
+      const pct = Math.round(largestPct * 10) / 10;
+      triggers.push({
+        trigger_type: 'concentration_single',
+        trigger_key: key,
+        title: `${largest.symbol} is ${pct}% of you`,
+        variant: largestPct > 35 ? 'warn' : 'accent',
+        icon: '🎯',
+        meta: {
+          symbol: largest.symbol,
+          pct,
+          marketValue: largest.marketValue,
+          totalValue,
+          action: `REVIEW_POSITION:${largest.symbol}`,
+        },
+        follow_up: `Should I trim ${largest.symbol} to reduce single-name risk?`,
+        context: `${largest.symbol} alone is ${pct}% of your portfolio — one bad day could really hurt.`,
+      });
+    }
+  }
+
+  // ── Top-3 concentration ──
+  const top3 = sorted.slice(0, 3);
+  const top3Value = top3.reduce((sum, p) => sum + (p.marketValue || 0), 0);
+  const top3Pct = (top3Value / totalValue) * 100;
+  if (top3Pct > CONC_TOP3_PCT) {
+    const key = 'CONC_TOP3';
+    if (!existingKeys.has(key)) {
+      const pct = Math.round(top3Pct * 10) / 10;
+      const symbols = top3.map((p) => p.symbol);
+      triggers.push({
+        trigger_type: 'concentration_top3',
+        trigger_key: key,
+        title: `Top 3 are ${pct}% of you`,
+        variant: top3Pct > 70 ? 'warn' : 'accent',
+        icon: '🧺',
+        meta: {
+          symbols,
+          pct,
+          totalValue,
+          action: 'REBALANCE',
+        },
+        follow_up: `How should I diversify beyond ${symbols.join(', ')}?`,
+        context: `Your top 3 holdings (${symbols.join(', ')}) make up ${pct}% of your portfolio — heavy concentration risk.`,
+      });
+    }
+  }
+
+  return triggers;
+}
+
 // ── Rules: earnings proximity (Finnhub) ──
 export async function findEarningsTriggers(
   input: NoticedRuleInput,
@@ -470,6 +551,7 @@ export async function runNoticedPipeline(
 
   // Run all rule engines
   let allTriggers: NoticedTrigger[] = findNewTriggers(input, existingKeys, investorStyle);
+  allTriggers = allTriggers.concat(findConcentrationTriggers(input, existingKeys));
   allTriggers = allTriggers.concat(findDriftTriggers(input, existingKeys, investorStyle));
   allTriggers = allTriggers.concat(await findEarningsTriggers(input, existingKeys));
   allTriggers = allTriggers.concat(await findSentimentShiftTriggers(input, existingKeys));

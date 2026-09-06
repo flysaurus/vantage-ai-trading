@@ -12,7 +12,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { describe, it, expect } from 'vitest';
-import { findNewTriggers, findDriftTriggers } from '@/lib/noticed/engine';
+import { findNewTriggers, findDriftTriggers, findConcentrationTriggers } from '@/lib/noticed/engine';
 import type { NoticedRuleInput } from '@/lib/noticed/engine';
 import { DEMO_PORTFOLIOS } from '@/lib/demo-data';
 
@@ -179,5 +179,72 @@ describe('noticed engine — deterministic action markers', () => {
     expect(tech).toBeDefined();
     expect(tech!.meta.action).toBe('REBALANCE');
     expect(Math.round(tech!.meta.currentPct)).toBe(42);
+  });
+
+  // ── Concentration triggers (single-holding + top-3) ──
+  // Mirrors Em's real portfolio: SPY 35.7%, top-3 (SPY/VOO/QQQ) 64.4%.
+  const etfHeavyPositions = () => [
+    { symbol: 'SPY', qty: 100, marketValue: 35700, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Broad Market' },
+    { symbol: 'VOO', qty: 100, marketValue: 20000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Broad Market' },
+    { symbol: 'QQQ', qty: 100, marketValue: 8700, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Broad Market' },
+    { symbol: 'JNJ', qty: 100, marketValue: 8000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Healthcare' },
+    { symbol: 'JPM', qty: 100, marketValue: 7600, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Financial Services' },
+    { symbol: 'KO', qty: 100, marketValue: 5000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Consumer Defensive' },
+    { symbol: 'PG', qty: 100, marketValue: 4000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Consumer Defensive' },
+    { symbol: 'UNH', qty: 100, marketValue: 4000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Healthcare' },
+    { symbol: 'MSFT', qty: 100, marketValue: 4000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Technology' },
+    { symbol: 'CVX', qty: 100, marketValue: 3000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Energy' },
+  ];
+
+  it('single-position >20% emits [ACTION:REVIEW_POSITION:<TICKER>]', () => {
+    const input = makeInput({
+      account: { cash: 0, equity: 100000, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 },
+      positions: etfHeavyPositions(),
+    });
+
+    const triggers = findConcentrationTriggers(input, new Set());
+    const single = triggers.find((t) => t.trigger_type === 'concentration_single');
+    expect(single).toBeDefined();
+    expect(single!.meta.action).toBe('REVIEW_POSITION:SPY');
+    expect(single!.meta.symbol).toBe('SPY');
+    expect(single!.variant).toBe('warn'); // 35.7% > 35% critical
+  });
+
+  it('top-3 >50% emits [ACTION:REBALANCE] (ETF dominance — Broad Market bucket skipped by drift)', () => {
+    // SPY+VOO+QQQ = 64.4% of invested value. Sector drift does NOT catch this
+    // (Broad Market is skipped from target comparison) — top-3 must → REBALANCE.
+    const input = makeInput({
+      account: { cash: 0, equity: 100000, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 },
+      positions: etfHeavyPositions(),
+    });
+
+    // Drift never compares the 'Broad Market' bucket itself:
+    const drift = findDriftTriggers(input, new Set(), 'buffett');
+    expect(drift.some((t) => t.meta.sector === 'Broad Market')).toBe(false);
+
+    const triggers = findConcentrationTriggers(input, new Set());
+    const top3 = triggers.find((t) => t.trigger_type === 'concentration_top3');
+    expect(top3).toBeDefined();
+    expect(top3!.meta.action).toBe('REBALANCE');
+    expect(top3!.meta.symbols).toEqual(['SPY', 'VOO', 'QQQ']);
+    expect(Math.round(top3!.meta.pct)).toBe(64);
+  });
+
+  it('balanced portfolio (<20% single, <50% top-3) emits NO concentration triggers', () => {
+    // Demo Buffett: max single ~15%, top-3 ~42% of invested value.
+    const pf = (DEMO_PORTFOLIOS as Record<string, { positions: { symbol: string; qty: number; avgCost: number; sector: string }[] }>).buffett;
+    const positions = pf.positions.map((p) => ({
+      symbol: p.symbol,
+      qty: p.qty,
+      marketValue: p.qty * p.avgCost,
+      avgCost: p.avgCost,
+      totalPnl: 0,
+      totalPnlPercent: 0,
+      sector: p.sector,
+    }));
+    const input = makeInput({ positions });
+
+    const triggers = findConcentrationTriggers(input, new Set());
+    expect(triggers).toEqual([]);
   });
 });
