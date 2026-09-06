@@ -14,6 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import { findNewTriggers, findDriftTriggers } from '@/lib/noticed/engine';
 import type { NoticedRuleInput } from '@/lib/noticed/engine';
+import { DEMO_PORTFOLIOS } from '@/lib/demo-data';
 
 function makeInput(overrides: Partial<NoticedRuleInput> = {}): NoticedRuleInput {
   return {
@@ -44,7 +45,6 @@ describe('noticed engine — deterministic action markers', () => {
           avgCost: 100,
           totalPnl: 59000,
           totalPnlPercent: 120,
-          // @ts-expect-error sector is read via (pos as any).sector
           sector: 'Technology',
         },
       ],
@@ -137,5 +137,47 @@ describe('noticed engine — deterministic action markers', () => {
     const triggers = findNewTriggers(input, new Set());
     const idle = triggers.find((t) => t.trigger_type === 'idle_cash');
     expect(idle).toBeUndefined();
+  });
+
+  it('demo buffett portfolio is pre-balanced → NO drift trigger (honest baseline)', () => {
+    // The seeded Demo "Buffett" portfolio is ~58% cash with all sectors UNDER
+    // their style targets, so no sector deviates >15 pts. This documents WHY a
+    // real demo account shows no Rebalance card unless the user concentrates.
+    const pf = (DEMO_PORTFOLIOS as Record<string, { positions: { symbol: string; qty: number; avgCost: number; sector: string }[] }>).buffett;
+    const cash = 58570; // per demo-data comment: cash $58,570, equity $100,000
+    const positions = pf.positions.map((p) => ({
+      symbol: p.symbol,
+      qty: p.qty,
+      marketValue: p.qty * p.avgCost,
+      avgCost: p.avgCost,
+      totalPnl: 0,
+      totalPnlPercent: 0,
+      sector: p.sector,
+    }));
+    const input = makeInput({
+      account: { cash, equity: 100000, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 },
+      positions,
+    });
+
+    const triggers = findDriftTriggers(input, new Set(), 'buffett');
+    expect(triggers).toEqual([]);
+  });
+
+  it('concentrated portfolio (42% tech vs 15% target) DOES trigger REBALANCE with correct cash denominator', () => {
+    // Technology overweight: 42k invested + 58k cash = 100k total, tech = 42%
+    // vs buffett 15% target → +27 pts deviation → REBALANCE fires.
+    const input = makeInput({
+      account: { cash: 58000, equity: 100000, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 },
+      positions: [
+        { symbol: 'NVDA', qty: 100, marketValue: 42000, avgCost: 100, totalPnl: 0, totalPnlPercent: 0, sector: 'Technology' },
+        { symbol: 'BRK.B', qty: 10, marketValue: 0, avgCost: 0, totalPnl: 0, totalPnlPercent: 0, sector: 'Financial Services' },
+      ],
+    });
+
+    const triggers = findDriftTriggers(input, new Set(), 'buffett');
+    const tech = triggers.find((t) => t.meta.sector === 'Technology');
+    expect(tech).toBeDefined();
+    expect(tech!.meta.action).toBe('REBALANCE');
+    expect(Math.round(tech!.meta.currentPct)).toBe(42);
   });
 });

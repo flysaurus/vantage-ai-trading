@@ -668,6 +668,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         },
         positions: (liveAccount.positions || []).map((p: any) => ({
           symbol: p.symbol,
+          sector: p.sector || null,
           qty: p.qty || 0,
           marketValue: p.marketValue || 0,
           avgCost: p.avgCost || 0,
@@ -1403,6 +1404,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           positions: (liveAccount.positions || []).map((p: any) => ({
             symbol: p.symbol,
             name: p.name || p.symbol,
+            sector: p.sector || null,
             qty: p.qty || 0,
             price: p.price ?? p.avgCost ?? 0,
             marketValue: p.marketValue || 0,

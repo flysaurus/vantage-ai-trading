@@ -28,6 +28,7 @@ export interface PortfolioPosition {
   avgCost: number;
   totalPnl: number;
   totalPnlPercent: number;
+  sector?: string;
 }
 
 export interface PortfolioAccount {
@@ -159,6 +160,25 @@ export function findNewTriggers(
 }
 
 // ── Rules: portfolio drift vs style targets ──
+
+// Map GICS-style sector names to the simplified style-target buckets so drift
+// detection works on demo/live positions ("Consumer Defensive" → "Consumer").
+const SECTOR_TO_BUCKET: Record<string, string> = {
+  'Consumer Defensive': 'Consumer',
+  'Consumer Cyclical': 'Consumer',
+  'Consumer Staples': 'Consumer',
+  'Consumer Discretionary': 'Consumer',
+  'Commodities': 'Materials',
+  'Energy': 'Materials',
+  'Communication Services': 'Media & Entertainment',
+  'Real Estate': 'Broad Market',
+};
+
+function normalizeSector(sector: string | undefined | null): string {
+  const raw = (sector || 'Unclassified').trim();
+  return SECTOR_TO_BUCKET[raw] || raw;
+}
+
 export function findDriftTriggers(
   input: NoticedRuleInput,
   existingKeys: Set<string>,
@@ -172,12 +192,17 @@ export function findDriftTriggers(
 
   const sectorValues = new Map<string, number>();
   for (const pos of input.positions) {
-    const sector = (pos as any).sector || 'Unclassified';
+    const sector = normalizeSector(pos.sector);
     const current = sectorValues.get(sector) || 0;
     sectorValues.set(sector, current + pos.marketValue);
   }
 
-  const totalValue = input.account.equity + input.account.cash;
+  // Denominator = invested (sum of position market values) + cash.
+  // Do NOT use account.equity here: the client sends equity as TOTAL account
+  // value (already includes cash), so `equity + cash` would double-count cash
+  // and skew every sector weight down.
+  const investedValue = input.positions.reduce((sum, p) => sum + (p.marketValue || 0), 0);
+  const totalValue = investedValue + input.account.cash;
 
   for (const [sector, targetPct] of Object.entries(targets)) {
     if (NON_SECTOR_BUCKETS.has(sector)) continue;
