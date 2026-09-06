@@ -2,6 +2,8 @@
 // Deterministic portfolio risk math. No AI calls here.
 // Used by /api/risk-narrative and RiskNarrativeCard.
 
+import { decomposePositionValue } from './etf-sectors';
+
 // ═══════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════
@@ -113,8 +115,13 @@ function computeSectorConcentration(
 
   for (const pos of positions) {
     const mv = pos.qty * pos.currentPrice;
-    const sector = pos.sector || 'Other';
-    sectorMap.set(sector, (sectorMap.get(sector) || 0) + mv);
+    // Decompose broad-market ETFs into underlying sector weights (and normalize
+    // GICS names → style buckets) so sector concentration + drift match the
+    // noticed engine's view.
+    const decomposed = decomposePositionValue(pos.symbol, pos.sector, mv);
+    for (const [bucket, value] of Object.entries(decomposed)) {
+      sectorMap.set(bucket, (sectorMap.get(bucket) || 0) + value);
+    }
   }
 
   return Array.from(sectorMap.entries())

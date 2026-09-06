@@ -11,6 +11,7 @@ import { callChatAI } from '@/lib/ai-provider';
 import { AGENT_PRINCIPLES } from '@/lib/ai-principles';
 import { checkUsageLimit } from '@/lib/ai-guard';
 import { STYLE_SECTOR_TARGETS, NON_SECTOR_BUCKETS } from '@/lib/risk-narrative';
+import { decomposePositionValue } from '@/lib/etf-sectors';
 import type { SystemBlock } from '@/lib/ai-provider';
 import { PORTFOLIO_AGENT_SAFETY_BLOCKS } from '@/lib/ai/shared-safety-blocks';
 import { IDLE_CASH_THRESHOLD, IDLE_CASH_MIN_DAYS, resolveIdleCash } from './idle-cash';
@@ -161,24 +162,6 @@ export function findNewTriggers(
 
 // ── Rules: portfolio drift vs style targets ──
 
-// Map GICS-style sector names to the simplified style-target buckets so drift
-// detection works on demo/live positions ("Consumer Defensive" → "Consumer").
-const SECTOR_TO_BUCKET: Record<string, string> = {
-  'Consumer Defensive': 'Consumer',
-  'Consumer Cyclical': 'Consumer',
-  'Consumer Staples': 'Consumer',
-  'Consumer Discretionary': 'Consumer',
-  'Commodities': 'Materials',
-  'Energy': 'Materials',
-  'Communication Services': 'Media & Entertainment',
-  'Real Estate': 'Broad Market',
-};
-
-function normalizeSector(sector: string | undefined | null): string {
-  const raw = (sector || 'Unclassified').trim();
-  return SECTOR_TO_BUCKET[raw] || raw;
-}
-
 export function findDriftTriggers(
   input: NoticedRuleInput,
   existingKeys: Set<string>,
@@ -192,9 +175,13 @@ export function findDriftTriggers(
 
   const sectorValues = new Map<string, number>();
   for (const pos of input.positions) {
-    const sector = normalizeSector(pos.sector);
-    const current = sectorValues.get(sector) || 0;
-    sectorValues.set(sector, current + pos.marketValue);
+    // Decompose broad-market ETFs (SPY/VOO/QQQ/…) into underlying sector
+    // weights so a 100%-SPY portfolio reads as ~31% Technology, ~13% Financials,
+    // etc. — not 100% "Broad Market" (invisible to drift).
+    const decomposed = decomposePositionValue(pos.symbol, pos.sector, pos.marketValue);
+    for (const [bucket, value] of Object.entries(decomposed)) {
+      sectorValues.set(bucket, (sectorValues.get(bucket) || 0) + value);
+    }
   }
 
   // Denominator = invested (sum of position market values) + cash.
