@@ -122,7 +122,7 @@ async function runDriftChecks(supabase: any): Promise<{ processed: number; alert
   try {
     const { data: strategies } = await supabase
       .from('strategies')
-      .select('id, user_id, config')
+      .select('id, user_id, config, connection_id, is_demo')
       .eq('type', 'rebalance')
       .eq('is_active', true);
 
@@ -151,6 +151,7 @@ async function runDriftChecks(supabase: any): Promise<{ processed: number; alert
           .select('id')
           .eq('user_id', strat.user_id)
           .eq('type', 'drift_alert')
+          .eq('is_demo', strat.is_demo ?? false)
           .gte('created_at', today.toISOString());
 
         if (existingAlerts && existingAlerts.length > 0) continue;
@@ -209,6 +210,8 @@ async function runDriftChecks(supabase: any): Promise<{ processed: number; alert
           title: 'Portfolio Drift Detected',
           message: `${driftedSymbols} ${driftedPositions.length > 1 ? 'have' : 'has'} drifted from target. Max drift: ${Math.max(...driftedPositions.map(p => p.drift))}%`,
           action_url: '/strategies/setup/rebalancing',
+          is_demo: strat.is_demo ?? false,
+          connection_id: strat.connection_id ?? null,
           is_read: false,
         });
 

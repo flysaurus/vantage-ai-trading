@@ -584,6 +584,8 @@ async function writeStaleNotifications(
           title: `⏳ GTC ${n.side} ${n.symbol} — Order Stale`,
           message,
           action_url: '/?tab=invest',
+          is_demo: true,
+          connection_id: null,
           created_at: new Date().toISOString(),
         });
 

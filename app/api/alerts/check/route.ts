@@ -46,6 +46,8 @@ type AlertRow = {
   type: 'price_above' | 'price_below' | 'percent_change';
   threshold: number;
   notification_channels: string[];
+  is_demo?: boolean;
+  connection_id?: string | null;
 };
 
 // ─── Multi-source price fetch ──────────────────────────────
@@ -148,7 +150,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // Fetch active alerts — production DB uses 'type' and 'threshold'
     let query = (supabase as any)
       .from('alerts')
-      .select('id, user_id, symbol, type, threshold, notification_channels')
+      .select('id, user_id, symbol, type, threshold, notification_channels, is_demo, connection_id')
       .eq('is_active', true)
       .is('triggered_at', null);
 
@@ -202,10 +204,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           .from('recent_notifications')
           .insert({
             user_id: alert.user_id,
-            alert_id: alert.id,
             type: 'price_alert',
             title: `Price Alert: ${alert.symbol}`,
-            body: `${alert.symbol} ${alert.type === 'price_above' ? 'above' : alert.type === 'price_below' ? 'below' : 'changed by'} ${alert.threshold} → Current: $${priceData.price.toFixed(2)}`,
+            message: `${alert.symbol} ${alert.type === 'price_above' ? 'above' : alert.type === 'price_below' ? 'below' : 'changed by'} ${alert.threshold} → Current: $${priceData.price.toFixed(2)}`,
+            is_demo: alert.is_demo ?? false,
+            connection_id: alert.connection_id ?? null,
             is_read: false,
           });
 
