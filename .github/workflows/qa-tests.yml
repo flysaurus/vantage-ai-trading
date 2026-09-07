@@ -7,6 +7,11 @@ on:
     - cron: '0 10 * * *'  # nightly (10:00 UTC); adjust for your timezone
   workflow_dispatch: {}
 
+# GITHUB_TOKEN needs write access to file issues + create labels (default is read-only).
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   playwright:
     runs-on: ubuntu-latest
