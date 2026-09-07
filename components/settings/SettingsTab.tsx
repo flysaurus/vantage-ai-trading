@@ -65,6 +65,15 @@ export function SettingsTab() {
   });
   const [savingConc, setSavingConc] = useState(false);
 
+  // ── Target return / loss thresholds (position-milestone cards) ──
+  const [targetReturn, setTargetReturn] = useState<string>(() =>
+    user?.targetReturnPct != null ? String(user.targetReturnPct) : ''
+  );
+  const [targetLoss, setTargetLoss] = useState<string>(() =>
+    user?.targetLossPct != null ? String(user.targetLossPct) : ''
+  );
+  const [savingTarget, setSavingTarget] = useState(false);
+
   const [learningEnabled, setLearningEnabled] = useState(isLearningEnabled);
   const [isAdmin, setIsAdmin] = useState(false);
   // ── Confirmation dialog state ─────────────────────────
@@ -191,6 +200,57 @@ export function SettingsTab() {
     setConcTop3(String(styleDefaults.top3));
     persistConcentration(null, null).then((ok) => {
       if (ok) setToast('Reset to your style default');
+      setTimeout(() => setToast(null), 3500);
+    });
+  }
+
+  // ── Target return / loss thresholds ───────────────────────
+  async function persistTargetReturn(returnPct: number | null, lossPct: number | null) {
+    const userId = user?.id as string | undefined;
+    if (!userId) return false;
+    setSavingTarget(true);
+    try {
+      const res = await apiPost('/api/db/users/update', {
+        userId,
+        targetReturnPct: returnPct,
+        targetLossPct: lossPct,
+      });
+      if (res.ok) {
+        try { await refreshUser(); } catch {}
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      setSavingTarget(false);
+    }
+  }
+
+  function saveTargetReturnCustom() {
+    const ret = targetReturn.trim() === '' ? null : Number(targetReturn);
+    const loss = targetLoss.trim() === '' ? null : Number(targetLoss);
+    if (ret !== null && (!Number.isFinite(ret) || ret < 1 || ret > 1000)) {
+      setToast('Target return must be between 1 and 1000%');
+      setTimeout(() => setToast(null), 3500);
+      return;
+    }
+    if (loss !== null && (!Number.isFinite(loss) || loss < 1 || loss > 100)) {
+      setToast('Target loss must be between 1 and 100%');
+      setTimeout(() => setToast(null), 3500);
+      return;
+    }
+    persistTargetReturn(ret, loss).then((ok) => {
+      if (ok) setToast('Target return thresholds saved');
+      setTimeout(() => setToast(null), 3500);
+    });
+  }
+
+  function resetTargetReturnToDefault() {
+    setTargetReturn('');
+    setTargetLoss('');
+    persistTargetReturn(null, null).then((ok) => {
+      if (ok) setToast('Reset to default milestone bands');
       setTimeout(() => setToast(null), 3500);
     });
   }
@@ -597,6 +657,104 @@ export function SettingsTab() {
               }}
             >
               Use style default
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          1c. TARGET RETURN THRESHOLD
+          ═══════════════════════════════════════════════════════ */}
+      {sectionHeader('Target Return Threshold')}
+
+      <div style={{ margin: '0 16px 12px 16px' }}>
+        <div style={{ padding: '14px 16px', background: '#1a2235', borderRadius: '10px' }}>
+          <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.5, margin: '0 0 14px 0' }}>
+            Get a single nudge when a position crosses your target. Leave blank to use the
+            default milestones (<span style={{ color: '#22d3ee' }}>+15%/+25%/+50%/+100%/+250%</span>{' '}
+            gains, <span style={{ color: '#22d3ee' }}>-10%/-20%/-35%/-50%</span> losses).
+          </p>
+
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+            <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Target return %</span>
+              <input
+                type="number"
+                min={1}
+                max={1000}
+                placeholder="e.g. 100"
+                value={targetReturn}
+                onChange={(e) => setTargetReturn(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(255,255,255,0.10)',
+                  background: 'rgba(255,255,255,0.03)',
+                  color: '#ffffff',
+                  fontSize: '15px',
+                  fontFamily: 'var(--font-sans)',
+                }}
+              />
+            </label>
+            <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Target loss %</span>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                placeholder="e.g. 15"
+                value={targetLoss}
+                onChange={(e) => setTargetLoss(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(255,255,255,0.10)',
+                  background: 'rgba(255,255,255,0.03)',
+                  color: '#ffffff',
+                  fontSize: '15px',
+                  fontFamily: 'var(--font-sans)',
+                }}
+              />
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              onClick={saveTargetReturnCustom}
+              disabled={savingTarget}
+              style={{
+                flex: 1,
+                padding: '10px 0',
+                borderRadius: '8px',
+                border: 'none',
+                background: '#22d3ee',
+                color: '#062a33',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: savingTarget ? 'default' : 'pointer',
+                opacity: savingTarget ? 0.6 : 1,
+              }}
+            >
+              {savingTarget ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              onClick={resetTargetReturnToDefault}
+              disabled={savingTarget}
+              style={{
+                padding: '10px 12px',
+                borderRadius: '8px',
+                border: '1px solid rgba(255,255,255,0.10)',
+                background: 'transparent',
+                color: '#94a3b8',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: savingTarget ? 'default' : 'pointer',
+                opacity: savingTarget ? 0.6 : 1,
+              }}
+            >
+              Use default bands
             </button>
           </div>
         </div>

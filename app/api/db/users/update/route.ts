@@ -32,6 +32,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       investorStyleSetAt,
       concSinglePct,
       concTop3Pct,
+      targetReturnPct,
+      targetLossPct,
     } = body as {
       userId?: string;
       email?: string;
@@ -42,6 +44,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       investorStyleSetAt?: string;
       concSinglePct?: number | null;
       concTop3Pct?: number | null;
+      targetReturnPct?: number | null;
+      targetLossPct?: number | null;
     };
 
     if (!userId) {
@@ -78,6 +82,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
+    // Validate target-return/loss thresholds (whole %, positive; null resets to default bands)
+    if (targetReturnPct !== undefined && targetReturnPct !== null
+      && (typeof targetReturnPct !== 'number' || !Number.isFinite(targetReturnPct) || targetReturnPct < 1 || targetReturnPct > 1000)) {
+      return NextResponse.json(
+        { error: 'Target return threshold must be between 1 and 1000' },
+        { status: 400 }
+      );
+    }
+    if (targetLossPct !== undefined && targetLossPct !== null
+      && (typeof targetLossPct !== 'number' || !Number.isFinite(targetLossPct) || targetLossPct < 1 || targetLossPct > 100)) {
+      return NextResponse.json(
+        { error: 'Target loss threshold must be between 1 and 100' },
+        { status: 400 }
+      );
+    }
+
     // Build update payload (snake_case)
     const updates: Record<string, unknown> = {};
     if (email !== undefined) updates.email = email;
@@ -89,6 +109,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
     if (concSinglePct !== undefined) updates.conc_single_pct = concSinglePct;
     if (concTop3Pct !== undefined) updates.conc_top3_pct = concTop3Pct;
+    if (targetReturnPct !== undefined) updates.target_return_pct = targetReturnPct;
+    if (targetLossPct !== undefined) updates.target_loss_pct = targetLossPct;
     if (investorStyleOnboarded !== undefined) {
       updates.investor_style_onboarded = investorStyleOnboarded;
       // Auto-set timestamp when onboarding is completed, unless explicitly provided
@@ -105,7 +127,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .from('users')
       .update(updates)
       .eq('id', userId)
-      .select('id, email, display_name, avatar_url, investor_style, investor_style_onboarded, conc_single_pct, conc_top3_pct, updated_at')
+      .select('id, email, display_name, avatar_url, investor_style, investor_style_onboarded, conc_single_pct, conc_top3_pct, target_return_pct, target_loss_pct, updated_at')
       .single();
 
     if (error) {
@@ -128,6 +150,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       investorStyleOnboarded: data.investor_style_onboarded ?? false,
       concSinglePct: data.conc_single_pct ?? null,
       concTop3Pct: data.conc_top3_pct ?? null,
+      targetReturnPct: data.target_return_pct ?? null,
+      targetLossPct: data.target_loss_pct ?? null,
       updatedAt: data.updated_at,
     });
   } catch (err: any) {

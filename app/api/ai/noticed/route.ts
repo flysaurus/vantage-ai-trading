@@ -108,19 +108,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const existingKeys = new Set<string>((existing || []).map((e: any) => e.trigger_key));
 
-    // ── Get investor style + concentration thresholds for drift/concentration detection ──
+    // ── Get investor style + thresholds for drift/concentration/milestone detection ──
     let investorStyle: string | null = null;
     let concSinglePct: number | null = null;
     let concTop3Pct: number | null = null;
+    let targetReturnPct: number | null = null;
+    let targetLossPct: number | null = null;
     try {
       const { data: userRow } = await supabase
         .from('users')
-        .select('investor_style, conc_single_pct, conc_top3_pct')
+        .select('investor_style, conc_single_pct, conc_top3_pct, target_return_pct, target_loss_pct')
         .eq('id', userId)
         .single();
       investorStyle = userRow?.investor_style || null;
       concSinglePct = userRow?.conc_single_pct ?? null;
       concTop3Pct = userRow?.conc_top3_pct ?? null;
+      targetReturnPct = userRow?.target_return_pct ?? null;
+      targetLossPct = userRow?.target_loss_pct ?? null;
     } catch { /* ignore */ }
 
     // ── Run the full noticed pipeline ──
@@ -133,6 +137,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       supabase,
       concSinglePct,
       concTop3Pct,
+      targetReturnPct,
+      targetLossPct,
     });
 
     // ── Return visible items ──

@@ -34,6 +34,8 @@ export async function GET() {
       risk_tolerance: userData?.risk_tolerance ?? null,
       conc_single_pct: userData?.conc_single_pct ?? null,
       conc_top3_pct: userData?.conc_top3_pct ?? null,
+      target_return_pct: userData?.target_return_pct ?? null,
+      target_loss_pct: userData?.target_loss_pct ?? null,
       tier: userData?.tier ?? 'demo',
       demo_start_at: userData?.demo_start_at ?? null,
       demo_expires_at: userData?.demo_expires_at ?? null,
@@ -49,6 +51,8 @@ export async function GET() {
       riskTolerance: userData?.risk_tolerance ?? null,
       concSinglePct: userData?.conc_single_pct ?? null,
       concTop3Pct: userData?.conc_top3_pct ?? null,
+      targetReturnPct: userData?.target_return_pct ?? null,
+      targetLossPct: userData?.target_loss_pct ?? null,
       displayName: userData?.first_name
         ? `${userData.first_name} ${userData.last_name ?? ''}`.trim()
         : authUser.email?.split('@')[0] ?? null,

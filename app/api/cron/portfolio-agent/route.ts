@@ -135,15 +135,19 @@ async function processUser(
   let investorStyle: string | null = null;
   let concSinglePct: number | null = null;
   let concTop3Pct: number | null = null;
+  let targetReturnPct: number | null = null;
+  let targetLossPct: number | null = null;
   try {
     const { data: userRow } = await supabase
       .from('users')
-      .select('investor_style, conc_single_pct, conc_top3_pct')
+      .select('investor_style, conc_single_pct, conc_top3_pct, target_return_pct, target_loss_pct')
       .eq('id', userId)
       .single();
     investorStyle = userRow?.investor_style || null;
     concSinglePct = userRow?.conc_single_pct ?? null;
     concTop3Pct = userRow?.conc_top3_pct ?? null;
+    targetReturnPct = userRow?.target_return_pct ?? null;
+    targetLossPct = userRow?.target_loss_pct ?? null;
   } catch { /* ignore */ }
 
   // ── Fetch watchlist symbols ──
@@ -190,6 +194,8 @@ async function processUser(
         investorStyle,
         concSinglePct,
         concTop3Pct,
+        targetReturnPct,
+        targetLossPct,
         watchlistSymbols,
       });
       totalTriggers += result.triggers;
@@ -216,6 +222,8 @@ async function processAccount(
     investorStyle: string | null;
     concSinglePct: number | null;
     concTop3Pct: number | null;
+    targetReturnPct: number | null;
+    targetLossPct: number | null;
     watchlistSymbols: string[];
   },
 ): Promise<{ triggers: number; haikuGenerated: number; skippedBudget: boolean }> {
@@ -346,6 +354,8 @@ async function processAccount(
     supabase,
     concSinglePct: ctx.concSinglePct,
     concTop3Pct: ctx.concTop3Pct,
+    targetReturnPct: ctx.targetReturnPct,
+    targetLossPct: ctx.targetLossPct,
   });
 
   const skippedBudget = trulyNew.length > 0 && !haikuGenerated;

@@ -98,6 +98,8 @@ export function findNewTriggers(
   input: NoticedRuleInput,
   existingKeys: Set<string>,
   investorStyle?: string | null,
+  targetReturnPct?: number | null,
+  targetLossPct?: number | null,
 ): NoticedTrigger[] {
   const triggers: NoticedTrigger[] = [];
   const { account, positions } = input;
@@ -139,11 +141,17 @@ export function findNewTriggers(
   // holding past +100% doesn't produce cards for +15/+25/+50/+100 all at once.
   // Positive bands are ascending and negative bands descending, so the LAST
   // crossed band is always the most extreme.
+  //
+  // User-configured target thresholds (whole %, positive) replace the default
+  // ladder: target_return_pct fires a single card at exactly that gain, and
+  // target_loss_pct fires a single card at exactly that loss.
   for (const pos of positions) {
     const pnlPct = pos.totalPnlPercent || 0;
+    const positiveBands = typeof targetReturnPct === 'number' ? [targetReturnPct] : POSITIVE_BANDS;
+    const negativeBands = typeof targetLossPct === 'number' ? [-Math.abs(targetLossPct)] : NEGATIVE_BANDS;
     const crossedBands = pnlPct > 0
-      ? POSITIVE_BANDS.filter(b => pnlPct >= b)
-      : NEGATIVE_BANDS.filter(b => pnlPct <= b);
+      ? positiveBands.filter(b => pnlPct >= b)
+      : negativeBands.filter(b => pnlPct <= b);
     if (crossedBands.length === 0) continue;
 
     const band = crossedBands[crossedBands.length - 1];
@@ -526,6 +534,10 @@ export interface UserProcessingContext {
   /** Per-user position-concentration thresholds (whole %, 0-100). Null = use style default. */
   concSinglePct?: number | null;
   concTop3Pct?: number | null;
+  /** Per-user target-return threshold (whole %, positive). Null = use default bands. */
+  targetReturnPct?: number | null;
+  /** Per-user target-loss threshold (whole %, positive). Null = use default bands. */
+  targetLossPct?: number | null;
 }
 
 // ── Run full noticed pipeline for one user, returning processed results ──
@@ -538,7 +550,7 @@ export async function runNoticedPipeline(
   haikuGenerated: boolean;
   budgetRemaining: number;
 }> {
-  const { input, existingKeys, investorStyle, supabase, userId, accountId } = ctx;
+  const { input, existingKeys, investorStyle, supabase, userId, accountId, targetReturnPct, targetLossPct } = ctx;
 
   // ── Resolve idle-cash inputs (available cash + streak + read-only) ──
   // Runs on every pipeline pass (both POST + cron). Records today's cash
@@ -572,7 +584,7 @@ export async function runNoticedPipeline(
   // would make the stale-resolve step below resolve still-firing cards, causing
   // them to flicker on/off across pipeline runs.)
   const noSkipKeys = new Set<string>();
-  let allTriggers: NoticedTrigger[] = findNewTriggers(input, noSkipKeys, investorStyle);
+  let allTriggers: NoticedTrigger[] = findNewTriggers(input, noSkipKeys, investorStyle, targetReturnPct, targetLossPct);
   allTriggers = allTriggers.concat(findConcentrationTriggers(input, noSkipKeys, conc.single, conc.top3));
   allTriggers = allTriggers.concat(findDriftTriggers(input, noSkipKeys, investorStyle, etfWeights));
   allTriggers = allTriggers.concat(await findEarningsTriggers(input, noSkipKeys));

@@ -79,6 +79,41 @@ describe('noticed engine — deterministic action markers', () => {
     }
   });
 
+  it('position_milestone honors user target-return threshold (single card)', () => {
+    const input = makeInput({
+      positions: [
+        { symbol: 'AAPL', qty: 10, marketValue: 3000, avgCost: 1000, totalPnl: 2000, totalPnlPercent: 120 },
+      ],
+    });
+    // Custom target return 100% → only +100 fires (not +15/+25/+50), even at +120%
+    const triggers = findNewTriggers(input, new Set(), null, 100, null);
+    const milestones = triggers.filter((t) => t.trigger_type === 'position_milestone');
+    expect(milestones.map((m) => m.trigger_key)).toEqual(['MILESTONE_AAPL_+100']);
+  });
+
+  it('position_milestone below custom target return does not fire', () => {
+    const input = makeInput({
+      positions: [
+        { symbol: 'AAPL', qty: 10, marketValue: 1500, avgCost: 1000, totalPnl: 500, totalPnlPercent: 50 },
+      ],
+    });
+    const triggers = findNewTriggers(input, new Set(), null, 100, null);
+    const milestones = triggers.filter((t) => t.trigger_type === 'position_milestone');
+    expect(milestones.length).toBe(0);
+  });
+
+  it('position_milestone honors user target-loss threshold', () => {
+    const input = makeInput({
+      positions: [
+        { symbol: 'AAPL', qty: 10, marketValue: 800, avgCost: 1000, totalPnl: -200, totalPnlPercent: -20 },
+      ],
+    });
+    // Custom target loss 15% → single -15 card (not -10/-20/-35/-50)
+    const triggers = findNewTriggers(input, new Set(), null, null, 15);
+    const milestones = triggers.filter((t) => t.trigger_type === 'position_milestone');
+    expect(milestones.map((m) => m.trigger_key)).toEqual(['MILESTONE_AAPL_-15']);
+  });
+
   it('idle_cash does NOT fire without availableCash/streak (old heuristic removed)', () => {
     // Legacy trigger used cashPct>50 && daysSinceLastTrade>7. That is gone:
     // without an explicit availableCash + streak the trigger must not fire.
