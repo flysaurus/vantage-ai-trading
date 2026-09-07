@@ -21,12 +21,8 @@ import DailyBriefCard from '@/components/ai/DailyBriefCard';
 import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
 import BasketBuyMoreTicket from '@/components/trade/BasketBuyMoreTicket';
 import BasketSellTicket from '@/components/trade/BasketSellTicket';
-
-// Dynamic import for RiskNarrativeCard (being built in parallel)
-let RiskNarrativeCard: any = null;
-try {
-  RiskNarrativeCard = require('./RiskNarrativeCard').default;
-} catch {}
+import ActionButton from '@/components/ai/ActionButton';
+import { apiGet, apiPost } from '@/lib/api-client';
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -870,7 +866,7 @@ export function PortfolioTab() {
   const { isConnected } = useBroker();
   const { activeAccount, activeAccountId } = useAccounts();
   const { user } = useAuth();
-  const { focusPosition, setFocusPosition } = useTabStore();
+  const { focusPosition, setFocusPosition, setTab, setPendingPrompt } = useTabStore();
 
   // Hard boundary: Demo must NEVER show broker data. Scope data source by active account.
   const isShowingDemo = activeAccount?.isDemo ?? false;
@@ -915,6 +911,25 @@ export function PortfolioTab() {
     return () => document.removeEventListener('mousedown', handler);
   }, [dailyExpanded, weeklyExpanded]);
   const positions: Position[] = displayAccount?.positions || [];
+
+  // ── Top AI insight (Option B: single curated card on Portfolio, replaces prose) ──
+  const [topNoticed, setTopNoticed] = useState<any>(null);
+  const fetchTopNoticed = useCallback(async () => {
+    try {
+      const res = await apiGet(`/api/ai/noticed?accountId=${encodeURIComponent(activeAccountId || 'demo')}`);
+      if (res.ok) {
+        const data = await res.json();
+        const items = data.items || [];
+        setTopNoticed(items.find((i: any) => i.action) || items[0] || null);
+      }
+    } catch { /* ignore */ }
+  }, [activeAccountId]);
+  useEffect(() => { fetchTopNoticed(); }, [fetchTopNoticed]);
+
+  const handleTopDismiss = async (itemId: string) => {
+    setTopNoticed(null);
+    try { await apiPost('/api/ai/noticed/dismiss', { itemId, dismissType: 'permanent' }); } catch { /* ignore */ }
+  };
 
   // ── Cross-tab focus: expand + scroll to a ticker's position card ──
   // Set by the AI Noticed REVIEW_POSITION CTA (AITab → setFocusPosition + setTab('portfolio')).
@@ -1140,20 +1155,33 @@ export function PortfolioTab() {
           padding: 14,
           background: 'rgba(255,255,255,0.02)',
         }}>
-          {/* Risk Exposure — collapsible, summary-line shown collapsed */}
-          {RiskNarrativeCard ? (
-            <RiskNarrativeCard positions={enrichedPositions} readOnly={isReadOnly} account={displayAccount} accountId={activeAccountId || 'demo'} />
-          ) : (
+          {/* Top AI insight — single curated card (no duplicate prose) */}
+          {topNoticed ? (
             <div style={{
-              padding: '20px 16px',
-              background: 'var(--card-bg)',
-              border: '1px solid var(--card-border)',
-              borderRadius: 16,
-              textAlign: 'center',
-              color: 'var(--text-muted)',
-              fontSize: 14,
+              display: 'flex', alignItems: 'flex-start', gap: '8px',
+              borderLeft: `3px solid ${topNoticed.variant === 'warn' ? '#f59e0b' : topNoticed.variant === 'gain' ? '#22c55e' : '#22d3ee'}`,
+              background: 'rgba(255,255,255,0.03)',
+              borderRadius: '12px', padding: '12px 14px',
             }}>
-              Exposure analysis coming soon.
+              <span style={{ fontSize: '14px', marginTop: '1px' }}>{topNoticed.icon}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '13.5px', color: '#f1f5f9', lineHeight: 1.4 }}>{topNoticed.body}</div>
+                {topNoticed.action && (
+                  <ActionButton
+                    action={topNoticed.action}
+                    readOnly={isReadOnly}
+                    flush
+                    onRebalance={() => { setPendingPrompt('rebalance'); setTab('ai'); }}
+                    onReviewPosition={(ticker) => { setFocusPosition(ticker); setTab('portfolio'); }}
+                    onInvestCash={(amount) => { setPendingPrompt(`Build me a portfolio with my $${amount.toLocaleString()} of idle cash.`); setTab('ai'); }}
+                    onDismiss={() => handleTopDismiss(topNoticed.id)}
+                  />
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding: '16px 14px', color: 'rgba(255,255,255,0.45)', fontSize: 13, textAlign: 'center' }}>
+              No AI insights yet — they'll appear as your portfolio hits key milestones.
             </div>
           )}
 
