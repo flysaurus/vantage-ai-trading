@@ -49,13 +49,39 @@ jobs:
             if (!fs.existsSync(path)) return;
             const results = JSON.parse(fs.readFileSync(path, 'utf8'));
 
+            // Collect failed tests, recursing into nested describe() suites.
+            // The Playwright JSON reporter nests describe blocks under
+            // `suite.suites`, so a flat iteration over `results.suites[].specs`
+            // would silently miss every failure.
             const failed = [];
-            for (const suite of results.suites || []) {
-              for (const spec of suite.specs || []) {
-                for (const test of spec.tests || []) {
-                  const bad = test.results.some(r => r.status !== 'passed');
-                  if (bad) failed.push({ title: spec.title, file: suite.file });
+            function collect(suites) {
+              for (const suite of suites || []) {
+                if (suite.suites) collect(suite.suites);
+                for (const spec of suite.specs || []) {
+                  for (const test of spec.tests || []) {
+                    const bad = test.results.some(r => r.status !== 'passed');
+                    if (bad) failed.push({ title: spec.title, file: suite.file });
+                  }
                 }
+              }
+            }
+            collect(results.suites);
+
+            if (failed.length === 0) return;
+
+            // Ensure labels exist so issues.create never 422s on a missing label.
+            const LABELS = ['qa', 'automated'];
+            for (const label of LABELS) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label,
+                  color: '0366d6',
+                });
+              } catch (e) {
+                // 422 = already exists; ignore. Other errors surface below.
+                if (e.status !== 422) throw e;
               }
             }
 
@@ -71,7 +97,7 @@ jobs:
                 repo: context.repo.repo,
                 title: searchTitle,
                 body: `Playwright test failed: ${f.title}\n\nFile: ${f.file}\n\nSee the attached \`playwright-report\` artifact for the HTML report.`,
-                labels: ['qa', 'automated']
+                labels: LABELS
               });
             }
 
