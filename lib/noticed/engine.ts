@@ -20,6 +20,7 @@ import {
   DEFAULT_CONC_TOP3_PCT,
   resolveConcentrationThresholds,
 } from '@/lib/concentration';
+import { findEventImpactTriggers } from './event-impact';
 
 // ── Config ──
 const FINBERT_URL = process.env.FINBERT_URL || 'http://127.0.0.1:8765';
@@ -465,7 +466,7 @@ export async function findSentimentShiftTriggers(
 // ── Static system prompt for Haiku batch generation ──
 const NOTICED_SYSTEM: SystemBlock = {
   type: 'text',
-  text: `You are Vantage AI's proactive feed engine. Generate ONE short observation (1-2 sentences, max 30 words each) for each trigger below.
+  text: `You are Vantage AI's proactive feed engine. Generate ONE short observation (1-2 sentences, max 30 words each — max 45 words for EVENT_ triggers) for each trigger below.
 
 VOICE: Casual, direct, like a smart friend texting. Call out what matters. No formal language. No "you might want to consider" — just say it.
 
@@ -474,7 +475,16 @@ TRIGGER_KEY|observation text|follow-up question
 
 Example:
 MILESTONE_AAPL_+25|AAPL just blew past +25% — your patience since buying in March paid off big.|Should I take profits on AAPL?
-idle_cash|You've got $30k in cash doing nothing for 2 weeks. That's real money losing to inflation.|What should I do with my idle cash?`,
+idle_cash|You've got $30k in cash doing nothing for 2 weeks. That's real money losing to inflation.|What should I do with my idle cash?
+
+EVENT-IMPACT TRIGGERS (keys starting with EVENT_) — HARD RULES:
+- These are news notices about a company you hold, never price alerts. Name the actual event from the context; don't frame it as a price move.
+- No urgency language, ever: no "act now", "you should", "don't miss", no time pressure, no exclamation points.
+- Default framing is "no action needed." Inform, don't push.
+- The context carries the severity tier:
+  · "severity: review" → you may note it's worth a look, and you MUST include phrasing equivalent to "no action needed unless your original thesis has changed."
+  · "severity: info" → purely informational. Do not suggest any action, review, or trade.
+- Never invent a magnitude, percentage, or price move that isn't in the context.`,
 };
 
 // ── Batch Haiku generation ──
@@ -589,6 +599,7 @@ export async function runNoticedPipeline(
   allTriggers = allTriggers.concat(findDriftTriggers(input, noSkipKeys, investorStyle, etfWeights));
   allTriggers = allTriggers.concat(await findEarningsTriggers(input, noSkipKeys));
   allTriggers = allTriggers.concat(await findSentimentShiftTriggers(input, noSkipKeys));
+  allTriggers = allTriggers.concat(await findEventImpactTriggers(input, noSkipKeys));
 
   // Identify truly new (not re-firing resolved items) — the full firing set's
   // keys feed both reactivation below and stale-resolve at the end.
