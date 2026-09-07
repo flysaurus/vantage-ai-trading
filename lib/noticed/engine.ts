@@ -563,14 +563,19 @@ export async function runNoticedPipeline(
   // ── Resolve per-user concentration thresholds (user → style → default) ──
   const conc = resolveConcentrationThresholds(investorStyle, ctx.concSinglePct, ctx.concTop3Pct);
 
-  // Run all rule engines
-  let allTriggers: NoticedTrigger[] = findNewTriggers(input, existingKeys, investorStyle);
-  allTriggers = allTriggers.concat(findConcentrationTriggers(input, existingKeys, conc.single, conc.top3));
-  allTriggers = allTriggers.concat(findDriftTriggers(input, existingKeys, investorStyle, etfWeights));
-  allTriggers = allTriggers.concat(await findEarningsTriggers(input, existingKeys));
-  allTriggers = allTriggers.concat(await findSentimentShiftTriggers(input, existingKeys));
+  // Run all rule engines against a CLEAN key set so `allTriggers` holds the
+  // FULL set of currently-firing triggers. (Skipping already-active keys here
+  // would make the stale-resolve step below resolve still-firing cards, causing
+  // them to flicker on/off across pipeline runs.)
+  const noSkipKeys = new Set<string>();
+  let allTriggers: NoticedTrigger[] = findNewTriggers(input, noSkipKeys, investorStyle);
+  allTriggers = allTriggers.concat(findConcentrationTriggers(input, noSkipKeys, conc.single, conc.top3));
+  allTriggers = allTriggers.concat(findDriftTriggers(input, noSkipKeys, investorStyle, etfWeights));
+  allTriggers = allTriggers.concat(await findEarningsTriggers(input, noSkipKeys));
+  allTriggers = allTriggers.concat(await findSentimentShiftTriggers(input, noSkipKeys));
 
-  // Identify truly new (not re-firing resolved items)
+  // Identify truly new (not re-firing resolved items) — the full firing set's
+  // keys feed both reactivation below and stale-resolve at the end.
   const allKeys = allTriggers.map(t => t.trigger_key);
   const { data: resolvedItems } = await supabase
     .from('noticed_items')
@@ -610,7 +615,11 @@ export async function runNoticedPipeline(
   }
 
   const resolvedKeys = new Set((resolvedItems || []).map((r: any) => r.trigger_key));
-  const trulyNew = allTriggers.filter(t => !resolvedKeys.has(t.trigger_key));
+  // Truly new = fires now AND not already active AND not a resolved card being
+  // re-activated this pass. (`existingKeys` = currently-active cards from caller.)
+  const trulyNew = allTriggers.filter(
+    (t) => !existingKeys.has(t.trigger_key) && !resolvedKeys.has(t.trigger_key),
+  );
 
   // Budget-checked Haiku generation
   let haikuGenerated = false;
@@ -703,7 +712,9 @@ export async function runNoticedPipeline(
   }
 
   // Resolve stale items (skip currently-dismissed items so snooze/dismiss
-  // suppresses re-firing during the same trigger period).
+  // suppresses re-firing during the same trigger period). `allTriggers` is the
+  // FULL currently-firing set, so still-firing cards are preserved and only
+  // truly-stale active cards get resolved.
   const allTriggerKeys = new Set(allTriggers.map(t => t.trigger_key));
   const nowIso = new Date().toISOString().replace('Z', '');
   const { data: staleItems } = await supabase

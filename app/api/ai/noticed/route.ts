@@ -12,6 +12,8 @@ import { requireAuth, getOptionalUserId } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 import type { NoticedRuleInput, PortfolioAccount, PortfolioPosition, NoticedTrigger } from '@/lib/noticed/engine';
 import { runNoticedPipeline } from '@/lib/noticed/engine';
+import { parseAccountScope } from '@/lib/account-scope';
+import { resolveBrokerNoticedInput } from '@/lib/noticed/resolve-input';
 
 // ── GET: Return visible items (no re-check) ──
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -52,33 +54,49 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Canonical account id ('demo' | 'snaptrade:<conn_id>'), default demo.
     const accountId = (typeof body.accountId === 'string' && body.accountId) ? body.accountId : 'demo';
 
-    if (!portfolio) {
-      return NextResponse.json({ items: [], error: 'Missing portfolio data' }, { status: 400 });
-    }
-
-    // ── Get days since last trade ──
-    let daysSinceLastTrade = 999;
-    try {
-      const { data: lastTrade } = await supabase
-        .from('trade_history')
-        .select('executed_at')
-        .eq('user_id', userId)
-        .order('executed_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (lastTrade?.executed_at) {
-        const lastDate = new Date(lastTrade.executed_at);
-        daysSinceLastTrade = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+    // ── Resolve pipeline input ──
+    // Broker accounts: re-derive positions + portfolio SERVER-SIDE from the
+    // canonical `positions` table so the client can never write demo (or
+    // another account's) positions under a broker account id — the source of
+    // the cross-account bleed. Demo keeps client-sent positions because demo
+    // state stores cost-basis pricing only (no live quotes server-side).
+    const scope = parseAccountScope(accountId);
+    let input: NoticedRuleInput;
+    if (scope && !scope.isDemo) {
+      const resolved = await resolveBrokerNoticedInput(supabase, userId, accountId, watchlistSymbols);
+      if (!resolved) {
+        return NextResponse.json({ items: [], error: 'No positions for account' });
       }
-    } catch { /* ignore */ }
+      input = resolved;
+    } else {
+      if (!portfolio) {
+        return NextResponse.json({ items: [], error: 'Missing portfolio data' }, { status: 400 });
+      }
 
-    const input: NoticedRuleInput = {
-      account: portfolio,
-      positions,
-      watchlistSymbols,
-      daysSinceLastTrade,
-    };
+      // ── Get days since last trade ──
+      let daysSinceLastTrade = 999;
+      try {
+        const { data: lastTrade } = await supabase
+          .from('trade_history')
+          .select('executed_at')
+          .eq('user_id', userId)
+          .order('executed_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (lastTrade?.executed_at) {
+          const lastDate = new Date(lastTrade.executed_at);
+          daysSinceLastTrade = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+        }
+      } catch { /* ignore */ }
+
+      input = {
+        account: portfolio,
+        positions,
+        watchlistSymbols,
+        daysSinceLastTrade,
+      };
+    }
 
     // ── Get existing trigger keys (scoped to account) ──
     const { data: existing } = await supabase
