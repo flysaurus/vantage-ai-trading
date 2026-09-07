@@ -1,0 +1,80 @@
+name: QA Tests
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '0 10 * * *'  # nightly (10:00 UTC); adjust for your timezone
+  workflow_dispatch: {}
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qa-agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium only
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        id: run_tests
+        continue-on-error: true
+        run: npx playwright test
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: qa-agent/results/html
+          retention-days: 14
+
+      - name: File issues for new failures
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'qa-agent/results/results.json';
+            if (!fs.existsSync(path)) return;
+            const results = JSON.parse(fs.readFileSync(path, 'utf8'));
+
+            const failed = [];
+            for (const suite of results.suites || []) {
+              for (const spec of suite.specs || []) {
+                for (const test of spec.tests || []) {
+                  const bad = test.results.some(r => r.status !== 'passed');
+                  if (bad) failed.push({ title: spec.title, file: suite.file });
+                }
+              }
+            }
+
+            for (const f of failed) {
+              const searchTitle = `[QA] ${f.title}`;
+              const existing = await github.rest.search.issuesAndPullRequests({
+                q: `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "${searchTitle}"`
+              });
+              if (existing.data.total_count > 0) continue;
+
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: searchTitle,
+                body: `Playwright test failed: ${f.title}\n\nFile: ${f.file}\n\nSee the attached \`playwright-report\` artifact for the HTML report.`,
+                labels: ['qa', 'automated']
+              });
+            }
+
+      - name: Fail job if tests failed
+        if: steps.run_tests.outcome == 'failure'
+        run: exit 1
