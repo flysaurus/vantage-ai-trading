@@ -11,6 +11,7 @@ import { snapTradeFetch, snapTradeFetchSafe } from '@/lib/snaptrade/auth';
 import { getAccountBalances } from '@/lib/snaptrade/client';
 import { extractOrderSymbol } from '@/lib/snaptrade/mapping';
 import { toStandardSymbol, toBrokerSymbol } from './symbol-resolver';
+import { resolveSectorStatic } from '@/lib/sector-resolver';
 import type {
   BrokerEngine, BrokerMeta, BrokerPosition, BrokerAccountSummary,
   BrokerOrder, BrokerBasketOrder, OrderRequest, OrderResult,
@@ -324,7 +325,7 @@ export class SnapTradeBroker implements BrokerEngine {
           allPositions.push({
             symbol: pos.symbol,
             name: pos.description || pos.symbol,
-            sector: pos.sector,
+            sector: pos.sector?.trim() || resolveSectorStatic(pos.symbol) || undefined,
             type: pos.asset_type === 'ETF' ? 'ETF' : 'Stock',
             shares,
             avgCost,

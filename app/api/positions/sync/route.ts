@@ -12,6 +12,7 @@ import {
   SnapTradeAuthError,
   SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
+import { resolveSectorsForSymbols, canonicalizeSymbol } from '@/lib/sector-resolver';
 
 export async function POST(req: NextRequest) {
   try {
@@ -49,17 +50,31 @@ export async function POST(req: NextRequest) {
 
     const supabase = createServerClient();
 
+    // Enrich positions with sectors before persisting. Prefer a sector the
+    // broker already reported; resolve the rest via static map + live Finnhub.
+    const toResolve = positions
+      .filter((p: any) => !(p.sector || '').trim())
+      .map((p: any) => ({ symbol: p.symbol }));
+    const resolvedSectors = toResolve.length > 0
+      ? await resolveSectorsForSymbols(toResolve)
+      : new Map<string, string | null>();
+
     // Build upsert rows: map BrokerPosition → positions table columns
-    const rows = positions.map((p: any) => ({
-      user_id: userId,
-      connection_id: resolvedConnectionId,
-      symbol: p.symbol,
-      name: p.name ?? p.description ?? null,
-      qty: p.shares ?? p.qty ?? 0,
-      avg_cost: p.avgCost ?? p.avg_cost ?? 0,
-      market_value: p.marketValue ?? p.market_value ?? 0,
-      updated_at: new Date().toISOString(),
-    }));
+    const rows = positions.map((p: any) => {
+      const knownSector = (p.sector || '').trim();
+      const sector = knownSector || resolvedSectors.get(canonicalizeSymbol(p.symbol)) || null;
+      return {
+        user_id: userId,
+        connection_id: resolvedConnectionId,
+        symbol: p.symbol,
+        name: p.name ?? p.description ?? null,
+        qty: p.shares ?? p.qty ?? 0,
+        avg_cost: p.avgCost ?? p.avg_cost ?? 0,
+        market_value: p.marketValue ?? p.market_value ?? 0,
+        sector,
+        updated_at: new Date().toISOString(),
+      };
+    });
 
     // Always delete this connection's live positions, then insert fresh.
     // (Even an empty positions array must clear stale rows after a sell-to-zero.)

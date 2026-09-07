@@ -17,6 +17,7 @@ import { evaluateOpenOrder } from './fill-engine';
 import { sendOrderNotification, sendBasketNotification } from '@/lib/notifications';
 import { getMarketStatus } from '@/lib/market-hours';
 import { computeAccountSummary, type PositionInput } from '@/lib/broker/account-summary';
+import { resolveSectorStatic } from '@/lib/sector-resolver';
 
 
 const STORAGE_KEY = 'vantage_demo_state_v3';
@@ -110,7 +111,7 @@ export class DemoBroker implements BrokerEngine {
     const positions = templatePositions.map(p => ({
       symbol: p.symbol,
       name: p.name,
-      sector: p.sector,
+      sector: resolveSectorStatic(p.symbol, p.sector) ?? p.sector ?? '',
       type: (p.type || (p.symbol.length <= 5 ? 'Stock' : 'ETF')) as 'Stock' | 'ETF',
       shares: p.qty,
       avgCost: p.avgCost,
@@ -199,8 +200,13 @@ export class DemoBroker implements BrokerEngine {
         const saved = JSON.parse(raw);
         const age = Date.now() - (saved.savedAt || 0);
         if (age < STALE_MS && (saved.positions?.length > 0 || saved.cashBalance > 0)) {
-          // Ensure all loaded positions have name/sector fields (patch pre-fix localStorage)
-          saved.positions = saved.positions.map((p: any) => ({ ...p, name: p.name || p.symbol, sector: p.sector || '' }));
+          // Ensure all loaded positions have name/sector fields (patch pre-fix localStorage).
+          // Backfill sector from the static resolver when missing/empty.
+          saved.positions = saved.positions.map((p: any) => ({
+            ...p,
+            name: p.name || p.symbol,
+            sector: resolveSectorStatic(p.symbol, p.sector || undefined) ?? p.sector ?? '',
+          }));
           console.log('[DemoBroker] Loaded state:', {
             positions: saved.positions.length,
             cash: saved.cashBalance,
@@ -1363,12 +1369,14 @@ export class DemoBroker implements BrokerEngine {
       p.totalCost = newCost;
       p.avgCost = newCost / newShares;
       if (params.name) p.name = params.name;
-      if (params.sector) p.sector = params.sector;
+      const resolvedSector = resolveSectorStatic(params.symbol, params.sector);
+      if (resolvedSector) p.sector = resolvedSector;
+      else if (params.sector) p.sector = params.sector;
     } else {
       this.state.positions.push({
         symbol: params.symbol,
         name: params.name || params.symbol,
-        sector: params.sector || '',
+        sector: resolveSectorStatic(params.symbol, params.sector) ?? params.sector ?? '',
         type: 'Stock',
         shares: params.shares,
         avgCost: params.price,
