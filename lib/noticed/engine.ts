@@ -135,30 +135,34 @@ export function findNewTriggers(
   }
 
   // ── 2. Position Milestones ──
+  // Only the single most-extreme band crossed is surfaced per position, so a
+  // holding past +100% doesn't produce cards for +15/+25/+50/+100 all at once.
+  // Positive bands are ascending and negative bands descending, so the LAST
+  // crossed band is always the most extreme.
   for (const pos of positions) {
     const pnlPct = pos.totalPnlPercent || 0;
     const crossedBands = pnlPct > 0
       ? POSITIVE_BANDS.filter(b => pnlPct >= b)
       : NEGATIVE_BANDS.filter(b => pnlPct <= b);
+    if (crossedBands.length === 0) continue;
 
-    for (const band of crossedBands) {
-      const bandLabel = band > 0 ? `+${band}` : `${band}`;
-      const key = `MILESTONE_${pos.symbol}_${bandLabel}`;
-      if (!existingKeys.has(key)) {
-        const isPositive = band > 0;
-        triggers.push({
-          trigger_type: 'position_milestone',
-          trigger_key: key,
-          title: `${pos.symbol} ${bandLabel}%`,
-          variant: isPositive ? 'gain' : 'warn',
-          icon: isPositive ? '📈' : '📉',
-          meta: { symbol: pos.symbol, threshold: band, currentPnlPct: Math.round(pnlPct * 10) / 10, marketValue: pos.marketValue, action: `REVIEW_POSITION:${pos.symbol}` },
-          follow_up: isPositive
-            ? `Should I take profits on ${pos.symbol}?`
-            : `Is ${pos.symbol} still worth holding?`,
-          context: `${pos.symbol}: crossed ${bandLabel}% total return threshold (currently at ${pnlPct.toFixed(1)}%). Position value: $${pos.marketValue.toLocaleString()}.`,
-        });
-      }
+    const band = crossedBands[crossedBands.length - 1];
+    const bandLabel = band > 0 ? `+${band}` : `${band}`;
+    const key = `MILESTONE_${pos.symbol}_${bandLabel}`;
+    if (!existingKeys.has(key)) {
+      const isPositive = band > 0;
+      triggers.push({
+        trigger_type: 'position_milestone',
+        trigger_key: key,
+        title: `${pos.symbol} ${bandLabel}%`,
+        variant: isPositive ? 'gain' : 'warn',
+        icon: isPositive ? '📈' : '📉',
+        meta: { symbol: pos.symbol, threshold: band, currentPnlPct: Math.round(pnlPct * 10) / 10, marketValue: pos.marketValue, action: `REVIEW_POSITION:${pos.symbol}` },
+        follow_up: isPositive
+          ? `Should I take profits on ${pos.symbol}?`
+          : `Is ${pos.symbol} still worth holding?`,
+        context: `${pos.symbol}: crossed ${bandLabel}% total return threshold (currently at ${pnlPct.toFixed(1)}%). Position value: $${pos.marketValue.toLocaleString()}.`,
+      });
     }
   }
 
