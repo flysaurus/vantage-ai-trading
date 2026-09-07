@@ -606,6 +606,13 @@ export async function runNoticedPipeline(
         update.icon = fresh.icon;
         update.title = fresh.title;
         update.follow_up = fresh.follow_up;
+        // CRITICAL: refresh the body too. Re-fired cards were previously left
+        // with their original (possibly stale/blended) body text forever, which
+        // leaked e.g. demo concentration copy into live accounts. Haiku is not
+        // re-run for reactivated cards, so use the freshly-computed
+        // deterministic context (correct for THIS account's positions).
+        update.body = fresh.context;
+        update.fallback = true;
       }
       await supabase
         .from('noticed_items')
