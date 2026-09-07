@@ -38,7 +38,7 @@ test.describe('Portfolio Tab', () => {
 
   test('loads without error', async ({ page }) => {
     const errorText = await page.locator('text=Error, text=Something went wrong').count();
-    expect(errorText).toBe(1); // TEMP: intentional break to verify QA issue auto-filing
+    expect(errorText).toBe(0);
 
     await screenshot(page, '01_portfolio_load');
   });
