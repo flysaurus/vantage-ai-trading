@@ -842,6 +842,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
       setInput('');
       setToast(null);
       setShowClearConfirm(false);
+      // Reset the "Suggested for you" noticed feed so another account's cards
+      // never persist across the switch (cross-account bleed).
+      setNoticedItems([]);
+      setNoticedLoaded(false);
       // Reset streaming state so a mid-stream switch doesn't corrupt the new account
       charQueueRef.current = [];
       displayedContentRef.current = '';
