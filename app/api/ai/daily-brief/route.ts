@@ -19,6 +19,7 @@ import type { UserProfile } from '@/lib/ai/userProfile';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
 import { checkUsageLimit, incrementUsage } from '@/lib/ai-guard';
 import { resolveAccountPositions } from '@/lib/ai/account-positions';
+import { getBatchQuotes } from '@/lib/market-data';
 
 const SEARXNG_URL = process.env.SEARXNG_URL || 'http://85.239.230.26:8888';
 
@@ -160,44 +161,21 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 4. Fetch market data from Finnhub
-    const finnhubKey = process.env.FINNHUB_IO_API_KEY;
-    if (!finnhubKey) {
-      return NextResponse.json(
-        { error: 'Finnhub API key not configured' },
-        { status: 500 },
-      );
-    }
-
-    // Fetch indices
-    const indices = await Promise.all(
-      ['SPY', 'QQQ', 'IWM'].map(async (sym) => {
-        const r = await fetch(
-          `https://finnhub.io/api/v1/quote?symbol=${sym}&token=${finnhubKey}`,
-          { signal: AbortSignal.timeout(5000) },
-        );
-        const d = await r.json();
-        return { sym, price: d.c, changePct: d.dp };
-      }),
-    );
-
-    // Fetch quotes for all position symbols
+    // 4. Fetch market data via the shared multi-source quote service
+    //    (Finnhub → Alpaca → Yahoo, batched + cached). This is the SAME
+    //    path the Portfolio tab uses — a single-source outage can no longer
+    //    zero out the whole brief.
+    const finnhubKey = process.env.FINNHUB_IO_API_KEY; // still used for the earnings calendar below
+    const INDEX_SYMBOLS = ['SPY', 'QQQ', 'IWM'];
     const positionSymbols = positions.map((p: any) => p.symbol);
-    const quotesMap: Record<string, any> = {};
+    const quoteSymbols = [...new Set([...INDEX_SYMBOLS, ...positionSymbols])];
 
-    await Promise.all(
-      positionSymbols.map(async (sym: string) => {
-        try {
-          const r = await fetch(
-            `https://finnhub.io/api/v1/quote?symbol=${sym}&token=${finnhubKey}`,
-            { signal: AbortSignal.timeout(5000) },
-          );
-          quotesMap[sym] = await r.json();
-        } catch {
-          quotesMap[sym] = {};
-        }
-      }),
-    );
+    const quotes = await getBatchQuotes(quoteSymbols);
+
+    const indices = INDEX_SYMBOLS.map((sym) => {
+      const q = quotes.get(sym);
+      return { sym, price: q?.price ?? 0, changePct: q?.changePercent ?? 0 };
+    });
 
     // Build position data with quotes, sort by absolute change
     interface PositionQuote {
@@ -212,17 +190,32 @@ export async function GET(req: NextRequest) {
     }
 
     const positionsWithQuotes: PositionQuote[] = positions.map((p: any) => {
-      const q = quotesMap[p.symbol] || {};
-      const currentPrice = q.c ?? 0;
+      const q = quotes.get((p.symbol || '').toUpperCase());
+      const quotePrice = q?.price ?? 0;
+      const persistedValue = (p as any).market_value ?? (p as any).marketValue;
+      const qty = p.qty ?? 0;
+      // Dollar value is authoritative from the persisted `market_value`
+      // (SnapTrade sync for brokers) / `marketValue` (demo). Quotes only
+      // supply the day's price + % move.
+      const marketValue =
+        persistedValue != null && persistedValue > 0
+          ? persistedValue
+          : qty * quotePrice;
+      const price =
+        quotePrice > 0
+          ? quotePrice
+          : marketValue > 0 && qty > 0
+            ? marketValue / qty
+            : 0;
       return {
         symbol: p.symbol,
-        qty: p.qty,
-        price: currentPrice,
-        changePct: q.dp ?? 0,
-        avgCost: p.avgCost ?? 0,
+        qty,
+        price,
+        changePct: q?.changePercent ?? 0,
+        avgCost: p.avgCost ?? p.avg_cost ?? 0,
         name: p.name || p.symbol,
         sector: p.sector || 'Unknown',
-        marketValue: (p.qty || 0) * currentPrice,
+        marketValue,
       };
     });
 

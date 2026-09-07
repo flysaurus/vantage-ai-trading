@@ -19,6 +19,7 @@ import { checkUsageLimit } from '@/lib/ai-guard';
 import { writeFact } from '@/lib/ai/facts';
 import { beginGenLog } from '@/lib/ai/generation-log';
 import { resolveAccountPositions } from '@/lib/ai/account-positions';
+import { getBatchQuotes } from '@/lib/market-data';
 
 // Static analysis instructions — cached across all snapshot requests
 const SNAPSHOT_STATIC: SystemBlock = {
@@ -242,26 +243,10 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Fetch quotes for all position symbols
-    const finnhubKey = process.env.FINNHUB_IO_API_KEY;
+    // Fetch quotes via the shared multi-source quote service (Finnhub →
+    // Alpaca → Yahoo, batched + cached) — same path the Portfolio tab uses.
     const symbols = positions.map((p: any) => p.symbol);
-    const quotes: Record<string, any> = {};
-
-    if (finnhubKey) {
-      await Promise.all(
-        symbols.map(async (sym: string) => {
-          try {
-            const r = await fetch(
-              `https://finnhub.io/api/v1/quote?symbol=${sym}&token=${finnhubKey}`,
-              { signal: AbortSignal.timeout(5000) },
-            );
-            quotes[sym] = await r.json();
-          } catch {
-            quotes[sym] = {};
-          }
-        }),
-      );
-    }
+    const quotes = await getBatchQuotes(symbols);
 
     // Get investor style
     let investorStyle = 'buffett';
@@ -305,12 +290,26 @@ export async function GET(req: NextRequest) {
 
     // Build position data block — with cost basis, total cost, and dollar P&L
     const positionLines = positions.map((p: any) => {
-      const q = quotes[p.symbol] || {};
-      const avgCost = p.avgCost;
-      const currentPrice = q.c ?? 0;
-      const shares = p.qty;
+      const q = quotes.get((p.symbol || '').toUpperCase());
+      const quotePrice = q?.price ?? 0;
+      const avgCost = p.avgCost ?? p.avg_cost ?? 0;
+      const shares = p.qty ?? 0;
+      const persistedValue = (p as any).market_value ?? (p as any).marketValue;
+      // Current price from quote, falling back to persisted market value / shares.
+      const currentPrice =
+        quotePrice > 0
+          ? quotePrice
+          : persistedValue != null && persistedValue > 0 && shares > 0
+            ? persistedValue / shares
+            : 0;
       const totalCost = avgCost ? shares * avgCost : 0;
-      const marketValue = currentPrice ? shares * currentPrice : 0;
+      // Market value is authoritative from the persisted value when present.
+      const marketValue =
+        persistedValue != null && persistedValue > 0
+          ? persistedValue
+          : currentPrice
+            ? shares * currentPrice
+            : 0;
       const totalPnL = avgCost && currentPrice
         ? (currentPrice - avgCost) * shares
         : 0;
