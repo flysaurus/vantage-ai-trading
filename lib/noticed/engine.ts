@@ -21,6 +21,7 @@ import {
   resolveConcentrationThresholds,
 } from '@/lib/concentration';
 import { findEventImpactTriggers } from './event-impact';
+import { findBounceBackTriggers } from './bounce-back';
 
 // ── Config ──
 const FINBERT_URL = process.env.FINBERT_URL || 'http://127.0.0.1:8765';
@@ -484,7 +485,14 @@ EVENT-IMPACT TRIGGERS (keys starting with EVENT_) — HARD RULES:
 - The context carries the severity tier:
   · "severity: review" → you may note it's worth a look, and you MUST include phrasing equivalent to "no action needed unless your original thesis has changed."
   · "severity: info" → purely informational. Do not suggest any action, review, or trade.
-- Never invent a magnitude, percentage, or price move that isn't in the context.`,
+- Never invent a magnitude, percentage, or price move that isn't in the context.
+
+BOUNCE-BACK TRIGGERS (keys starting with BOUNCE_) — HARD RULES:
+- These are "quality position, temporarily discounted" notices about a holding, NEVER a trade signal. Frame them as "worth a look", not a recommendation to buy.
+- No urgency language, ever: no "act now", "jump on", "don't miss", no exclamation points.
+- Do not promise a rebound, do not set a price target, and do not frame the discount as a guaranteed opportunity.
+- Keep the tone calm and factual; the context already states the valuation gap. You may restate it but never exaggerate it.
+- You MUST end the observation with the literal closing phrase "Worth reviewing the position yourself."`,
 };
 
 // ── Batch Haiku generation ──
@@ -599,7 +607,35 @@ export async function runNoticedPipeline(
   allTriggers = allTriggers.concat(findDriftTriggers(input, noSkipKeys, investorStyle, etfWeights));
   allTriggers = allTriggers.concat(await findEarningsTriggers(input, noSkipKeys));
   allTriggers = allTriggers.concat(await findSentimentShiftTriggers(input, noSkipKeys));
-  allTriggers = allTriggers.concat(await findEventImpactTriggers(input, noSkipKeys));
+  const eventImpactTriggers = await findEventImpactTriggers(input, noSkipKeys);
+  allTriggers = allTriggers.concat(eventImpactTriggers);
+
+  // ── Bounce-back: quality-position discount nudge ──
+  // Captures review-tier event-impact symbols from THIS pass (filter d), queries
+  // already-fired bounce-back symbols (one-nudge-per-symbol cap), and emits the
+  // single most-discounted qualifying candidate. `existingKeys` (the REAL active
+  // set) is passed deliberately — bounce-back needs to know which fired cards
+  // are still active so their keys remain in the firing set and are not
+  // stale-resolved a day later (the trulyNew filter still skips them).
+  const reviewEventSymbols = new Set(
+    eventImpactTriggers
+      .filter((t) => t.meta?.severity === 'review')
+      .map((t) => String(t.meta?.symbol).toUpperCase()),
+  );
+  const { data: prevBounce } = await supabase
+    .from('noticed_items')
+    .select('trigger_key')
+    .eq('user_id', userId)
+    .eq('account_id', accountId)
+    .eq('trigger_type', 'bounce_back');
+  const previouslyFiredSymbols = new Set(
+    ((prevBounce as any[]) || []).map((r) =>
+      String(r.trigger_key).replace(/^BOUNCE_/, '').toUpperCase(),
+    ),
+  );
+  allTriggers = allTriggers.concat(
+    await findBounceBackTriggers(input, existingKeys, reviewEventSymbols, previouslyFiredSymbols),
+  );
 
   // Identify truly new (not re-firing resolved items) — the full firing set's
   // keys feed both reactivation below and stale-resolve at the end.
