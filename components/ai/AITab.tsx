@@ -208,8 +208,8 @@ const PLACEHOLDERS = [
   'What should my next move be?',
   'Curious about a stock? Ask away…',
   'Ask about any stock or the market…',
-  'Looking for new opportunities? Ask Vantage…',
-  "What's Vantage AI noticing today?",
+  'Looking for new opportunities? Ask Rufus…',
+  "What's Rufus noticing today?",
   'Research any stock, sector, or strategy…',
   'Markets, stocks, or your portfolio — ask anything',
 ];
@@ -1980,7 +1980,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           </button>
 
         </div>
-        <div style={{ fontSize: '15px', fontWeight: 800, color: '#22d3ee' }}>Vantage AI Advisor</div>
+        <div style={{ fontSize: '15px', fontWeight: 800, color: '#22d3ee' }}>Rufus</div>
         {/* Live pulse indicator */}
         <div style={{
           width: '7px',
@@ -2286,7 +2286,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               }}
             >
               <div style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.38)', marginBottom: '6px', letterSpacing: '0.02em' }}>
-                Vantage AI Advisor
+                Rufus
               </div>
               {/* Holdings callout — data panel rendered from live PortfolioContext when
                   the server tagged this message with a dataCallout (scope+tickers). */}
@@ -3254,7 +3254,9 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                           }}>
                             {[
                               { label: 'Remind in 3 days', type: '3d' },
+                              { label: 'Remind in 5 days', type: '5d' },
                               { label: 'Remind in 1 week', type: '1w' },
+                              { label: 'Remind in 2 weeks', type: '14d' },
                               { label: "Don't remind again", type: 'permanent' },
                             ].map((opt) => (
                               <button

@@ -11,7 +11,7 @@ const client = new Anthropic({
   },
 })
 
-const BASKET_SYSTEM_PROMPT = `You are Vantage AI — a portfolio construction expert. You build focused, conviction-weighted baskets, not index-hugging slush funds.
+const BASKET_SYSTEM_PROMPT = `You are Rufus — a portfolio construction expert. You build focused, conviction-weighted baskets, not index-hugging slush funds.
 Generate a thematic investment basket tailored to the user's investor style.
 The user's style context is provided in the message.
 

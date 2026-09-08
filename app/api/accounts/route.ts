@@ -85,7 +85,10 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
         let totalValue = 0;
         let cash = 0;
         let buyingPower: number | null = null;
-        let accountName = mapSlugToName(conn.brokerage_slug);
+        const snapAccounts = (conn.snaptrade_accounts as any[]) || [];
+        // Prefer the real SnapTrade account name (e.g. "ANIKET -YOUTH ACCOUNT")
+        // over the broker-slug name so the UI shows broker + account together.
+        let accountName = snapAccounts[0]?.name || mapSlugToName(conn.brokerage_slug);
 
         // Try to fetch live account data from SnapTrade
         try {
@@ -111,11 +114,9 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
           const errStack = err instanceof Error ? (err.stack || '').substring(0, 200) : '';
           console.error('[accounts] SnapTrade live fetch FAILED:', errMsg, errStack);
           // Fall back to stored data
-          const snapAccounts = (conn.snaptrade_accounts as any[]) || [];
           totalValue = snapAccounts.reduce((sum: number, a: any) => sum + (a.totalValue || a.total_value || 0), 0);
           cash = snapAccounts.reduce((sum: number, a: any) => sum + (a.cash || 0), 0);
           buyingPower = snapAccounts.reduce((sum: number, a: any) => sum + (a.buyingPower || a.buying_power || 0), 0);
-          accountName = snapAccounts[0]?.name || accountName;
         }
 
         accounts.push({
@@ -145,6 +146,7 @@ function mapSlugToName(slug: string): string {
   const map: Record<string, string> = {
     'ALPACA-PAPER': 'Alpaca Paper',
     'ALPACA': 'Alpaca',
+    'FIDELITY': 'Fidelity',
     'TASTYTRADE': 'Tastytrade',
     'ETRADE': 'E*TRADE',
     'WEBULL': 'Webull',

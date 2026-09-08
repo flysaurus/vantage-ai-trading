@@ -446,7 +446,7 @@ export async function checkAbuseCooldown(userId: string): Promise<AbuseCheck> {
 }
 
 export const NON_FINANCE_RESPONSE = `
-Vantage AI is a specialized financial advisor focused on:
+Rufus is a specialized financial advisor focused on:
 - Portfolio analysis and health checks
 - Stock and ETF research
 - Market trends and sector analysis

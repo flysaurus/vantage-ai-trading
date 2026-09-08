@@ -22,6 +22,7 @@ import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
 import BasketBuyMoreTicket from '@/components/trade/BasketBuyMoreTicket';
 import BasketSellTicket from '@/components/trade/BasketSellTicket';
 import ActionButton from '@/components/ai/ActionButton';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 import { apiGet, apiPost } from '@/lib/api-client';
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -42,6 +43,92 @@ const formatCurrency = (n: number) => {
   if (abs >= 10000) return `${sign}$${(abs / 1000).toFixed(1)}K`;
   return `${sign}$${abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
+
+// ─── AI Noticed visual upgrade — concentration donut (real holdings) ───
+// Donut chart of actual portfolio composition. Top 1-2 over-concentrated
+// holdings in accent/danger; everything else muted. Data only — no prediction.
+function ConcentrationDonut({ positions }: { positions: Position[] }) {
+  const data = useMemo(() => {
+    const total = positions.reduce((s, p) => s + (p.marketValue || 0), 0);
+    if (total <= 0) return [];
+    return positions
+      .filter((p) => (p.marketValue || 0) > 0)
+      .map((p) => ({ symbol: p.symbol, value: p.marketValue, pct: (p.marketValue / total) * 100 }))
+      .sort((a, b) => b.value - a.value);
+  }, [positions]);
+
+  if (data.length === 0) return null;
+
+  const R = 30;
+  const C = 2 * Math.PI * R;
+  const STROKE = 11;
+  let cumulative = 0;
+  const segments = data.map((d, i) => {
+    const len = (d.pct / 100) * C;
+    const color = i === 0 ? '#f59e0b' : i === 1 ? '#22d3ee' : 'rgba(255,255,255,0.12)';
+    const seg = (
+      <circle
+        key={d.symbol}
+        cx="40"
+        cy="40"
+        r={R}
+        fill="none"
+        stroke={color}
+        strokeWidth={STROKE}
+        strokeDasharray={`${len} ${C - len}`}
+        strokeDashoffset={-cumulative}
+        transform="rotate(-90 40 40)"
+      />
+    );
+    cumulative += len;
+    return seg;
+  });
+
+  const topTwo = data.slice(0, 2);
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+      <svg width="80" height="80" viewBox="0 0 80 80" style={{ flexShrink: 0 }}>
+        {segments}
+      </svg>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+        {topTwo.map((d, i) => (
+          <div key={d.symbol} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'rgba(255,255,255,0.8)' }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: i === 0 ? '#f59e0b' : '#22d3ee', flexShrink: 0 }} />
+            <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{d.symbol}</span>
+            <span style={{ color: 'rgba(255,255,255,0.45)' }}>{d.pct.toFixed(0)}%</span>
+          </div>
+        ))}
+        <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.35)' }}>
+          {data.length} holding{data.length === 1 ? '' : 's'} · top {Math.min(2, data.length)} concentrated
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AI Noticed visual upgrade — idle-cash illustrative chart ───
+// Two STATIC bars (Cash vs Invested). No percentages, no index, no timeframe.
+// Illustrative only — this is intentionally not a projection or guarantee.
+function IdleCashIllustration() {
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, height: 72, padding: '0 2px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
+          <div style={{ width: '100%', maxWidth: 46, height: 34, background: 'rgba(255,255,255,0.12)', borderRadius: 6 }} />
+          <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>Cash</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
+          <div style={{ width: '100%', maxWidth: 46, height: 62, background: '#22d3ee', borderRadius: 6 }} />
+          <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>Invested</span>
+        </div>
+      </div>
+      <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 8, fontSize: 11, lineHeight: 1.5, color: 'rgba(255,255,255,0.62)', fontStyle: 'italic' }}>
+        Illustrative only - not a projection or guarantee. Investing involves risk of loss.
+      </div>
+    </div>
+  );
+}
 
 function splitCents(value: number): { dollars: string; cents: string } {
   const str = value.toLocaleString('en-US', DOLLAR_FMT);
@@ -75,13 +162,19 @@ function AccountHero({ account, isConnected }: { account: AccountSummary; isConn
   const isDemo = brokerSource === 'demo';
   const isReadOnly = account.holdingsUnavailable === true;
 
+  // Broker name (e.g. "Fidelity") + account name (e.g. "ANIKET -YOUTH ACCOUNT")
+  // are shown together, deduping when they're identical (e.g. Alpaca Paper).
+  const accountName = brokerMeta?.name ?? 'Broker';
+  const brokerName = brokerMeta?.broker && brokerMeta.broker !== accountName ? brokerMeta.broker : null;
+  const namePrefix = brokerName ? `${brokerName} · ` : '';
+
   const envLabel = isDemo
     ? 'Demo Portfolio · Demo'
     : brokerMeta?.environment === 'paper'
-      ? `${brokerMeta?.name ?? 'Broker'} · Paper`
+      ? `${namePrefix}${accountName} · Paper`
       : isReadOnly
-        ? `${brokerMeta?.name ?? 'Broker'} · Read-only`
-        : `${brokerMeta?.name ?? 'Broker'} · Live`;
+        ? `${namePrefix}${accountName} · Read-only`
+        : `${namePrefix}${accountName} · Live`;
   
   const dataSourceStyle = isDemo
     ? { background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' }
@@ -926,9 +1019,12 @@ export function PortfolioTab() {
   }, [activeAccountId]);
   useEffect(() => { fetchTopNoticed(); }, [fetchTopNoticed]);
 
-  const handleTopDismiss = async (itemId: string) => {
+  const [topSnoozeOpen, setTopSnoozeOpen] = useState(false);
+
+  const handleTopDismiss = async (itemId: string, dismissType: string) => {
+    setTopSnoozeOpen(false);
     setTopNoticed(null);
-    try { await apiPost('/api/ai/noticed/dismiss', { itemId, dismissType: 'permanent' }); } catch { /* ignore */ }
+    try { await apiPost('/api/ai/noticed/dismiss', { itemId, dismissType }); } catch { /* ignore */ }
   };
 
   // ── Cross-tab focus: expand + scroll to a ticker's position card ──
@@ -1135,7 +1231,7 @@ export function PortfolioTab() {
         />
       </div>
 
-      {/* ── 3. AI Curated Group ── */}
+      {/* ── 3. Rufus Noticed Group ── */}
       <div style={{ padding: '0 16px 16px' }}>
         {/* Section label */}
         <div style={{
@@ -1145,7 +1241,7 @@ export function PortfolioTab() {
           letterSpacing: '0.02em',
           marginBottom: 10,
         }}>
-          ✨ AI CURATED
+          RUFUS NOTICED
         </div>
 
         {/* Container — shared background/border */}
@@ -1156,16 +1252,36 @@ export function PortfolioTab() {
           background: 'rgba(255,255,255,0.02)',
         }}>
           {/* Top AI insight — single curated card (no duplicate prose) */}
-          {topNoticed ? (
-            <div style={{
-              display: 'flex', alignItems: 'flex-start', gap: '8px',
-              borderLeft: `3px solid ${topNoticed.variant === 'warn' ? '#f59e0b' : topNoticed.variant === 'gain' ? '#22c55e' : '#22d3ee'}`,
-              background: 'rgba(255,255,255,0.03)',
-              borderRadius: '12px', padding: '12px 14px',
-            }}>
-              <span style={{ fontSize: '14px', marginTop: '1px' }}>{topNoticed.icon}</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '13.5px', color: '#f1f5f9', lineHeight: 1.4 }}>{topNoticed.body}</div>
+          {topNoticed ? (() => {
+            const accent = topNoticed.variant === 'warn' ? '#f59e0b' : topNoticed.variant === 'gain' ? '#22c55e' : '#22d3ee';
+            const isRebalance = topNoticed.action === 'REBALANCE';
+            const isIdleCash = typeof topNoticed.action === 'string' && topNoticed.action.startsWith('INVEST_CASH:');
+            const upgraded = isRebalance || isIdleCash;
+            return (
+              <div style={{
+                position: 'relative',
+                borderLeft: `3px solid ${accent}`,
+                background: 'rgba(255,255,255,0.03)',
+                borderRadius: '12px', padding: '12px 14px',
+              }}>
+                {upgraded ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <VantageOrb size={20} animate={false} showEntrance={false} />
+                      <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', color: accent }}>RUFUS NOTICED</span>
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 15, color: '#f1f5f9', lineHeight: 1.5 }}>{topNoticed.body}</div>
+                    {isRebalance && <ConcentrationDonut positions={displayPositions} />}
+                    {isIdleCash && <IdleCashIllustration />}
+                  </>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                    <span style={{ fontSize: '14px', marginTop: '1px' }}>{topNoticed.icon}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '13.5px', color: '#f1f5f9', lineHeight: 1.4 }}>{topNoticed.body}</div>
+                    </div>
+                  </div>
+                )}
                 {topNoticed.action && (
                   <ActionButton
                     action={topNoticed.action}
@@ -1174,12 +1290,45 @@ export function PortfolioTab() {
                     onRebalance={() => { setPendingPrompt('rebalance'); setTab('ai'); }}
                     onReviewPosition={(ticker) => { setFocusPosition(ticker); setTab('portfolio'); }}
                     onInvestCash={(amount) => { setPendingPrompt(`Build me a portfolio with my $${amount.toLocaleString()} of idle cash.`); setTab('ai'); }}
-                    onDismiss={() => handleTopDismiss(topNoticed.id)}
+                    onDismiss={() => setTopSnoozeOpen((o) => !o)}
                   />
                 )}
+                {topSnoozeOpen && (
+                  <>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={() => setTopSnoozeOpen(false)} />
+                    <div style={{
+                      position: 'absolute', right: '8px', top: '44px', zIndex: 9999,
+                      background: '#1a2235', border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: '10px', padding: '6px', display: 'flex', flexDirection: 'column',
+                      gap: '2px', minWidth: '170px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                    }}>
+                      {[
+                        { label: 'Remind in 3 days', type: '3d' },
+                        { label: 'Remind in 5 days', type: '5d' },
+                        { label: 'Remind in 1 week', type: '1w' },
+                        { label: 'Remind in 2 weeks', type: '14d' },
+                        { label: "Don't remind again", type: 'permanent' },
+                      ].map((opt) => (
+                        <button
+                          key={opt.type}
+                          onClick={(e) => { e.stopPropagation(); handleTopDismiss(topNoticed.id, opt.type); }}
+                          style={{
+                            background: 'transparent', border: 'none', color: '#cbd5e1',
+                            fontSize: '12px', padding: '8px 12px', borderRadius: '6px',
+                            cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                          }}
+                          onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
+                          onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
-            </div>
-          ) : (
+            );
+          })() : (
             <div style={{ padding: '16px 14px', color: 'rgba(255,255,255,0.45)', fontSize: 13, textAlign: 'center' }}>
               No AI insights yet — they'll appear as your portfolio hits key milestones.
             </div>

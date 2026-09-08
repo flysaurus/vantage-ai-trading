@@ -1155,7 +1155,7 @@ export function SettingsTab() {
             padding: '12px 16px',
             borderBottom: '1px solid rgba(255,255,255,0.06)',
           }}>
-            Your style shapes how Vantage AI thinks, analyzes, and recommends. You can change this anytime.
+            Your style shapes how Rufus thinks, analyzes, and recommends. You can change this anytime.
           </div>
 
           {/* Style cards */}

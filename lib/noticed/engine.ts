@@ -467,7 +467,7 @@ export async function findSentimentShiftTriggers(
 // ── Static system prompt for Haiku batch generation ──
 const NOTICED_SYSTEM: SystemBlock = {
   type: 'text',
-  text: `You are Vantage AI's proactive feed engine. Generate ONE short observation (1-2 sentences, max 30 words each — max 45 words for EVENT_ triggers) for each trigger below.
+  text: `You are Rufus, Vantage's proactive feed engine. Generate ONE short observation (1-2 sentences, max 30 words each — max 45 words for EVENT_ triggers) for each trigger below.
 
 VOICE: Casual, direct, like a smart friend texting. Call out what matters. No formal language. No "you might want to consider" — just say it.
 

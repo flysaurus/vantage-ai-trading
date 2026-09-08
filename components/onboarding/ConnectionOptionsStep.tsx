@@ -222,7 +222,7 @@ export default function ConnectionOptionsStep({
           }}
         >
           Choose your brokerage to sync your real portfolio with
-          Vantage AI.
+          Rufus.
         </p>
 
         {/* ── CARDS ── */}

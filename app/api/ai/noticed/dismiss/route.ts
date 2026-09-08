@@ -1,7 +1,7 @@
 /**
  * POST /api/ai/noticed/dismiss — Set dismissed_until for a noticed item
  *
- * Body: { itemId: string, dismissType: '3d' | '1w' | 'permanent' }
+ * Body: { itemId: string, dismissType: '3d' | '5d' | '1w' | '14d' | 'permanent' }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -27,14 +27,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       case '3d':
         dismissedUntil = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
         break;
+      case '5d':
+        dismissedUntil = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
+        break;
       case '1w':
         dismissedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        break;
+      case '14d':
+        dismissedUntil = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
         break;
       case 'permanent':
         dismissedUntil = '9999-12-31T23:59:59Z'; // far-future sentinel for permanent
         break;
       default:
-        return NextResponse.json({ error: 'Invalid dismissType. Use 3d, 1w, or permanent.' }, { status: 400 });
+        return NextResponse.json({ error: 'Invalid dismissType. Use 3d, 5d, 1w, 14d, or permanent.' }, { status: 400 });
     }
 
     const supabase = createServerClient() as any;

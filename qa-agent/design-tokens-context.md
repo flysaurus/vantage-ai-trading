@@ -1,95 +1,77 @@
-# Vantage Design System — Locked Tokens & Language
+# Vantage Design Constitution
 
-This is the canonical design system for the Vantage mobile trading app. It is **locked** —
-screens must reference these tokens, not invent new values. When critiquing a screenshot,
-treat any deviation from these values (especially hardcoded hex colors or ad-hoc spacing)
-as a consistency violation.
+Reference context for any `/redesign` or `critique_design` call.
 
-Source of truth: `app/globals.css` (CSS custom properties under `:root`).
+## Audience (why every rule below exists)
 
----
+Ages 18-45. Don't have time or expertise to trade themselves. Explicitly NOT looking to gamble or chase a quick buck. Every design decision should reinforce patience and discipline, never urgency or checking-in behavior.
 
-## 1. Written description of the language
+## Visual language: Copilot-inspired restraint
 
-Vantage is a **dark, premium fintech** interface:
+- Background: deep navy canvas (`#000814`), not pure black or lighter navy.
+- Color is reserved for data only — gains/losses, active state. Never decorative.
+- Gain/positive: `#3DDC84` · Loss/negative: `#F0716B` · Interactive/CTA: `#5FD8DE`
+- Typography: Playfair italic for large headline numbers (balance, big figures). Inter/sans for everything else — labels, body, rows.
+- No gradients, no drop shadows, no decorative badges/chips stacked together.
+- Precision standard (borrowed from Mercury, not their color language): spacing and type weight should be deliberate, not "close enough" defaults.
 
-- **Canvas**: deep navy `#0a0f1e`, with a faint cyan radial glow at the top of the app background.
-- **Headlines / hero numbers**: **Playfair Display italic** (serif) — used for the big portfolio
-  value and emotional "reveal" lines. This is the signature typographic gesture.
-- **Everything else**: **Inter** (sans) — labels, data, body, buttons. JetBrains Mono for any
-  monospace/tabular data.
-- **Accent**: electric cyan `#22d3ee`, used for primary CTAs, active nav, focus rings, links.
-  Cyan-on-navy is the core identity pair.
-- **Cards**: **frosted glass** — `rgba(255,255,255,0.05)` fill, 1px `rgba(255,255,255,0.08)`
-  border, 8px backdrop blur, 16–20px radius. Surfaces should feel translucent, not solid gray.
-- **P&L semantics**: gain green `#10b981`, loss red `#ef4444`, never swapped.
-- **Micro-labels**: 10–11px, uppercase, letter-spaced (`0.08–0.12em`), muted `rgba(255,255,255,0.35)`.
-- **CTAs**: rounded pill (`999px` radius), solid cyan fill with dark text.
-- **Motion**: fast 150ms / base 300ms / slow 600ms, ease-out / ease-spring curves.
+## Header pattern (locked, applies to every screen)
 
-## 2. Color tokens
+One slim row: connection status + account name + view-only tag if applicable, inline. Investor style is a tappable link, never a badge. No more than this one row of chrome above the screen's actual content.
 
-| Token | Value |
-|---|---|
-| `--bg-primary` | `#0a0f1e` |
-| `--bg-card` | `#1a2235` |
-| `--bg-card-hover` | `#1f2940` |
-| `--bg-input` | `#1a2235` |
-| `--bg-sheet` | `#131929` |
-| `--bg-overlay` | `rgba(10,15,30,0.95)` |
-| `--text-primary` | `#ffffff` |
-| `--text-secondary` | `rgba(255,255,255,0.55)` |
-| `--text-muted` | `rgba(255,255,255,0.35)` |
-| `--text-accent-warm` | `#fbbf24` |
-| `--accent` (cyan) | `#22d3ee` |
-| `--accent-10 / -20 / -30` | `rgba(34,211,238,0.10 / 0.20 / 0.30)` |
-| `--violet` | `#b389f0` |
-| `--emerald` | `#3ddc97` |
-| `--amber` | `#f0b73f` |
-| `--red` | `#ef7b6a` |
-| `--gain` | `#10b981` |
-| `--loss` | `#ef4444` |
-| `--warning` | `#f59e0b` |
-| `--dim` | `#aab4c7` |
-| `--faint` | `#8794a8` |
-| `--card-bg` | `rgba(255,255,255,0.05)` |
-| `--card-border` | `rgba(255,255,255,0.08)` |
-| `--border-subtle` | `rgba(255,255,255,0.06)` |
-| `--border-card` | `rgba(255,255,255,0.08)` |
-| `--border-input` | `rgba(255,255,255,0.10)` |
-| `--border-input-focus` | `#22d3ee` |
+## AI Noticed card pattern (locked, applies wherever triggers can fire)
 
-**Known hardcoded exceptions** (in `globals.css` itself — do NOT flag these as new violations,
-but DO flag any *new* hardcoded hexes that aren't one of these):
-`#0d9488` (logo gradient end), `#e2e8f0` (section-label), `#94a3b8` (header-pill closed),
-`#64748b` / `#f1f5f9` (investor-style badge).
+- Show exactly ONE card by default, even if multiple triggers are active.
+- Priority order when multiple are active: Rebalance/concentration-risk > wash-sale (contextual, ticket-only) > event-impact > idle-cash / bounce-back. Reasoning: protecting what the user already has outranks surfacing new opportunity or informational content.
+- Remaining active triggers collapse into a single "+N more insights" line, never stacked cards.
+- Card structure: severity/category label -> one-line insight -> real CTA button (reuses ActionButton, never invented per-screen) -> optional dismiss.
+- Metadata (cached/updated/refresh) limited to ONE small timestamp line, never more than 2 visible metadata elements total on a card.
 
-## 3. Spacing tokens
+## Content/tone rules (apply to all generated copy, not just AI Noticed)
 
-`--space-1: 4px` · `--space-2: 8px` · `--space-3: 12px` · `--space-4: 16px` ·
-`--space-5: 20px` · `--space-6: 24px` · `--space-8: 32px` · `--space-10: 40px` · `--space-12: 48px`
-(`--space-7/9/11` skipped). Cards use 18px inner padding; hero 24px top / 20px horizontal.
+- No urgency language: no "act now," no exclamation points, no implied time pressure, anywhere in the app — not just proactive triggers.
+- Default framing is "no action needed" unless something genuinely warrants it.
+- Never predict price direction or timing ("bouncing back," "about to run").
+- No gamification: no streaks, badges-as-achievement, confetti, or progress bars framed as game mechanics.
 
-## 4. Radius tokens
+## Data display rules
 
-`--radius-sm: 8px` · `--radius-input: 12px` · `--radius-button: 14px` ·
-`--radius-card: 16px` · `--radius-pill: 999px`. (`.card-frost` = 20px, `.position-card` = 16px.)
+- Holdings rows show TOTAL gain (%+$), not TODAY's move, by default — Today's number is already visible at the portfolio-level header and repeating it per row reinforces short-term checking behavior; Total reinforces patience. Today's move lives one tap in, alongside fundamentals detail.
+- Minimal by default, tap-through for depth — never show fundamentals-level detail (P/E, beta, analyst rating) inline on a summary row.
 
-## 5. Type scale
+## What NOT to copy from reference apps
 
-`--text-xs: 12px` · `--text-sm: 14px` · `--text-base: 15px` · `--text-lg: 18px` ·
-`--text-xl: 20px` · `--text-2xl: 24px` · `--text-3xl: 30px`.
-Hero value: 56px Playfair italic; hero cents: 32px.
-`--font-sans: Inter` · `--font-serif: Playfair Display (italic)` · `--mono-font: JetBrains Mono`.
+- Mercury's purple/cinematic-photography language — that's Mercury solving a different signaling problem (founder-facing, "not a traditional bank"). Borrow their precision standard only, not their visual identity.
+- Any "Bold/energetic" direction explored earlier (confetti, neon, motion-as-hype) — explicitly rejected as wrong for this audience, reads as trading-as-entertainment (Robinhood-style), not discipline.
 
-## 6. Component heights
+## Addendum — AI Noticed visual upgrade (Rebalance + idle-cash only) — Sep 2026
 
-`--height-input: 52px` · `--height-button: 52px` · `--height-button-sm: 40px` ·
-`--height-nav: 64px` · `--height-status-bar: 44px`.
+This pass upgrades the ONE-card AI Noticed treatment for Rebalance (concentration-risk) and idle-cash triggers ONLY. Wash-sale, event-impact, and bounce-back keep the current simpler card treatment until reviewed separately.
 
-## 7. Shadows & motion
+### Snooze control
 
-- `--shadow-card` `0 4px 24px rgba(0,0,0,0.30)` · `--shadow-modal` `0 8px 48px rgba(0,0,0,0.50)`
-- `--shadow-glow` `0 0 40px rgba(34,211,238,0.25)` · `--shadow-glow-sm` `0 0 20px rgba(34,211,238,0.15)`
-- durations: fast 150ms / base 300ms / slow 600ms · ease-out `cubic-bezier(0.16,1,0.3,1)` ·
-  ease-spring `cubic-bezier(0.34,1.56,0.64,1)`.
+- Replace the bare "Dismiss" button with a lightweight "Remind in Nd" text link (default N = 5 days).
+- Tap opens a quick picker: 3 / 5 / 7 / 14 days.
+- Selecting a duration suppresses re-firing for that many days — same `dismissed_until` mechanism as the existing snooze, just user-adjustable duration instead of fixed.
+
+### Hero card (Rebalance + idle-cash)
+
+- Orb icon + "RUFUS NOTICED" label above the insight text.
+- Insight text rendered in the serif/italic voice font (same treatment as the balance number).
+
+### Concentration-risk (Rebalance) card
+
+- Donut chart showing actual portfolio composition from live holdings data, with the top 1-2 over-concentrated holdings in the accent/danger color and everything else in muted tones.
+- CTAs (trade-enabled): "Trade" (primary — reuses existing Rebalance execution-ready-orders flow, still requires user approval before submission, no auto-execute) + "Download" (secondary text link), side by side.
+- CTAs (read-only): "Download" only.
+
+### Idle-cash card
+
+- Two-bar illustrative chart: Cash (flat/muted) vs Invested (accent).
+- HARD CONSTRAINT: NO percentages, NO index reference, NO timeframe. Static bars only.
+- Caption must be prominent: "Illustrative only - not a projection or guarantee. Investing involves risk of loss."
+
+### Not in this pass
+
+- Do NOT "improve" the idle-cash chart later by adding real numbers/percentages/index/timeframe — the illustrative-only constraint is intentional and locked.
+- Wash-sale, event-impact, bounce-back cards: unchanged.

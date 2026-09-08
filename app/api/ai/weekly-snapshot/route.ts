@@ -24,7 +24,7 @@ import { getBatchQuotes } from '@/lib/market-data';
 // Static analysis instructions — cached across all snapshot requests
 const SNAPSHOT_STATIC: SystemBlock = {
   type: 'text',
-  text: `You are Vantage AI portfolio health analyst.
+  text: `You are Rufus, Vantage's portfolio health analyst.
 Generate a Weekly Portfolio Snapshot framed for the user's specific
 investor style and risk tolerance (provided in the message).
 

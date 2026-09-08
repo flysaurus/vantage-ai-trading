@@ -15,7 +15,7 @@ import type { AiFact } from '@/lib/ai/facts';
 import { createServerClient } from '@/lib/supabase';
 
 // Replicate the greeting system prompt (simplified — core rules only)
-const GREETING_SYSTEM = `You are Vantage AI.
+const GREETING_SYSTEM = `You are Rufus, Vantage's AI.
 Generate a greeting for a returning user.
 
 OUTPUT FORMAT — two parts separated by ||| :

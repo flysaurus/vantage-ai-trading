@@ -26,7 +26,7 @@ const SEARXNG_URL = process.env.SEARXNG_URL || 'http://85.239.230.26:8888';
 // Static format instructions — cached across all daily brief requests
 const DAILY_BRIEF_STATIC: SystemBlock = {
   type: 'text',
-  text: `You are Vantage AI daily briefing engine.
+  text: `You are Rufus, Vantage's daily briefing engine.
 Write a concise daily brief using real news items AND
 portfolio data provided below. NEVER invent numbers.
 NEVER say "no positions held."

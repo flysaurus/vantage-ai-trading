@@ -123,7 +123,7 @@ function SessionDay({
                     letterSpacing: '0.03em',
                   }}
                 >
-                  VANTAGE AI
+                  RUFUS
                 </div>
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -470,7 +470,7 @@ export function ChatHistory({ open, onClose }: ChatHistoryProps) {
                 No recent conversations
               </div>
               <div style={{ fontSize: '12px' }}>
-                Start chatting with Vantage AI — your history will appear here
+                Start chatting with Rufus — your history will appear here
               </div>
             </div>
           )}

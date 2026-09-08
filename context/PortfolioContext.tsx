@@ -233,7 +233,7 @@ interface PortfolioContextValue {
   /** Data source: 'demo' or 'snaptrade' */
   brokerSource: 'demo' | 'snaptrade';
   /** Broker metadata for UI badges */
-  brokerMeta: { slug: string; name: string; tradingEnabled: boolean; isDemo: boolean; environment?: 'paper' | 'live' | 'demo' } | null;
+  brokerMeta: { slug: string; name: string; broker: string; tradingEnabled: boolean; isDemo: boolean; environment?: 'paper' | 'live' | 'demo' } | null;
 }
 
 const PortfolioContext = createContext<PortfolioContextValue>({
@@ -1807,6 +1807,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       setBrokerMeta({
         slug: activeAccount.brokerageSlug || activeAccount.broker || '',
         name: activeAccount.name || 'Connected Broker',
+        broker: activeAccount.broker || '',
         tradingEnabled: activeAccount.tradingEnabled ?? false,
         isDemo: false,
         environment: (activeAccount.environment as 'paper' | 'live') || 'live',

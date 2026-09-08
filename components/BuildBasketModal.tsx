@@ -1197,7 +1197,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
     }}>
       <CompassIcon size={64} color="#22d3ee" animated={true} />
       <p style={{ fontSize: '16px', fontWeight: '600', color: '#ffffff', textAlign: 'center' }}>
-        Vantage AI is building your basket...
+        Rufus is building your basket...
       </p>
       <p style={{ fontSize: '13px', color: '#cbd5e1', textAlign: 'center' }}>
         Selecting top stocks for {displayTheme}

@@ -24,7 +24,7 @@ import { callChatAI } from '@/lib/ai-provider';
 // Same static system prompt used by the snapshot route
 const SNAPSHOT_STATIC = {
   type: 'text' as const,
-  text: `You are Vantage AI portfolio health analyst.
+  text: `You are Rufus, Vantage's portfolio health analyst.
 Generate a Weekly Portfolio Snapshot framed for the user's specific
 investor style and risk tolerance (provided in the message).
 

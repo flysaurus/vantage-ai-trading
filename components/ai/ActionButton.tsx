@@ -8,8 +8,13 @@ import React from 'react';
 //   'REBALANCE'                 → concentration-risk / allocation drift
 //   'REVIEW_POSITION:<TICKER>'  → single-position flag
 //   'INVEST_CASH:<amount>'      → idle-cash suggestion (dollar amount)
-// Primary CTA uses the existing cyan-fill token; secondary "Dismiss"
-// reuses the existing snooze flow unchanged.
+// Primary CTA uses the existing cyan-fill token. The secondary control is a
+// lightweight "Remind in Nd" text link (default 5 days) that opens the
+// snooze picker — replacing the old bare "Dismiss" button.
+//
+// REBALANCE is the one action with a dual-CTA layout:
+//   - trade-enabled → "Trade" (primary, execution flow) + "Download" (link)
+//   - read-only     → "Download" only (downloadable proposal, no execution)
 
 interface ActionButtonProps {
   action: string;
@@ -17,14 +22,19 @@ interface ActionButtonProps {
   onReviewPosition?: (ticker: string) => void;
   onInvestCash?: (amount: number) => void;
   onDismiss?: () => void;
+  /**
+   * Optional: download-only secondary CTA for REBALANCE. Falls back to
+   * `onRebalance` when not provided (the rebalance flow always produces a
+   * downloadable plan).
+   */
+  onDownload?: () => void;
   disabled?: boolean;
   /**
    * True when the account cannot place orders (read-only connection).
-   * REBALANCE relabels to "Download rebalance plan" so the user knows they
-   * get a downloadable proposal instead of live execution.
+   * REBALANCE shows a single "Download" instead of Trade + Download.
    */
   readOnly?: boolean;
-  /** Hide the secondary "Dismiss" button (e.g. persistent inline cards). */
+  /** Hide the secondary "Remind in Nd" control (e.g. persistent inline cards). */
   showDismiss?: boolean;
   /** Render inline (no outer horizontal/bottom padding) for cards that already
    *  provide their own padding — e.g. the Portfolio-tab RiskNarrativeCard. */
@@ -37,6 +47,7 @@ export default function ActionButton({
   onReviewPosition,
   onInvestCash,
   onDismiss,
+  onDownload,
   disabled = false,
   readOnly = false,
   showDismiss = true,
@@ -44,10 +55,20 @@ export default function ActionButton({
 }: ActionButtonProps) {
   let primaryLabel = '';
   let onPrimary: (() => void) | undefined;
+  // Secondary "Download" link — only for trade-enabled REBALANCE.
+  let downloadLabel = '';
+  let onDownloadLink: (() => void) | undefined;
 
   if (action === 'REBALANCE') {
-    primaryLabel = readOnly ? 'Download rebalance plan' : 'Rebalance';
-    onPrimary = onRebalance;
+    if (readOnly) {
+      primaryLabel = 'Download';
+      onPrimary = onRebalance;
+    } else {
+      primaryLabel = 'Trade';
+      onPrimary = onRebalance;
+      downloadLabel = 'Download';
+      onDownloadLink = onDownload ?? onRebalance;
+    }
   } else if (action.startsWith('REVIEW_POSITION:')) {
     const ticker = action.slice('REVIEW_POSITION:'.length).trim();
     if (ticker) {
@@ -78,12 +99,27 @@ export default function ActionButton({
     opacity: disabled ? 0.6 : 1,
   };
 
+  // Secondary text link (Download) — no background, subtle underline.
+  const linkStyle: React.CSSProperties = {
+    background: 'transparent',
+    border: 'none',
+    color: '#22d3ee',
+    padding: '7px 4px',
+    fontSize: '12.5px',
+    fontWeight: 600,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    fontFamily: 'inherit',
+    textDecoration: 'underline',
+    textUnderlineOffset: '3px',
+    opacity: disabled ? 0.6 : 1,
+  };
+
+  // "Remind in Nd" — lightweight text link replacing the old bordered Dismiss.
   const dismissStyle: React.CSSProperties = {
     background: 'transparent',
-    color: 'rgba(255,255,255,0.65)',
-    border: '1px solid rgba(255,255,255,0.18)',
-    borderRadius: '8px',
-    padding: '7px 14px',
+    border: 'none',
+    color: 'rgba(255,255,255,0.55)',
+    padding: '7px 4px',
     fontSize: '12.5px',
     fontWeight: 600,
     cursor: disabled ? 'not-allowed' : 'pointer',
@@ -93,8 +129,8 @@ export default function ActionButton({
 
   return (
     <div style={flush
-      ? { display: 'flex', gap: '8px', flexWrap: 'wrap' }
-      : { display: 'flex', gap: '8px', padding: '0 14px 10px', marginTop: '-2px' }
+      ? { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }
+      : { display: 'flex', gap: '8px', padding: '0 14px 10px', marginTop: '-2px', alignItems: 'center' }
     }>
       <button
         type="button"
@@ -107,6 +143,19 @@ export default function ActionButton({
       >
         {primaryLabel}
       </button>
+      {downloadLabel && onDownloadLink && (
+        <button
+          type="button"
+          style={linkStyle}
+          disabled={disabled}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDownloadLink?.();
+          }}
+        >
+          {downloadLabel}
+        </button>
+      )}
       {showDismiss && (
         <button
           type="button"
@@ -117,7 +166,7 @@ export default function ActionButton({
             onDismiss?.();
           }}
         >
-          Dismiss
+          Remind in 5d
         </button>
       )}
     </div>
