@@ -82,6 +82,10 @@ async function setupContext(browser, activeAccountId, meta, noticed, viewport = 
       localStorage.setItem(lsKey, lsVal);
       localStorage.setItem(acctKey, acctId);
       localStorage.setItem('vantage:skipAccountSelect:v2', '1');
+      // Pre-mark the mock lead triggers as "seen" so the one-time streaming
+      // reveal doesn't race the full-sentence assertions below. The streaming
+      // behavior itself is verified separately in verify-today-additions.cjs.
+      localStorage.setItem('vantage:seen-lead-triggers', JSON.stringify(['concentration_top3:test', 'concentration_single:test']));
     } catch (e) {}
   }, ['vantage-auth-token', localSession, 'vantage:activeAccount', activeAccountId]);
   const page = await ctx.newPage();

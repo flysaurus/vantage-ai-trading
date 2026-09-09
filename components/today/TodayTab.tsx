@@ -22,7 +22,7 @@
 
 'use client';
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
@@ -112,6 +112,44 @@ function semanticColor(variant: string): string {
   if (variant === 'warn') return C.amber;
   if (variant === 'gain') return C.gain;
   return C.accent;
+}
+
+// ─── Explainability chip text (data-derived, factual, muted) ─
+// Small caption beneath the lead story's supporting sentence. Pulls real
+// numbers from the trigger meta — never hardcoded generic copy.
+function explainabilityText(item: any, positions: Position[]): string {
+  const m = item.meta || {};
+  const total = positions.length;
+  switch (item.triggerType) {
+    case 'concentration_top3': {
+      const syms = Array.isArray(m.symbols) ? m.symbols : [];
+      return syms.length > 0 && total > 0
+        ? `${syms.length} of ${total} positions concentrated`
+        : 'Based on your current holdings';
+    }
+    case 'concentration_single':
+      return m.symbol && total > 0
+        ? `${m.symbol} is ${total === 1 ? 'your only holding' : 'your largest holding'}`
+        : 'Based on your current holdings';
+    case 'idle_cash':
+      return 'Based on your current cash balance';
+    case 'portfolio_drift':
+      return m.sector ? `${m.sector} vs your target allocation` : 'Based on your target allocation';
+    case 'position_milestone':
+      return m.symbol ? `Based on ${m.symbol} performance` : 'Based on position performance';
+    case 'sentiment_shift':
+      return 'Based on recent news coverage';
+    case 'earnings_proximity':
+      return m.symbol ? `Based on ${m.symbol} upcoming earnings` : 'Based on upcoming earnings';
+    case 'wash_sale':
+      return 'Based on your recent trading activity';
+    case 'bounce_back':
+      return 'Based on recent price movement';
+    case 'event_impact':
+      return 'Based on upcoming events';
+    default:
+      return 'Based on your current holdings';
+  }
 }
 
 // ─── Lead-story numeric hero stat ──────────────────────────
@@ -531,11 +569,73 @@ export function TodayTab() {
   const leadHero = leadStatVal || (leadItem?.title ?? '');
   const leadSentence = leadStatVal ? (leadItem?.body ?? '') : '';
 
+  // Explainability chip — data-derived caption beneath the sentence.
+  const explainChip = leadItem ? explainabilityText(leadItem, positions) : '';
+
+  // ── One-time streaming reveal for NEW lead triggers ──
+  // The supporting sentence types in (30-40ms/char) the first time a given
+  // trigger is shown; stat + chart render instantly. "Seen" keys persist in
+  // localStorage so a trigger never re-plays on subsequent views.
+  const SEEN_KEY = 'vantage:seen-lead-triggers';
+  const [streamedSentence, setStreamedSentence] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!leadItem) { setStreamedSentence(''); setIsStreaming(false); return; }
+    const key = (leadItem.triggerKey || leadItem.id) as string;
+    const sentence = leadStat(leadItem) ? (leadItem.body ?? '') : '';
+    if (!key || !sentence) { setIsStreaming(false); setStreamedSentence(''); return; }
+
+    let seen: string[] = [];
+    try { seen = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]') || []; } catch { seen = []; }
+    if (seen.includes(key)) { setIsStreaming(false); setStreamedSentence(''); return; }
+
+    // New trigger → stream once.
+    let i = 0;
+    setIsStreaming(true);
+    setStreamedSentence('');
+    const id = window.setInterval(() => {
+      i += 1;
+      setStreamedSentence(sentence.slice(0, i));
+      if (i >= sentence.length) {
+        window.clearInterval(id);
+        setIsStreaming(false);
+        try {
+          const cur = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]') || [];
+          if (!cur.includes(key)) localStorage.setItem(SEEN_KEY, JSON.stringify([...cur, key]));
+        } catch { /* ignore */ }
+      }
+    }, 35);
+    return () => window.clearInterval(id);
+  }, [leadItem]);
+
   return (
     <div style={{ paddingBottom: 24 }}>
-      {/* ── 1. Header (canonical one-row pattern) ── */}
+      {/* ── 1. Header: masthead + account/status row ── */}
       <div style={{ padding: '14px 20px 0' }} data-testid="today-header">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        {/* Masthead: orb icon + "Vantage" wordmark (serif italic) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span
+            aria-hidden="true"
+            style={{
+              width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+              background: 'radial-gradient(circle at 32% 30%, #9FF0F4 0%, #5FD8DE 55%, #1B7D82 100%)',
+            }}
+          />
+          <span
+            style={{
+              fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 19,
+              lineHeight: 1, color: C.textPrimary, letterSpacing: '0.01em',
+            }}
+            data-testid="masthead-wordmark"
+          >
+            Vantage
+          </span>
+        </div>
+        {/* #5FD8DE accent rule — the ONE deliberate deviation from #141C2E */}
+        <div style={{ borderTop: '2px solid #5FD8DE', marginTop: 12 }} />
+        {/* Account/status row (unchanged canonical one-row pattern) */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 14 }}>
           {/* left: connection dot + account name + VIEW ONLY tag */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
@@ -581,12 +681,39 @@ export function TodayTab() {
           <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', color: semanticColor(leadItem.variant) }}>
             {humanizeTrigger(leadItem.triggerType)}
           </span>
-          <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 42, lineHeight: 1.05, color: C.textPrimary, marginTop: 8 }} data-testid="lead-stat">
-            {leadHero}
+          {/* Hero stat + radial glow (subtle accent behind the number only) */}
+          <div style={{ position: 'relative', marginTop: 8 }}>
+            <div
+              aria-hidden="true"
+              data-testid="lead-stat-glow"
+              style={{
+                position: 'absolute',
+                left: -16, top: -22, right: -8, bottom: -18,
+                background: 'radial-gradient(ellipse 55% 50% at 24% 42%, rgba(95,216,222,0.16) 0%, rgba(95,216,222,0.05) 55%, transparent 75%)',
+                filter: 'blur(8px)',
+                pointerEvents: 'none',
+              }}
+            />
+            <div style={{ position: 'relative', fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 42, lineHeight: 1.05, color: C.textPrimary }} data-testid="lead-stat">
+              {leadHero}
+            </div>
           </div>
           {leadSentence && (
-            <div style={{ fontSize: 14, lineHeight: 1.55, color: C.textSecondary, marginTop: 10, maxWidth: 520 }} data-testid="lead-sentence">
-              {leadSentence}
+            <div
+              style={{ position: 'relative', fontSize: 14, lineHeight: 1.55, color: C.textSecondary, marginTop: 10, maxWidth: 520 }}
+              data-testid="lead-sentence"
+              data-streaming={isStreaming ? 'true' : 'false'}
+            >
+              {/* invisible full sentence reserves exact height (no layout shift while typing) */}
+              <span style={{ visibility: 'hidden' }} aria-hidden="true">{leadSentence}</span>
+              <span style={{ position: 'absolute', left: 0, top: 0 }}>
+                {isStreaming ? streamedSentence : leadSentence}
+              </span>
+            </div>
+          )}
+          {explainChip && (
+            <div style={{ fontSize: 11, color: C.textFaint, marginTop: 10 }} data-testid="lead-explainability">
+              {explainChip}
             </div>
           )}
           {renderCta()}

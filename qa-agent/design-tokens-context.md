@@ -112,3 +112,27 @@ This pass upgrades the ONE-card AI Noticed treatment for Rebalance (concentratio
 
 - Do NOT "improve" the idle-cash chart later by adding real numbers/percentages/index/timeframe — the illustrative-only constraint is intentional and locked.
 - Wash-sale, event-impact, bounce-back cards: unchanged.
+
+## Addendum — Today tab masthead + lead-stat glow (Sep 2026)
+
+### Masthead (app-level brand, top of Today tab)
+
+- One row only: small orb icon (radial gradient `#9FF0F4 → #5FD8DE → #1B7D82`) + "Vantage" wordmark in serif italic at ~19px, top-left.
+- Directly beneath the masthead row: a **2px `#5FD8DE` accent rule**. This is the ONE deliberate deviation from the standard `#141C2E` hairline — used nowhere else in the app.
+- The account/status row (connection dot + account name + VIEW ONLY tag + investor-style link) sits BELOW the masthead + accent rule, unchanged. Its own bottom border remains the standard `0.5px #141C2E` hairline.
+- Naming: "Vantage" is the app/brand name (masthead). "Rufus" is the AI persona only — it must never appear as an app-level brand/masthead label; it belongs exclusively on AI-attributed surfaces ("Ask Rufus" bar, "RUFUS NOTICED" labels, the chat identity).
+
+### Radial glow exception (lead stat only)
+
+- A subtle radial accent glow renders BEHIND the lead-story hero stat number only.
+- Treatment: soft `radial-gradient` in the accent hue (`rgba(95,216,222,…)`) at low opacity (~0.16 peak), blurred, positioned behind the serif-italic number. The number itself stays fully opaque `#EAEEF7` on top.
+- Constraint: subtle only — it must never overpower or obscure the number. This glow is a one-off exception for the hero stat and is NOT a general decorative rule (do not apply to balances, other stats, or labels).
+
+### One-time streaming reveal (lead story)
+
+- The first time a NEW lead-story trigger is shown, the supporting sentence types in character-by-character (~30-40ms/char). The hero stat and trend chart render instantly; only the sentence streams.
+- "Seen" state persists (localStorage `vantage:seen-lead-triggers`, keyed by `triggerKey`) so an already-viewed trigger never re-plays — no looping/repeating animation, ever.
+
+### Explainability chip (lead story)
+
+- A small muted caption (`#5C6478`, 11px) beneath the supporting sentence, factual and data-derived (e.g. "3 of 26 positions concentrated"), never hardcoded generic copy.
