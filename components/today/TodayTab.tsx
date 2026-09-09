@@ -132,10 +132,11 @@ function TodayDonut({ positions }: { positions: Position[] }) {
   const R = 30;
   const CIRC = 2 * Math.PI * R;
   const STROKE = 11;
+  const SEG_COLORS = [C.amber, C.accent, 'rgba(255,255,255,0.35)'];
   let cumulative = 0;
   const segments = data.map((d, i) => {
     const len = (d.pct / 100) * CIRC;
-    const color = i === 0 ? C.amber : i === 1 ? C.accent : 'rgba(255,255,255,0.10)';
+    const color = SEG_COLORS[i] ?? 'rgba(255,255,255,0.10)';
     const seg = (
       <circle
         key={d.symbol}
@@ -154,18 +155,20 @@ function TodayDonut({ positions }: { positions: Position[] }) {
     return seg;
   });
 
-  const topTwo = data.slice(0, 2);
+  // Legend shows the same top-3 the concentration headline names ("Top 3 are X% of you").
+  const LEGEND_COLORS = [C.amber, C.accent, 'rgba(255,255,255,0.35)'];
+  const topThree = data.slice(0, 3);
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14 }}>
       <svg width="80" height="80" viewBox="0 0 80 80" style={{ flexShrink: 0 }}>
         {segments}
       </svg>
-      {/* 2-line legend */}
+      {/* legend (top-3 to match headline) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-        {topTwo.map((d, i) => (
+        {topThree.map((d, i) => (
           <div key={d.symbol} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: C.textSecondary }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: i === 0 ? C.amber : C.accent, flexShrink: 0 }} />
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: LEGEND_COLORS[i], flexShrink: 0 }} />
             <span style={{ fontWeight: 700, color: C.textPrimary, whiteSpace: 'nowrap' }}>{d.symbol}</span>
             <span style={{ color: C.textFaint }}>{d.pct.toFixed(0)}%</span>
           </div>
