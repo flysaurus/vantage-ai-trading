@@ -84,7 +84,7 @@ export function PositionRow({
               ${position.marketValue.toLocaleString()}
             </div>
             <div style={{ fontSize: 10, fontWeight: 600, color: isUp ? '#22c55e' : '#ef4444' }}>
-              {isUp ? '+' : ''}${Math.round(Math.abs(pnl)).toLocaleString()} ({isUp ? '+' : ''}{pnlPct.toFixed(1)}%)
+              {isUp ? '+' : '-'}{pnlPct.toFixed(1)}% · {isUp ? '+' : '-'}${Math.round(Math.abs(pnl)).toLocaleString()}
             </div>
           </div>
           {onSell && !isSelectable && !compact && (

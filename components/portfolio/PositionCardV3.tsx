@@ -798,10 +798,7 @@ export default function PositionCardV3({
                     fontFamily: 'var(--mono-font, monospace)',
                   }}
                 >
-                  {todayPnL >= 0 ? '+' : ''}${Math.abs(todayPnL).toFixed(2)}
-                  <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 4 }}>
-                    ({todayPnL >= 0 ? '+' : ''}{Math.abs(todayPnLPct).toFixed(2)}%)
-                  </span>
+                  {(todayPnL >= 0 ? '+' : '-')}{Math.abs(todayPnLPct).toFixed(2)}% · {(todayPnL >= 0 ? '+' : '-')}${Math.abs(todayPnL).toFixed(2)}
                 </span>
               </div>
             </div>
@@ -834,10 +831,7 @@ export default function PositionCardV3({
                     fontFamily: 'var(--mono-font, monospace)',
                   }}
                 >
-                  {totalPnL >= 0 ? '+' : ''}${Math.abs(totalPnL).toFixed(2)}
-                  <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 4 }}>
-                    ({totalPnL >= 0 ? '+' : ''}{Math.abs(totalPnLPct).toFixed(1)}%)
-                  </span>
+                  {(totalPnL >= 0 ? '+' : '-')}{Math.abs(totalPnLPct).toFixed(1)}% · {(totalPnL >= 0 ? '+' : '-')}${Math.abs(totalPnL).toFixed(2)}
                 </span>
               </div>
             </div>
