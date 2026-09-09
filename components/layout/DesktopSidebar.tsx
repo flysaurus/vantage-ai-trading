@@ -3,16 +3,13 @@
 // Same tabs, same state — just vertical with labels.
 
 'use client';
-import { Briefcase, TrendingUp, Star, Settings } from 'lucide-react';
+import { Home, TrendingUp, Settings } from 'lucide-react';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
-import CompassIcon from '../CompassIcon';
 
-const TABS: { id: TabId; icon: typeof Briefcase; label: string }[] = [
-  { id: 'portfolio', icon: Briefcase, label: 'Portfolio' },
+const TABS: { id: TabId; icon: typeof Home; label: string }[] = [
+  { id: 'today', icon: Home, label: 'Today' },
   { id: 'invest', icon: TrendingUp, label: 'Invest' },
-  { id: 'ai', icon: Briefcase, label: 'AI Advisor' },
-  { id: 'watchlist', icon: Star, label: 'Watchlist' },
   { id: 'settings', icon: Settings, label: 'Settings' },
 ];
 
@@ -29,11 +26,7 @@ export function DesktopSidebar() {
             className={`sidebar-item${activeTab === id ? ' active' : ''}`}
             onClick={() => setTab(id)}
           >
-            {id === 'ai' ? (
-              <CompassIcon size={18} color={activeTab === 'ai' ? '#22d3ee' : '#64748b'} />
-            ) : (
-              <Icon size={18} strokeWidth={activeTab === id ? 2.5 : 1.5} />
-            )}
+            <Icon size={18} strokeWidth={activeTab === id ? 2.5 : 1.5} />
             <span>{label}</span>
           </button>
         ))}

@@ -145,6 +145,9 @@ interface DownloadPayload {
 interface AITabProps {
   messages: Message[];
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  /** When set, renders a back/close (←) affordance in the top bar — used by the
+   *  full-screen chat overlay so users can dismiss it and return to the app. */
+  onClose?: () => void;
 }
 
 // ── AI Noticed — fetched from Supabase via API ──
@@ -214,7 +217,7 @@ const PLACEHOLDERS = [
   'Markets, stocks, or your portfolio — ask anything',
 ];
 
-export function AITab({ messages, setMessages }: AITabProps) {
+export function AITab({ messages, setMessages, onClose }: AITabProps) {
   const router = useRouter();
   const { setTab, setFocusPosition } = useTabStore();
   const { account: liveAccount, executeTrade, brokerMeta } = useLivePortfolio();
@@ -1957,6 +1960,31 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         zIndex: 20,
         position: 'relative',
       }}>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close chat"
+            style={{
+              flexShrink: 0,
+              width: '36px',
+              height: '36px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '50%',
+              color: 'rgba(255,255,255,0.75)',
+              fontSize: '17px',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              lineHeight: 1,
+            }}
+          >
+            ←
+          </button>
+        )}
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <button
             onClick={() => setShowMenu(!showMenu)}

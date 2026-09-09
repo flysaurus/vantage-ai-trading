@@ -34,7 +34,10 @@ const DEFAULT_WATCHLIST: WatchlistItem[] = [];
 const DEFAULT_INDEX_SYMBOLS = ['SPY', 'QQQ', 'IWM', 'DIA', 'XLF'];
 
 // ─── Tab State ───
-export type TabId = 'ai' | 'invest' | 'portfolio' | 'watchlist' | 'settings';
+// 'today' = home screen (replaces Portfolio as the landing tab).
+// 'portfolio' is retained as the stand-in Holdings screen (reached via "See all holdings").
+// 'watchlist' is retained for URL-param / programmatic navigation but is not in the nav.
+export type TabId = 'today' | 'invest' | 'portfolio' | 'watchlist' | 'settings';
 
 interface TabStore {
   activeTab: TabId;
@@ -42,18 +45,23 @@ interface TabStore {
   /** Ticker to focus/expand in the Portfolio tab (set cross-tab, consumed + cleared by PortfolioTab). */
   focusPosition: string | null;
   setFocusPosition: (symbol: string | null) => void;
-  /** Pending chat prompt to auto-send when the AI tab next mounts (set cross-tab, consumed by AITab). */
+  /** Pending chat prompt to auto-send when the AI chat next mounts (set cross-tab, consumed by AITab). */
   pendingPrompt: string | null;
   setPendingPrompt: (prompt: string | null) => void;
+  /** Whether the full-screen Ask Rufus chat overlay is open (replaces the old AI tab destination). */
+  chatOpen: boolean;
+  setChatOpen: (open: boolean) => void;
 }
 
 export const useTabStore = create<TabStore>((set) => ({
-  activeTab: 'ai',
+  activeTab: 'today',
   setTab: (tab) => set({ activeTab: tab }),
   focusPosition: null,
   setFocusPosition: (symbol) => set({ focusPosition: symbol }),
   pendingPrompt: null,
   setPendingPrompt: (prompt) => set({ pendingPrompt: prompt }),
+  chatOpen: false,
+  setChatOpen: (open) => set({ chatOpen: open }),
 }));
 
 // ─── Market Data ───

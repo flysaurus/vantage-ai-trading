@@ -37,7 +37,7 @@ interface ActionButtonProps {
   /** Hide the secondary "Remind in Nd" control (e.g. persistent inline cards). */
   showDismiss?: boolean;
   /** Render inline (no outer horizontal/bottom padding) for cards that already
-   *  provide their own padding — e.g. the Portfolio-tab RiskNarrativeCard. */
+   *  provide their own padding — e.g. the Portfolio-tab hero card. */
   flush?: boolean;
 }
 

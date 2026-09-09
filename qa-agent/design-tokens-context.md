@@ -6,18 +6,55 @@ Reference context for any `/redesign` or `critique_design` call.
 
 Ages 18-45. Don't have time or expertise to trade themselves. Explicitly NOT looking to gamble or chase a quick buck. Every design decision should reinforce patience and discipline, never urgency or checking-in behavior.
 
-## Visual language: Copilot-inspired restraint
+## Color Palette (final)
 
-- Background: deep navy canvas (`#000814`), not pure black or lighter navy.
-- Color is reserved for data only — gains/losses, active state. Never decorative.
-- Gain/positive: `#3DDC84` · Loss/negative: `#F0716B` · Interactive/CTA: `#5FD8DE`
-- Typography: Playfair italic for large headline numbers (balance, big figures). Inter/sans for everything else — labels, body, rows.
-- No gradients, no drop shadows, no decorative badges/chips stacked together.
-- Precision standard (borrowed from Mercury, not their color language): spacing and type weight should be deliberate, not "close enough" defaults.
+### Canvas
+- Primary background: `#000814`
+- Secondary panel (demoted sections, Ask Rufus bar strip): `#050A14`
+- Card/bordered fill (secondary cards, notices): `#0A0F1E`
+- Ask Rufus bar fill: `#0F1626`
 
-## Header pattern (locked, applies to every screen)
+### Borders/rules
+- Standard hairline (row dividers, section rules): `#141C2E`
+- Stronger border (bordered cards like "Build Basket"): `#2A3648`
+- Donut chart track (unfilled): `#1B2333`
+- Admin-restricted border: `#3A2E1C`
 
-One slim row: connection status + account name + view-only tag if applicable, inline. Investor style is a tappable link, never a badge. No more than this one row of chrome above the screen's actual content.
+### Text
+- Primary (headlines, key numbers, row titles): `#EAEEF7`
+- Secondary (body copy, insight text): `#C4CCDC`
+- Tertiary (muted labels, section headers like "PORTFOLIO VALUE"): `#8891A6`
+- Quaternary (timestamps, chart axis labels): `#5C6478`
+- Faintest (chart axis endpoints only): `#4A5268`
+
+### Semantic (color reserved for data ONLY, never decorative)
+- Gain/positive: `#3DDC84`
+- Loss/negative: `#F0716B`
+- View-only / restricted-amber: `#D9A94A`
+- Admin-restricted background tint: `#161008`
+
+### Accent (interactive/CTA only)
+- Primary accent (Rufus orb, active tab, primary CTA fill, links): `#5FD8DE`
+- Text-on-accent (button label color when background is `#5FD8DE`): `#00272B`
+
+## Typography
+
+- Display/headline (balance number, lead-story stat, position price, screen titles like "Holdings"): serif italic, `var(--font-voice)` equivalent — use the existing Playfair italic already in the codebase, do not introduce a new font.
+- Body/UI (everything else — labels, row text, buttons): existing Inter/sans, unchanged.
+
+## Component patterns (final, reusable across all screens)
+
+### Header pattern
+One row only — connection status dot + account name (+ view-only tag if applicable) on the left, investor style as a plain text link (not a badge) on the right. `0.5px #141C2E` bottom border. No stacked pills, ever.
+
+### Row-list pattern (holdings, orders, settings items)
+No card backgrounds or borders around individual rows — separate with a single `0.5px #141C2E` top rule per row instead. Reserve bordered/filled cards (`#0A0F1E`) for standalone elements (notices, "Build Basket") only, not repeating list rows.
+
+### Restricted/admin pattern
+`#161008` background, `#3A2E1C` border, `#D9A94A` label text, physically separated from the surrounding list by margin, never inline in the same undifferentiated stack as regular items.
+
+### Ask Rufus bar
+Persistent, `#0F1626` fill, 20px border-radius, sits above the bottom nav on every tab (not scoped to one screen) — orb icon on the right, placeholder text "Ask Rufus anything..." at `#5C6478`.
 
 ## AI Noticed card pattern (locked, applies wherever triggers can fire)
 

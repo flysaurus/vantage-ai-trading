@@ -289,7 +289,7 @@ input::placeholder, textarea::placeholder {
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   min-height: 0;
-  padding-bottom: 80px;
+  padding-bottom: 156px; /* clears fixed BottomNav (64px) + floating Ask Rufus bar (48px + gaps) */
 }
 .content-area::-webkit-scrollbar { width: 4px; }
 .content-area::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 2px; }
@@ -520,7 +520,7 @@ input::placeholder, textarea::placeholder {
     overflow: hidden;
   }
   .bottom-nav { display: none; }
-  .content-area { padding: 24px 32px; }
+  .content-area { padding: 24px 32px; padding-bottom: 96px; }
   .indexes-bar { padding: 10px 32px; gap: 16px; }
   .watchlist-bar { padding: 10px 32px; gap: 16px; }
   .app-header { padding: 12px 32px; }
@@ -528,7 +528,7 @@ input::placeholder, textarea::placeholder {
 
 /* Wide Desktop (1400px+) */
 @media (min-width: 1400px) {
-  .content-area { padding: 24px 48px; }
+  .content-area { padding: 24px 48px; padding-bottom: 96px; }
   .indexes-bar { padding: 10px 48px; }
   .watchlist-bar { padding: 10px 48px; }
   .app-header { padding: 12px 48px; }

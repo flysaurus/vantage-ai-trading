@@ -22,6 +22,8 @@ import { TradeTab } from '@/components/trade/TradeTab';
 import { PortfolioTab } from '@/components/portfolio/PortfolioTab';
 import { SettingsTab } from '@/components/settings/SettingsTab';
 import WatchlistTab from '@/components/ai/WatchlistTab';
+import { TodayTab } from '@/components/today/TodayTab';
+import { AskRufusBar } from '@/components/today/AskRufusBar';
 import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider';
 import { AccountProvider, useAccounts } from '@/context/AccountContext';
 import { AccountSwitcher } from '@/components/accounts/AccountSwitcher';
@@ -36,9 +38,9 @@ import GreetingModal from '@/components/GreetingModal';
 import type { User } from '@/types';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 
-const TABS_WITH_MARKETBAR: Set<TabId> = new Set(['ai', 'invest', 'portfolio']);
+const TABS_WITH_MARKETBAR: Set<TabId> = new Set(['invest', 'portfolio']);
 
-const TAB_COMPONENTS: Record<Exclude<TabId, 'ai'>, React.FC> = {
+const TAB_COMPONENTS: Record<Exclude<TabId, 'today'>, React.FC> = {
   invest: TradeTab,
   portfolio: PortfolioTab,
   watchlist: WatchlistTab,
@@ -46,7 +48,7 @@ const TAB_COMPONENTS: Record<Exclude<TabId, 'ai'>, React.FC> = {
 };
 
 function AppShell() {
-  const { activeTab, setTab } = useTabStore();
+  const { activeTab, setTab, chatOpen, setChatOpen } = useTabStore();
   const { state, user: supabaseUser, profile } = useAppState();
   const { isConnected, isInitialized } = useBroker();
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -132,7 +134,11 @@ function AppShell() {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.tab && ['portfolio', 'invest', 'ai', 'watchlist', 'settings'].includes(detail.tab)) {
+      if (detail?.tab === 'ai') {
+        setChatOpen(true);
+        return;
+      }
+      if (detail?.tab && ['today', 'portfolio', 'invest', 'watchlist', 'settings'].includes(detail.tab)) {
         setTab(detail.tab);
         if (detail.section) {
           setTimeout(() => {
@@ -153,7 +159,7 @@ function AppShell() {
     };
     window.addEventListener('vantage-navigate', handler);
     return () => window.removeEventListener('vantage-navigate', handler);
-  }, [setTab]);
+  }, [setTab, setChatOpen]);
 
   // ── Auto-execute pending orders ──
   const { executePendingOrders } = useLivePortfolio();
@@ -207,20 +213,23 @@ function AppShell() {
         window.history.replaceState({}, '', '/');
         if (action.type === 'trade') setTab('invest');
         else if (action.type === 'basket') setTab('portfolio');
-        else if (action.type === 'chat') setTab('ai');
+        else if (action.type === 'chat') setChatOpen(true);
       } catch {}
     }
-  }, [setTab]);
+  }, [setTab, setChatOpen]);
 
   // ── Tab from query param (e.g. ?tab=settings from price-alerts back button) ──
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
-    if (tabParam && ['portfolio', 'invest', 'ai', 'watchlist', 'settings'].includes(tabParam)) {
+    if (tabParam === 'ai') {
+      setChatOpen(true);
+      window.history.replaceState({}, '', '/');
+    } else if (tabParam && ['today', 'portfolio', 'invest', 'watchlist', 'settings'].includes(tabParam)) {
       setTab(tabParam as TabId);
       window.history.replaceState({}, '', '/');
     }
-  }, [setTab]);
+  }, [setTab, setChatOpen]);
 
   // ── Account Select screen — first login OR Settings entry ──
   useEffect(() => {
@@ -266,23 +275,29 @@ function AppShell() {
     return <InvestorStyleOnboarding />;
   }
 
+  const isToday = activeTab === 'today';
+
   const mainContent = (
     <>
-
-      <Header />
-      <div className="flex items-center gap-2 px-4 py-1.5 border-b border-white/5">
-        <AccountSwitcher />
-        <InvestorStyleBadge />
-      </div>
-      {TABS_WITH_MARKETBAR.has(activeTab) && <MarketBar />}
-      <WatchlistBar />
-      <div className="content-area" style={activeTab === 'ai' ? { overflow: 'hidden', paddingBottom: '64px', display: 'flex', flexDirection: 'column' } : undefined}>
-        {activeTab === 'ai' ? (
-          <AITab messages={chatMessages} setMessages={setChatMessages} />
+      {!isToday && (
+        <>
+          <Header />
+          <div className="flex items-center gap-2 px-4 py-1.5 border-b border-white/5">
+            <AccountSwitcher />
+            <InvestorStyleBadge />
+          </div>
+          {TABS_WITH_MARKETBAR.has(activeTab) && <MarketBar />}
+          <WatchlistBar />
+        </>
+      )}
+      <div className="content-area" style={isToday ? { padding: '0 0 156px' } : undefined}>
+        {isToday ? (
+          <TodayTab />
         ) : (
           React.createElement(TAB_COMPONENTS[activeTab])
         )}
       </div>
+      <AskRufusBar />
       {!isDesktop && <BottomNav />}
     </>
   );
@@ -291,6 +306,16 @@ function AppShell() {
     <div className="app-shell bg-app">
       {isDesktop && <DesktopSidebar />}
       {isDesktop ? <div className="main-panel">{mainContent}</div> : mainContent}
+
+      {/* Full-screen chat overlay — replaces the old AI tab destination */}
+      {chatOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 99990,
+          background: '#000814', display: 'flex', flexDirection: 'column',
+        }}>
+          <AITab messages={chatMessages} setMessages={setChatMessages} onClose={() => setChatOpen(false)} />
+        </div>
+      )}
 
       {showWelcomeToast && (() => {
         const initial = ((effectiveUser?.name || effectiveUser?.email || 'M')[0]?.toUpperCase() || 'M') + '.';

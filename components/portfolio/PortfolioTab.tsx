@@ -45,7 +45,7 @@ const formatCurrency = (n: number) => {
 };
 
 // ─── AI Noticed visual upgrade — concentration donut (real holdings) ───
-// Donut chart of actual portfolio composition. Top 1-2 over-concentrated
+// Donut chart of actual portfolio composition. Top 1-3 over-concentrated
 // holdings in accent/danger; everything else muted. Data only — no prediction.
 function ConcentrationDonut({ positions }: { positions: Position[] }) {
   const data = useMemo(() => {
@@ -84,7 +84,7 @@ function ConcentrationDonut({ positions }: { positions: Position[] }) {
     return seg;
   });
 
-  const topTwo = data.slice(0, 2);
+  const topThree = data.slice(0, 3);
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
@@ -92,15 +92,15 @@ function ConcentrationDonut({ positions }: { positions: Position[] }) {
         {segments}
       </svg>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
-        {topTwo.map((d, i) => (
+        {topThree.map((d, i) => (
           <div key={d.symbol} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'rgba(255,255,255,0.8)' }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: i === 0 ? '#f59e0b' : '#22d3ee', flexShrink: 0 }} />
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: i === 0 ? '#f59e0b' : i === 1 ? '#22d3ee' : 'rgba(255,255,255,0.35)', flexShrink: 0 }} />
             <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{d.symbol}</span>
             <span style={{ color: 'rgba(255,255,255,0.45)' }}>{d.pct.toFixed(0)}%</span>
           </div>
         ))}
         <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.35)' }}>
-          {data.length} holding{data.length === 1 ? '' : 's'} · top {Math.min(2, data.length)} concentrated
+          {data.length} holding{data.length === 1 ? '' : 's'} · top {Math.min(3, data.length)} concentrated
         </div>
       </div>
     </div>
@@ -959,7 +959,7 @@ export function PortfolioTab() {
   const { isConnected } = useBroker();
   const { activeAccount, activeAccountId } = useAccounts();
   const { user } = useAuth();
-  const { focusPosition, setFocusPosition, setTab, setPendingPrompt } = useTabStore();
+  const { focusPosition, setFocusPosition, setTab, setPendingPrompt, setChatOpen } = useTabStore();
 
   // Hard boundary: Demo must NEVER show broker data. Scope data source by active account.
   const isShowingDemo = activeAccount?.isDemo ?? false;
@@ -1214,10 +1214,80 @@ export function PortfolioTab() {
 
   return (
     <div style={{ paddingBottom: 24 }}>
-      {/* ── 1. Account Hero ── */}
+      {/* ── 1. Rufus Noticed hero card — leads the screen (single card, single label) ── */}
+      {topNoticed ? (() => {
+        const accent = topNoticed.variant === 'warn' ? '#f59e0b' : topNoticed.variant === 'gain' ? '#22c55e' : '#22d3ee';
+        const isRebalance = topNoticed.action === 'REBALANCE';
+        const isIdleCash = typeof topNoticed.action === 'string' && topNoticed.action.startsWith('INVEST_CASH:');
+        return (
+          <div style={{ padding: '16px 16px 0' }}>
+            <div style={{
+              position: 'relative',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 16,
+              padding: 14,
+              background: 'rgba(255,255,255,0.03)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <VantageOrb size={20} animate={false} showEntrance={false} />
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', color: accent }}>RUFUS NOTICED</span>
+              </div>
+              <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 15, color: '#f1f5f9', lineHeight: 1.5 }}>{topNoticed.body}</div>
+              {isRebalance && <ConcentrationDonut positions={displayPositions} />}
+              {isIdleCash && <IdleCashIllustration />}
+              {topNoticed.action && (
+                <ActionButton
+                  action={topNoticed.action}
+                  readOnly={isReadOnly}
+                  flush
+                  onRebalance={() => { setPendingPrompt('rebalance'); setChatOpen(true); }}
+                  onReviewPosition={(ticker) => { setFocusPosition(ticker); setTab('portfolio'); }}
+                  onInvestCash={(amount) => { setPendingPrompt(`Build me a portfolio with my $${amount.toLocaleString()} of idle cash.`); setChatOpen(true); }}
+                  onDismiss={() => setTopSnoozeOpen((o) => !o)}
+                />
+              )}
+              {topSnoozeOpen && (
+                <>
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={() => setTopSnoozeOpen(false)} />
+                  <div style={{
+                    position: 'absolute', right: '8px', top: '44px', zIndex: 9999,
+                    background: '#1a2235', border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: '10px', padding: '6px', display: 'flex', flexDirection: 'column',
+                    gap: '2px', minWidth: '170px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                  }}>
+                    {[
+                      { label: 'Remind in 3 days', type: '3d' },
+                      { label: 'Remind in 5 days', type: '5d' },
+                      { label: 'Remind in 1 week', type: '1w' },
+                      { label: 'Remind in 2 weeks', type: '14d' },
+                      { label: "Don't remind again", type: 'permanent' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.type}
+                        onClick={(e) => { e.stopPropagation(); handleTopDismiss(topNoticed.id, opt.type); }}
+                        style={{
+                          background: 'transparent', border: 'none', color: '#cbd5e1',
+                          fontSize: '12px', padding: '8px 12px', borderRadius: '6px',
+                          cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                        }}
+                        onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
+                        onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })() : null}
+
+      {/* ── 2. Account Hero ── */}
       <AccountHero account={accountData} isConnected={isBrokerExpected} />
 
-      {/* ── 2. Portfolio Chart ── */}
+      {/* ── 3. Portfolio Chart ── */}
       <div style={{ padding: '0 20px 16px' }}>
         <PortfolioChart
           positions={positions.map((p) => ({
@@ -1231,125 +1301,14 @@ export function PortfolioTab() {
         />
       </div>
 
-      {/* ── 3. Rufus Noticed Group ── */}
-      <div style={{ padding: '0 16px 16px' }}>
-        {/* Section label */}
-        <div style={{
-          fontSize: 9,
-          fontWeight: 800,
-          color: '#22d3ee',
-          letterSpacing: '0.02em',
-          marginBottom: 10,
-        }}>
-          RUFUS NOTICED
+      {/* ── 4. Daily Brief / Weekly Snapshot ── */}
+      <div ref={briefsRef} style={{ padding: '0 16px 16px' }}>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <DailyBriefCard mode="pill" active={dailyExpanded} accountId={activeAccountId || 'demo'} onClick={() => { setDailyExpanded(!dailyExpanded); if (weeklyExpanded) setWeeklyExpanded(false); }} />
+          <WeeklySnapshotCard mode="pill" active={weeklyExpanded} accountId={activeAccountId || 'demo'} onClick={() => { setWeeklyExpanded(!weeklyExpanded); if (dailyExpanded) setDailyExpanded(false); }} />
         </div>
-
-        {/* Container — shared background/border */}
-        <div style={{
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: 20,
-          padding: 14,
-          background: 'rgba(255,255,255,0.02)',
-        }}>
-          {/* Top AI insight — single curated card (no duplicate prose) */}
-          {topNoticed ? (() => {
-            const accent = topNoticed.variant === 'warn' ? '#f59e0b' : topNoticed.variant === 'gain' ? '#22c55e' : '#22d3ee';
-            const isRebalance = topNoticed.action === 'REBALANCE';
-            const isIdleCash = typeof topNoticed.action === 'string' && topNoticed.action.startsWith('INVEST_CASH:');
-            const upgraded = isRebalance || isIdleCash;
-            return (
-              <div style={{
-                position: 'relative',
-                borderLeft: `3px solid ${accent}`,
-                background: 'rgba(255,255,255,0.03)',
-                borderRadius: '12px', padding: '12px 14px',
-              }}>
-                {upgraded ? (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                      <VantageOrb size={20} animate={false} showEntrance={false} />
-                      <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', color: accent }}>RUFUS NOTICED</span>
-                    </div>
-                    <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 15, color: '#f1f5f9', lineHeight: 1.5 }}>{topNoticed.body}</div>
-                    {isRebalance && <ConcentrationDonut positions={displayPositions} />}
-                    {isIdleCash && <IdleCashIllustration />}
-                  </>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                    <span style={{ fontSize: '14px', marginTop: '1px' }}>{topNoticed.icon}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '13.5px', color: '#f1f5f9', lineHeight: 1.4 }}>{topNoticed.body}</div>
-                    </div>
-                  </div>
-                )}
-                {topNoticed.action && (
-                  <ActionButton
-                    action={topNoticed.action}
-                    readOnly={isReadOnly}
-                    flush
-                    onRebalance={() => { setPendingPrompt('rebalance'); setTab('ai'); }}
-                    onReviewPosition={(ticker) => { setFocusPosition(ticker); setTab('portfolio'); }}
-                    onInvestCash={(amount) => { setPendingPrompt(`Build me a portfolio with my $${amount.toLocaleString()} of idle cash.`); setTab('ai'); }}
-                    onDismiss={() => setTopSnoozeOpen((o) => !o)}
-                  />
-                )}
-                {topSnoozeOpen && (
-                  <>
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={() => setTopSnoozeOpen(false)} />
-                    <div style={{
-                      position: 'absolute', right: '8px', top: '44px', zIndex: 9999,
-                      background: '#1a2235', border: '1px solid rgba(255,255,255,0.15)',
-                      borderRadius: '10px', padding: '6px', display: 'flex', flexDirection: 'column',
-                      gap: '2px', minWidth: '170px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                    }}>
-                      {[
-                        { label: 'Remind in 3 days', type: '3d' },
-                        { label: 'Remind in 5 days', type: '5d' },
-                        { label: 'Remind in 1 week', type: '1w' },
-                        { label: 'Remind in 2 weeks', type: '14d' },
-                        { label: "Don't remind again", type: 'permanent' },
-                      ].map((opt) => (
-                        <button
-                          key={opt.type}
-                          onClick={(e) => { e.stopPropagation(); handleTopDismiss(topNoticed.id, opt.type); }}
-                          style={{
-                            background: 'transparent', border: 'none', color: '#cbd5e1',
-                            fontSize: '12px', padding: '8px 12px', borderRadius: '6px',
-                            cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                          }}
-                          onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
-                          onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })() : (
-            <div style={{ padding: '16px 14px', color: 'rgba(255,255,255,0.45)', fontSize: 13, textAlign: 'center' }}>
-              No AI insights yet — they'll appear as your portfolio hits key milestones.
-            </div>
-          )}
-
-          {/* Divider */}
-          <div style={{
-            margin: '12px 0',
-            borderTop: '1px solid rgba(255,255,255,0.06)',
-          }} />
-
-          {/* Daily Brief / Weekly Snapshot buttons */}
-          <div ref={briefsRef}>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <DailyBriefCard mode="pill" active={dailyExpanded} accountId={activeAccountId || 'demo'} onClick={() => { setDailyExpanded(!dailyExpanded); if (weeklyExpanded) setWeeklyExpanded(false); }} />
-              <WeeklySnapshotCard mode="pill" active={weeklyExpanded} accountId={activeAccountId || 'demo'} onClick={() => { setWeeklyExpanded(!weeklyExpanded); if (dailyExpanded) setDailyExpanded(false); }} />
-            </div>
-            {dailyExpanded && <DailyBriefCard mode="content" accountId={activeAccountId || 'demo'} onClick={() => setDailyExpanded(false)} />}
-            {weeklyExpanded && <WeeklySnapshotCard mode="content" accountId={activeAccountId || 'demo'} onClick={() => setWeeklyExpanded(false)} />}
-          </div>
-        </div>
+        {dailyExpanded && <DailyBriefCard mode="content" accountId={activeAccountId || 'demo'} onClick={() => setDailyExpanded(false)} />}
+        {weeklyExpanded && <WeeklySnapshotCard mode="content" accountId={activeAccountId || 'demo'} onClick={() => setWeeklyExpanded(false)} />}
       </div>
 
       {/* ── 4. Cash / Invested Summary ── */}

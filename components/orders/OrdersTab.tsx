@@ -41,7 +41,7 @@ export function OrdersTab() {
   const router = useRouter();
   const { orders, allOrders, baskets, loading, error, refresh, cancelOrder } = useOrders();
   const { activeFilter, setFilter } = useOrderStore();
-  const { setTab } = useTabStore();
+  const { setTab, setChatOpen } = useTabStore();
   const { account } = usePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
@@ -427,7 +427,7 @@ export function OrdersTab() {
 
       {/* Plan Trades */}
       <button
-        onClick={() => setTab('ai')}
+        onClick={() => setChatOpen(true)}
         className="w-full flex items-center justify-center gap-2 border border-slate-600 bg-slate-800/50 text-cyan-400 text-sm font-medium rounded-2xl py-3.5 hover:bg-slate-700/50 transition"
       >
         <BarChart3 size={16} />

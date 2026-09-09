@@ -10,7 +10,7 @@ import { createServerClient } from '@/lib/supabase';
 import { callChatAI } from '@/lib/ai-provider';
 import { AGENT_PRINCIPLES } from '@/lib/ai-principles';
 import { checkUsageLimit } from '@/lib/ai-guard';
-import { STYLE_SECTOR_TARGETS, NON_SECTOR_BUCKETS } from '@/lib/risk-narrative';
+import { STYLE_SECTOR_TARGETS, NON_SECTOR_BUCKETS } from '@/lib/sector-targets';
 import { decomposePositionValue, resolveEtfWeightsForPositions } from '@/lib/etf-sectors';
 import type { SystemBlock } from '@/lib/ai-provider';
 import { PORTFOLIO_AGENT_SAFETY_BLOCKS } from '@/lib/ai/shared-safety-blocks';

@@ -159,15 +159,11 @@ export function Header() {
           <Bell size={22} />
           {unreadCount > 0 && (
             <span style={{
-              position: 'absolute', top: -2, right: -2,
-              minWidth: 16, height: 16, padding: '0 4px',
-              background: '#ef4444', borderRadius: 10,
-              fontSize: 10, fontWeight: 700, color: 'white',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: '2px solid #0a0f1e',
-            }}>
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
+              position: 'absolute', top: 1, right: 1,
+              width: 8, height: 8,
+              background: '#ef4444', borderRadius: '50%',
+              border: '1.5px solid #0a0f1e',
+            }} />
           )}
         </button>
         <button
