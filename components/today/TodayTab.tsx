@@ -2,15 +2,19 @@
 // Replaces the old Portfolio tab as the landing screen.
 //
 // Top-to-bottom:
-//   1. Masthead — "Rufus" serif-italic wordmark + market status + account
-//      name, single line, one 2px #5FD8DE rule beneath.
-//   2. Lead story — full-bleed AI Noticed card (category label, serif-italic
-//      key stat, supporting sentence, real-holdings donut + 2-line legend,
-//      CTA action row + "Remind in Nd" snooze). Fallback = Daily Brief
-//      top-line headline only (tap opens full brief).
-//   3. Secondary notices strip — compact cards (category + one line, no CTA).
-//   4. Balance section — #050A14 bg, serif-italic balance, Today/Total inline,
-//      ~46px SVG trend glyph, top holdings total-gain, "See all holdings".
+//   1. Header — canonical one-row pattern: connection dot + account name +
+//      "VIEW ONLY" tag (left), investor-style text link (right), 0.5px
+//      #141C2E bottom border.
+//   2. Lead story — full-bleed AI Noticed card (category label, numeric key
+//      stat at serif-italic hero size, ONE small supporting sentence,
+//      real-holdings donut + 3-line legend, CTA row + "Remind in Nd" snooze).
+//      Fallback = Daily Brief top-line headline only (tap opens full brief).
+//   3. Secondary notices strip — horizontal-scroll compact cards
+//      (category + one line, no CTA). Event-impact & other non-lead triggers
+//      live here, never as a standalone block.
+//   4. Portfolio section — "YOUR PORTFOLIO" label (thin rule above),
+//      32px serif-italic balance, Today/Total inline, full-width 68px trend
+//      chart, top holdings "+X% · +$Y", "See all holdings".
 //
 // Data is real: positions come from the same canonical sources as the
 // concentration-risk card (no hardcoded values). Colors use the finalized
@@ -23,10 +27,11 @@ import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import { useAccounts } from '@/context/AccountContext';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { getStyleContent } from '@/lib/content/investor-styles';
 import { useTabStore } from '@/store';
 import type { Position, AccountSummary } from '@/types';
 import { apiGet, apiPost } from '@/lib/api-client';
-import { getMarketStatus } from '@/lib/market-hours';
 
 // ─── Finalized tokens ──────────────────────────────────────
 const C = {
@@ -109,11 +114,71 @@ function semanticColor(variant: string): string {
   return C.accent;
 }
 
-function shortenMarketLabel(label: string): string {
-  if (label === 'MARKET HOLIDAY') return 'HOLIDAY';
-  if (label === 'PRE-MARKET') return 'PRE-MKT';
-  if (label === 'AFTER HOURS') return 'AFTER HRS';
-  return label;
+// ─── Lead-story numeric hero stat ──────────────────────────
+// Extracts the single numeric value that belongs at hero size, per trigger
+// type. Returns '' when a trigger has no clean number (then the title is
+// used as the hero headline instead).
+function leadStat(item: any): string {
+  const m = item.meta || {};
+  const num = (v: any) => (v == null ? NaN : Number(v));
+  switch (item.triggerType) {
+    case 'concentration_single':
+    case 'concentration_top3': {
+      const p = num(m.pct);
+      return Number.isFinite(p) ? `${Math.round(p * 10) / 10}%` : '';
+    }
+    case 'portfolio_drift': {
+      const d = num(m.deviation);
+      return Number.isFinite(d) ? `${d > 0 ? '+' : ''}${Math.round(d)}%` : '';
+    }
+    case 'idle_cash': {
+      const a = num(m.amount);
+      return Number.isFinite(a) ? `$${a.toLocaleString('en-US')}` : '';
+    }
+    case 'position_milestone': {
+      const p = num(m.currentPnlPct);
+      return Number.isFinite(p) ? `${p >= 0 ? '+' : ''}${Math.round(p)}%` : '';
+    }
+    case 'bounce_back': {
+      const d = num(m.discountPct);
+      return Number.isFinite(d) ? `-${Math.abs(Math.round(d))}%` : '';
+    }
+    case 'sentiment_shift': {
+      const n = num(m.negativeCount);
+      const t = num(m.totalHeadlines);
+      return Number.isFinite(n) && Number.isFinite(t) && t > 0 ? `${n}/${t}` : '';
+    }
+    default:
+      return '';
+  }
+}
+
+// ─── Lead-story priority (primary selection order) ─────────
+// concentration > wash-sale > event-impact > drift > milestone > sentiment
+// > idle-cash/bounce-back > earnings.
+function triggerPriority(item: any): number {
+  switch (item.triggerType) {
+    case 'concentration_single':
+    case 'concentration_top3':
+      return 0;
+    case 'wash_sale':
+      return 1;
+    case 'event_impact':
+      return 2;
+    case 'portfolio_drift':
+      return 3;
+    case 'position_milestone':
+      return 4;
+    case 'sentiment_shift':
+      return 5;
+    case 'idle_cash':
+    case 'bounce_back':
+      return 6;
+    case 'earnings_proximity':
+      return 7;
+    default:
+      return 10;
+  }
 }
 
 // ─── Real-holdings donut (finalized tokens) ────────────────
@@ -178,31 +243,72 @@ function TodayDonut({ positions }: { positions: Position[] }) {
   );
 }
 
-// ─── ~46px trend glyph (honest direction indicator) ───────
-function TrendGlyph({ value }: { value: number }) {
-  const up = value >= 0;
+// ─── Full-width 68px portfolio trend sparkline ─────────────
+// Neutral line color (data display, not a CTA or gain/loss signal — the
+// Today/Total figures above already carry the semantic color).
+function TrendChart({ positions, cashBalance }: { positions: Position[]; cashBalance: number }) {
+  const [points, setPoints] = useState<{ timestamp: number; value: number }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!positions || positions.length === 0) {
+      setPoints([]);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await apiPost('/api/portfolio/chart', {
+          positions: positions.map((p) => ({
+            symbol: p.symbol,
+            shares: p.qty,
+            buyDate: p.buyDate,
+            avgCost: p.avgCost,
+            totalCost: p.totalCost || p.qty * p.avgCost,
+          })),
+          cashBalance,
+          range: '1W',
+        });
+        if (res.ok && !cancelled) {
+          const json = await res.json();
+          setPoints(Array.isArray(json.points) ? json.points : []);
+        }
+      } catch {
+        if (!cancelled) setPoints([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [positions, cashBalance]);
+
+  if (!points || points.length < 2) return null;
+
+  const H = 68;
+  const pad = 3;
+  const W = 360;
+  const values = points.map((p) => p.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const n = points.length;
+  const xFor = (i: number) => pad + (i / (n - 1)) * (W - pad * 2);
+  const yFor = (v: number) => pad + (1 - (v - min) / range) * (H - pad * 2);
+  const linePath = points
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${xFor(i).toFixed(1)},${yFor(p.value).toFixed(1)}`)
+    .join(' ');
+  const areaPath = `${linePath} L${xFor(n - 1).toFixed(1)},${H - pad} L${xFor(0).toFixed(1)},${H - pad} Z`;
+
   return (
-    <svg width="46" height="46" viewBox="0 0 46 46" style={{ flexShrink: 0 }}>
-      {up ? (
-        <path
-          d="M9 32 L23 15 L37 32"
-          fill="none"
-          stroke={C.gain}
-          strokeWidth="3.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ) : (
-        <path
-          d="M9 15 L23 32 L37 15"
-          fill="none"
-          stroke={C.loss}
-          strokeWidth="3.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      )}
-    </svg>
+    <div style={{ marginTop: 14 }}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        style={{ width: '100%', height: H, display: 'block' }}
+        aria-hidden="true"
+        data-testid="portfolio-trend-chart"
+      >
+        <path d={areaPath} fill="rgba(196,204,220,0.08)" />
+        <path d={linePath} fill="none" stroke="#C4CCDC" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
   );
 }
 
@@ -229,6 +335,7 @@ export function TodayTab() {
   const { account: liveAccount, loading: liveLoading, brokerMeta } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { activeAccount, activeAccountId } = useAccounts();
+  const { user } = useAuth();
   const { setTab, setChatOpen, setPendingPrompt, setFocusPosition } = useTabStore();
 
   const isShowingDemo = activeAccount?.isDemo ?? false;
@@ -242,15 +349,16 @@ export function TodayTab() {
 
   const positions: Position[] = displayAccount?.positions || [];
 
-  // ── Market status ──
-  const [marketStatus, setMarketStatus] = useState(getMarketStatus());
-  useEffect(() => {
-    const t = setInterval(() => setMarketStatus(getMarketStatus()), 60000);
-    return () => clearInterval(t);
-  }, []);
-
-  // ── Account name for the masthead ──
+  // ── Account name for the header ──
   const accountName = isShowingDemo ? 'Demo' : brokerMeta?.name || activeAccount?.name || 'Broker';
+
+  // Connection dot: demo = amber, live+connected = green, live+disconnected = faint.
+  const dotColor = isShowingDemo ? C.amber : isConnected ? C.gain : C.textFaint;
+
+  // Investor style (right side of header) — plain text link to Settings.
+  // `user` is Record<string, unknown> from useAuth, so coerce the style id.
+  const investorStyle = (user?.investorStyle as string | undefined) || 'buffett';
+  const styleLabel = getStyleContent(investorStyle).shortLabel;
 
   // ── AI Noticed feed ──
   const [noticedItems, setNoticedItems] = useState<any[]>([]);
@@ -265,8 +373,15 @@ export function TodayTab() {
   }, [activeAccountId]);
   useEffect(() => { fetchNoticed(); }, [fetchNoticed]);
 
-  const leadItem = noticedItems.find((i) => i.action) || noticedItems[0] || null;
-  const secondaryItems = noticedItems.filter((i) => i !== leadItem).slice(0, 3);
+  // Lead = highest-priority active trigger (not "first with an action").
+  const leadItem = useMemo(
+    () => (noticedItems.length > 0 ? [...noticedItems].sort((a, b) => triggerPriority(a) - triggerPriority(b))[0] : null),
+    [noticedItems],
+  );
+  const secondaryItems = useMemo(
+    () => (leadItem ? noticedItems.filter((i) => i !== leadItem).slice(0, 4) : []),
+    [noticedItems, leadItem],
+  );
 
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const handleDismiss = async (itemId: string, dismissType: string) => {
@@ -316,7 +431,7 @@ export function TodayTab() {
 
   const { dollars, cents } = splitCents(accountData.equity);
 
-  // Top holdings (by market value) for the balance section — total P&L only.
+  // Top holdings (by market value) — total P&L only.
   const topHoldings = useMemo(
     () =>
       [...positions]
@@ -411,22 +526,53 @@ export function TodayTab() {
     );
   };
 
+  // Hero stat: numeric value if the trigger has one, else the title.
+  const leadStatVal = leadItem ? leadStat(leadItem) : '';
+  const leadHero = leadStatVal || (leadItem?.title ?? '');
+  const leadSentence = leadStatVal ? (leadItem?.body ?? '') : '';
+
   return (
     <div style={{ paddingBottom: 24 }}>
-      {/* ── 1. Masthead ── */}
-      <div style={{ padding: '18px 20px 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 19, color: C.textPrimary, lineHeight: 1 }}>
-            Rufus
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: C.gain }}>
-              ● {shortenMarketLabel(marketStatus.label)}
+      {/* ── 1. Header (canonical one-row pattern) ── */}
+      <div style={{ padding: '14px 20px 0' }} data-testid="today-header">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          {/* left: connection dot + account name + VIEW ONLY tag */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+            <span
+              style={{
+                fontSize: 14, fontWeight: 600, color: C.textPrimary,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}
+            >
+              {accountName}
             </span>
-            <span style={{ fontSize: 12, color: C.textMuted, fontWeight: 500 }}>{accountName}</span>
+            {isReadOnly && (
+              <span
+                style={{
+                  fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', color: C.amber,
+                  border: `0.5px solid ${C.amber}`, borderRadius: 4, padding: '2px 5px',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                VIEW ONLY
+              </span>
+            )}
           </div>
+          {/* right: investor style text link */}
+          <button
+            type="button"
+            onClick={() => setTab('settings')}
+            style={{
+              background: 'none', border: 'none', color: C.accent, fontSize: 13,
+              fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0,
+              flexShrink: 0, whiteSpace: 'nowrap',
+            }}
+          >
+            {styleLabel}
+          </button>
         </div>
-        <div style={{ height: 2, background: C.accent, marginTop: 14, borderRadius: 1 }} />
+        <div style={{ borderTop: '0.5px solid #141C2E', marginTop: 12 }} />
       </div>
 
       {/* ── 2. Lead story (full-bleed) ── */}
@@ -435,12 +581,14 @@ export function TodayTab() {
           <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', color: semanticColor(leadItem.variant) }}>
             {humanizeTrigger(leadItem.triggerType)}
           </span>
-          <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 40, lineHeight: 1.08, color: C.textPrimary, marginTop: 8 }}>
-            {leadItem.title}
+          <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 42, lineHeight: 1.05, color: C.textPrimary, marginTop: 8 }} data-testid="lead-stat">
+            {leadHero}
           </div>
-          <div style={{ fontSize: 14, lineHeight: 1.55, color: C.textSecondary, marginTop: 10, maxWidth: 520 }}>
-            {leadItem.body}
-          </div>
+          {leadSentence && (
+            <div style={{ fontSize: 14, lineHeight: 1.55, color: C.textSecondary, marginTop: 10, maxWidth: 520 }} data-testid="lead-sentence">
+              {leadSentence}
+            </div>
+          )}
           {renderCta()}
           {snoozeOpen && (
             <>
@@ -519,43 +667,48 @@ export function TodayTab() {
         </div>
       )}
 
-      {/* ── 3. Secondary notices strip ── */}
+      {/* ── 3. Secondary notices strip (horizontal scroll) ── */}
       {secondaryItems.length > 0 && (
-        <div style={{ padding: '20px 20px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {secondaryItems.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                background: C.card, border: `0.5px solid ${C.cardBorder}`, borderRadius: 14,
-                padding: '12px 14px', display: 'flex', alignItems: 'baseline', gap: 10,
-              }}
-            >
-              <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', color: semanticColor(item.variant), flexShrink: 0 }}>
-                {humanizeTrigger(item.triggerType)}
-              </span>
-              <span style={{ fontSize: 13, color: C.textSecondary, lineHeight: 1.4, minWidth: 0 }}>
-                {item.title}
-              </span>
-            </div>
-          ))}
+        <div style={{ padding: '20px 20px 0' }}>
+          <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
+            {secondaryItems.map((item) => (
+              <div
+                key={item.id}
+                style={{
+                  background: C.card, border: `0.5px solid ${C.cardBorder}`, borderRadius: 14,
+                  padding: '12px 14px', flexShrink: 0, width: 232,
+                  display: 'flex', flexDirection: 'column', gap: 6,
+                }}
+              >
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', color: semanticColor(item.variant), flexShrink: 0 }}>
+                  {humanizeTrigger(item.triggerType)}
+                </span>
+                <span style={{ fontSize: 13, color: C.textSecondary, lineHeight: 1.4 }}>
+                  {item.title}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* ── 4. Balance section ── */}
-      <div style={{ margin: '20px 20px 0', background: C.balanceBg, border: `0.5px solid ${C.cardBorder}`, borderRadius: 16, padding: '18px 18px 16px' }}>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: C.textFaint }}>
-          PORTFOLIO VALUE
-        </div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginTop: 6 }}>
-          <div style={{ minWidth: 0 }}>
+      {/* ── 4. Portfolio section ── */}
+      <div style={{ margin: '24px 20px 0' }}>
+        <div style={{ borderTop: '0.5px solid #141C2E', paddingTop: 18 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: C.textMuted }}>
+            YOUR PORTFOLIO
+          </div>
+          <div style={{ marginTop: 12, background: C.balanceBg, border: `0.5px solid ${C.cardBorder}`, borderRadius: 16, padding: '18px 18px 16px' }}>
+            {/* balance */}
             <div>
-              <span style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 26, color: C.textPrimary }}>
+              <span style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 32, color: C.textPrimary, lineHeight: 1 }}>
                 ${dollars}
               </span>
-              <span style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 18, color: C.textMuted }}>
+              <span style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 20, color: C.textMuted }}>
                 .{cents}
               </span>
             </div>
+            {/* Today / Total */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
               <span style={{ fontSize: 12, color: C.textMuted }}>
                 Today{' '}
@@ -571,40 +724,41 @@ export function TodayTab() {
                 </span>
               </span>
             </div>
-          </div>
-          <div style={{ marginLeft: 'auto' }}>
-            <TrendGlyph value={accountData.dayPnl} />
+
+            {/* full-width trend chart */}
+            <TrendChart positions={positions} cashBalance={accountData.cash} />
+
+            {/* Top holdings — "+X% · +$Y" (matches Position Detail) */}
+            {topHoldings.length > 0 && (
+              <div style={{ marginTop: 14, borderTop: `0.5px solid ${C.cardBorder}`, paddingTop: 12 }}>
+                {topHoldings.map((p) => {
+                  const pnl = p.totalPnl ?? (p.currentPrice - p.avgCost) * p.qty;
+                  const pnlPct = p.totalPnlPercent ?? (p.avgCost ? (pnl / (p.avgCost * p.qty)) * 100 : 0);
+                  return (
+                    <div key={p.symbol} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: C.textSecondary }}>{p.symbol}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: pnl >= 0 ? C.gain : C.loss }}>
+                        {pctStr(pnlPct)} · {fmt(pnl)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setTab('portfolio')}
+              style={{
+                display: 'inline-block', marginTop: 14, background: 'none', border: 'none',
+                color: C.accent, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                fontFamily: 'inherit', padding: 0, textDecoration: 'underline', textUnderlineOffset: 3,
+              }}
+            >
+              See all holdings →
+            </button>
           </div>
         </div>
-
-        {/* Top holdings — total P&L only */}
-        {topHoldings.length > 0 && (
-          <div style={{ marginTop: 16, borderTop: `0.5px solid ${C.cardBorder}`, paddingTop: 12 }}>
-            {topHoldings.map((p) => {
-              const pnl = p.totalPnl ?? (p.currentPrice - p.avgCost) * p.qty;
-              return (
-                <div key={p.symbol} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0' }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: C.textSecondary }}>{p.symbol}</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: pnl >= 0 ? C.gain : C.loss }}>
-                    {pnl >= 0 ? '+' : ''}{fmt(pnl)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={() => setTab('portfolio')}
-          style={{
-            display: 'inline-block', marginTop: 14, background: 'none', border: 'none',
-            color: C.accent, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            fontFamily: 'inherit', padding: 0, textDecoration: 'underline', textUnderlineOffset: 3,
-          }}
-        >
-          See all holdings →
-        </button>
       </div>
     </div>
   );
