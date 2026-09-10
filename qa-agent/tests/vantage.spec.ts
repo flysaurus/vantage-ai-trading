@@ -51,6 +51,9 @@ test.describe('Portfolio Tab', () => {
   });
 
   test('captures visual QA screenshots', async ({ page }) => {
+    // Two element captures, each with a scroll fallback, on top of the shared
+    // setup. The default 60s budget is tight whenever the app is cold.
+    test.slow();
     await waitForAppLoad(page);
     await captureVisualScreenshots(page);
   });

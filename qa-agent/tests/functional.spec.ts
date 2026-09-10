@@ -1,5 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 import * as dotenv from 'dotenv';
+import { clickTab } from '../helpers';
 dotenv.config();
 
 const APP_URL = process.env.APP_URL || 'https://vantage-ai-trading.vercel.app';
@@ -211,6 +212,14 @@ async function setupDemoMode(page: Page) {
 
   await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
+  // Hide the Next.js dev overlay. It only exists in `next dev`, so this is a
+  // no-op against production — but it sits in the bottom-left corner and
+  // swallows clicks on the chat's Explore "+" button, which made local runs
+  // fail for reasons CI never saw (and vice-versa).
+  await page
+    .addStyleTag({ content: 'nextjs-portal{display:none!important}' })
+    .catch(() => {});
+
   // Dismiss BrokerGate if showing
   const skipBtn = page.locator('text=Skip for now');
   if (await skipBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -218,7 +227,7 @@ async function setupDemoMode(page: Page) {
     await page.waitForTimeout(3000);
   }
 
-  await page.locator('nav.fixed.bottom-0').waitFor({ state: 'visible', timeout: 5000 });
+  await page.locator('nav.fixed.bottom-0').waitFor({ state: 'visible', timeout: 15000 });
 }
 async function waitForPrices(page: Page) {
   await page.waitForFunction(() => {
@@ -231,16 +240,11 @@ async function waitForPrices(page: Page) {
 }
 
 async function goToTab(page: Page, tab: string) {
-  const nav = page.locator('nav.fixed.bottom-0');
-  if (tab === 'AI') {
-    // AI tab has a raised cyan circular button
-    const aiButton = nav.locator('button.bg-cyan-500, button[class*="cyan"]').first();
-    await aiButton.click();
-  } else {
-    // Exact-name role match scoped to the nav avoids matching the
-    // AccountSwitcher's "Demo Portfolio" text.
-    await nav.getByRole('button', { name: tab, exact: true }).click();
-  }
+  // Delegate to the shared helper so the tab map lives in ONE place.
+  // It handles the PART 2 nav rename (Portfolio → Holdings, Today → Insights),
+  // opens chat via the Ask Rufus bar (no cyan AI nav button any more) and
+  // deep-links tabs that are no longer in the bottom nav (Watchlist).
+  await clickTab(page, tab);
   await page.waitForTimeout(2000);
 }
 
@@ -433,7 +437,9 @@ test.describe('AI Tab — Functional', () => {
 
   test('has correct quick actions', async ({ page }) => {
     test.slow();
-    await page.waitForSelector('text=Ask Vantage AI', { timeout: 15000 }).catch(() => {});
+    // The chat overlay header is no longer labelled "Ask Vantage AI"; wait on
+    // the composer, which is present exactly when the overlay is mounted.
+    await page.waitForSelector('.vantage-input-bar', { timeout: 15000 }).catch(() => {});
     await page.waitForTimeout(3000);
 
     // Quick actions live in the Explore bottom sheet, opened via the "+" pill in
@@ -464,7 +470,9 @@ test.describe('AI Tab — Functional', () => {
 
   test('greeting loads and is personalized', async ({ page }) => {
     test.slow();
-    await page.waitForSelector('text=Ask Vantage AI', { timeout: 15000 }).catch(() => {});
+    // The chat overlay header is no longer labelled "Ask Vantage AI"; wait on
+    // the composer, which is present exactly when the overlay is mounted.
+    await page.waitForSelector('.vantage-input-bar', { timeout: 15000 }).catch(() => {});
     await page.waitForTimeout(8000);
 
     const bodyText = await page.evaluate(() => document.body.innerText);
@@ -480,7 +488,9 @@ test.describe('AI Tab — Functional', () => {
 
   test('message counter shows AI analyses', async ({ page }) => {
     test.slow();
-    await page.waitForSelector('text=Ask Vantage AI', { timeout: 15000 }).catch(() => {});
+    // The chat overlay header is no longer labelled "Ask Vantage AI"; wait on
+    // the composer, which is present exactly when the overlay is mounted.
+    await page.waitForSelector('.vantage-input-bar', { timeout: 15000 }).catch(() => {});
     await page.waitForTimeout(3000);
 
     for (let y = 0; y <= 2000; y += 300) {
@@ -563,13 +573,17 @@ test.describe('AI Tab — Noticed CTA tap-through', () => {
     await page.waitForTimeout(1500);
   }
 
-  test('renders Rebalance + Review AAPL CTAs from deterministic markers', async ({ page }) => {
+  test('renders Trade + Review AAPL CTAs from deterministic markers', async ({ page }) => {
     await openExplore(page);
 
-    const rebalanceBtn = page.getByRole('button', { name: 'Rebalance', exact: true });
+    // CTA labels come from components/ai/ActionButton.tsx:
+    //   'REBALANCE'                → "Trade" (+ "Download" when trade-enabled)
+    //   'REVIEW_POSITION:<TICKER>' → "Review <TICKER>"
+    // The old bare "Rebalance" label no longer exists.
+    const rebalanceBtn = page.getByRole('button', { name: 'Trade', exact: true });
     const reviewBtn = page.getByRole('button', { name: 'Review AAPL', exact: true });
 
-    await rebalanceBtn.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+    await rebalanceBtn.first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
     const hasRebalance = (await rebalanceBtn.count()) > 0;
     const hasReview = (await reviewBtn.count()) > 0;
 
@@ -578,11 +592,11 @@ test.describe('AI Tab — Noticed CTA tap-through', () => {
     expect(hasReview).toBe(true);
   });
 
-  test('Rebalance CTA closes Explore and routes rebalance to chat', async ({ page }) => {
+  test('Trade CTA closes Explore and routes rebalance to chat', async ({ page }) => {
     await openExplore(page);
 
-    const rebalanceBtn = page.getByRole('button', { name: 'Rebalance', exact: true });
-    await rebalanceBtn.click();
+    const rebalanceBtn = page.getByRole('button', { name: 'Trade', exact: true });
+    await rebalanceBtn.first().click();
 
     // Explore sheet closes → the CTA handler (setShowExplore(false) + sendToChat) fired.
     await expect(rebalanceBtn).toHaveCount(0);
@@ -607,10 +621,12 @@ test.describe('AI Tab — Noticed CTA tap-through', () => {
     await expect(aaplCard.locator('text=Lots & Cost Basis').first()).toBeVisible({ timeout: 5000 });
   });
 
-  test('Dismiss CTA opens the snooze popover (unchanged behavior)', async ({ page }) => {
+  test('Remind CTA opens the snooze popover (unchanged behavior)', async ({ page }) => {
     await openExplore(page);
 
-    await page.getByRole('button', { name: 'Dismiss', exact: true }).first().click();
+    // The old bare "Dismiss" button was replaced by a "Remind in 5d" text link
+    // (ActionButton) that opens the same snooze picker.
+    await page.getByRole('button', { name: 'Remind in 5d', exact: true }).first().click();
     await page.waitForTimeout(500);
 
     const has3d = (await page.locator('text=Remind in 3 days').count()) > 0;

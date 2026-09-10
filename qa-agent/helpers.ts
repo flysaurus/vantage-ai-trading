@@ -192,34 +192,76 @@ export async function setupDemoMode(page: Page) {
   });
   await waitForAppLoad(page);
 
+  // Hide the Next.js dev overlay (dev-only, no-op in production). It sits in the
+  // bottom-left corner and swallows clicks on the chat's Explore "+" button.
+  await page
+    .addStyleTag({ content: 'nextjs-portal{display:none!important}' })
+    .catch(() => {});
+
   const skipBtn = page.locator('text=Skip for now');
   if (await skipBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
     await skipBtn.click();
     await page.waitForTimeout(3000);
   }
 
-  await page.locator('nav.fixed.bottom-0').waitFor({ state: 'visible', timeout: 5000 });
+  await page.locator('nav.fixed.bottom-0').waitFor({ state: 'visible', timeout: 15000 });
 }
 
 // ── Tab navigation ────────────────────────────────────────────
 // route key → tab label. The app is a bottom-nav SPA (no URL routes),
 // so "navigating to a route" means switching the active tab.
+//
+// NOTE (PART 2 nav rewrite): the bottom nav is now 4 tabs —
+// Insights · Holdings · Invest · Settings. The old «Portfolio» tab is
+// «Holdings», the old «Today» tab is «Insights», and the old raised cyan
+// «AI» button is gone (chat opens from the global Ask Rufus bar).
+// Watchlist is no longer in the bottom nav; it is reachable by deep link.
 export const ROUTE_TABS: Record<string, string> = {
-  portfolio: 'Portfolio',
+  insights: 'Insights',
+  portfolio: 'Holdings',
+  holdings: 'Holdings',
   watchlist: 'Watchlist',
   invest: 'Invest',
   ai: 'AI',
   settings: 'Settings',
 };
 
+/** Legacy tab labels → current bottom-nav label. Keeps old specs working. */
+const LEGACY_TAB_LABELS: Record<string, string> = {
+  Portfolio: 'Holdings',
+  Today: 'Insights',
+  Home: 'Insights',
+};
+
+/** Current bottom-nav tab labels (anything else must use a deep link). */
+const NAV_LABELS = new Set(['Insights', 'Holdings', 'Invest', 'Settings']);
+
+/** Deep-link id for a label that is no longer in the bottom nav. */
+const DEEP_LINK_IDS: Record<string, string> = { Watchlist: 'watchlist' };
+
 export async function clickTab(page: Page, label: string) {
   const nav = page.locator('nav.fixed.bottom-0');
+  const wanted = LEGACY_TAB_LABELS[label] || label;
 
-  if (label === 'AI') {
-    const aiButton = nav.locator('button.bg-cyan-500, button[class*="cyan"]').first();
-    await aiButton.click();
+  if (wanted === 'AI') {
+    // No AI nav button any more — the chat is opened from the global Ask Rufus bar.
+    const bar = page.locator('[data-testid="ask-rufus-bar"]').first();
+    if (await bar.count()) {
+      await bar.click({ force: true });
+    } else {
+      // Fall back to a deep link, which opens the chat via the tab param.
+      await page.goto(`${APP_URL}/?tab=ai`, { waitUntil: 'domcontentloaded' });
+    }
+  } else if (NAV_LABELS.has(wanted)) {
+    await nav.getByRole('button', { name: wanted, exact: true }).click();
+  } else if (DEEP_LINK_IDS[wanted]) {
+    // Tab exists in the app but is not in the bottom nav — deep link instead.
+    await page.goto(`${APP_URL}/?tab=${DEEP_LINK_IDS[wanted]}`, { waitUntil: 'domcontentloaded' });
   } else {
-    await nav.getByRole('button', { name: label, exact: true }).click();
+    throw new Error(
+      `clickTab: unknown tab "${label}". Known: ${[...NAV_LABELS].join(', ')} + AI, ` +
+        `${Object.keys(DEEP_LINK_IDS).join(', ')}`
+    );
   }
   await page.waitForTimeout(500);
   await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
