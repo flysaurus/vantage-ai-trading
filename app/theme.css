@@ -49,6 +49,9 @@
   --v-accent-text: #ffffff;
   --v-gain: #1e9e5a;
   --v-loss: #d64545;
+  /* EARNINGS tag on the daily brief (WATCH reuses --v-hero-warn,
+     MARKET --v-accent, PORTFOLIO --v-gain) */
+  --v-tag-earnings: #5b4bc4;
 
   /* view-only / admin */
   --v-view-only-text: #8a6d1e;
@@ -105,6 +108,8 @@
   --v-accent-text: #00272b;
   --v-gain: #3ddc84;
   --v-loss: #f0716b;
+  /* EARNINGS tag on the daily brief (dark-set value) */
+  --v-tag-earnings: #a78bfa;
 
   --v-view-only-text: #d9a94a;
   --v-view-only-bg: rgba(217, 169, 74, 0.1);

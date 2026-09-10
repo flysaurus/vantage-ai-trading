@@ -35,9 +35,11 @@ import type { Position, AccountSummary } from '@/types';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { fmt, pctStr, splitCents } from '@/lib/insights/format';
 import { buildDeck, type DeckTeaser } from '@/lib/insights/deck';
+import { briefAskPrompt } from '@/lib/insights/brief';
 import { HeroDeck } from './HeroDeck';
 import { PortfolioHealthCard } from './PortfolioHealthCard';
 import { QuickLinks } from './QuickLinks';
+import { BriefModal, type BriefKind } from './BriefModal';
 
 function firstLine(content: string): string {
   const line = (content || '')
@@ -54,7 +56,6 @@ export function InsightsTab() {
   const { activeAccount, activeAccountId } = useAccounts();
   const { user } = useAuth();
   const { setTab } = useTabStore();
-
   const isShowingDemo = activeAccount?.isDemo ?? false;
   const isReadOnly = !isShowingDemo && !(activeAccount?.tradingEnabled ?? false);
   const isBrokerExpected = isConnected && !isShowingDemo;
@@ -143,12 +144,25 @@ export function InsightsTab() {
     [noticedItems, dailyTeaser, weeklyTeaser],
   );
 
-  const openTeaser = useCallback(
-    (kind: 'daily_brief' | 'weekly_snapshot') => {
-      useTabStore.getState().setBriefTarget(kind === 'daily_brief' ? 'daily' : 'weekly');
-      setTab('portfolio');
+  // ── Brief modal (Daily Brief / Weekly Snapshot) ──
+  // The deck teasers used to navigate to the Holdings screen, which yanked the
+  // user out of Insights. They now open the full brief in a dismissible sheet
+  // that sits OVER this screen — closing it returns here.
+  const [briefKind, setBriefKind] = useState<BriefKind | null>(null);
+
+  const openTeaser = useCallback((kind: 'daily_brief' | 'weekly_snapshot') => {
+    setBriefKind(kind === 'daily_brief' ? 'daily' : 'weekly');
+  }, []);
+
+  // "Ask Rufus about this" — close the sheet, then hand the brief that was just
+  // read to the chat as the prompt so the reply is grounded in THIS brief.
+  const askRufusAboutBrief = useCallback(
+    (kind: BriefKind, content: string) => {
+      setBriefKind(null);
+      useTabStore.getState().setPendingPrompt(briefAskPrompt(kind, content));
+      useTabStore.getState().setChatOpen(true);
     },
-    [setTab],
+    [],
   );
 
   // ── Derived account numbers (same single source of truth as before) ──
@@ -382,6 +396,14 @@ export function InsightsTab() {
 
       {/* ── 6. Quick-links 2×2 ── */}
       <QuickLinks items={noticedItems} />
+
+      {/* ── Brief sheet (over this screen; closing returns to Insights) ── */}
+      <BriefModal
+        kind={briefKind}
+        accountId={activeAccountId || 'demo'}
+        onClose={() => setBriefKind(null)}
+        onAskRufus={askRufusAboutBrief}
+      />
     </div>
   );
 }

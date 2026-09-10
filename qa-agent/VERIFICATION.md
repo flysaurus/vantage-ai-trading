@@ -117,3 +117,46 @@ additive honesty on the deep-link branch, never a replacement.
   than `--v-accent`: hero cards are dark-navy islands in **both** themes, so the
   light-theme teal would be unreadable there. Same treatment (accent + `→` + no
   underline), surface-appropriate token.
+
+---
+
+# PART A + PART B — brief modal & chat overhaul
+
+Harness: `qa-agent/verify-brief-chat.cjs` (Playwright, mobile 430×932).
+Run: `npx next dev -p 3002` then `node qa-agent/verify-brief-chat.cjs` from the repo root.
+
+Screenshots: `/tmp/vantage-shots/brief-chat/*.png` · results: `/tmp/vantage-shots/brief-chat/results.json`
+
+## Result
+
+**41 / 41 checks pass** — and no regressions: `verify-insights.cjs` 65/65,
+`verify-insights-polish.cjs` 46/46, `npx vitest run tests/insights-*.test.ts` 22/22.
+
+## PART A — brief routing, modal, chat bridge
+
+| # | Scenario | Key assertions |
+|---|----------|----------------|
+| A1 | Tap the Daily Brief teaser | exactly one `brief-modal` opens; **no** tab switch, **no** chat |
+| A2 | Modal identity | `data-brief-kind="daily"`, title "Today's Daily Brief" |
+| A3–A5 | Real content | all four sections (`MARKET` / `PORTFOLIO` / `WATCH` / `EARNINGS`) present with the actual brief text, not placeholders |
+| A6/A7 | Insights underneath | `nav-insights[data-active=true]`, `nav-portfolio[data-active!=true]` — never navigates to Holdings |
+| A8–A10 | Dismissal | close button, `Escape`, and backdrop click each dismiss and leave Insights rendered |
+| A11–A13 | Weekly Snapshot teaser | same modal, `data-brief-kind="weekly"`, snapshot body + `Health 7/10 · Risk MODERATE` subtitle |
+| A14–A17 | "Ask Rufus about this" | modal closes, chat opens, the brief text is both **visible in the user bubble** and present in the `/api/chat` request payload (grounded follow-ups) |
+
+The bug behind A1: `openTeaser()` previously called `setTab('portfolio')`, so a
+brief tap dumped the user on Holdings. It now only opens the modal.
+
+## PART B — chat window overhaul
+
+| # | Scenario | Key assertions |
+|---|----------|----------------|
+| B1 | No mode picker | zero `Deep Dive` buttons, zero `aria-pressed` elements in the chat chrome — every send goes out as `mode: 'chat'` |
+| B2 | No persistent counter | no `N messages left` text anywhere with 40 remaining; `chat-low-limit-warning` absent |
+| B3 | Warning only when close | threshold = `min(5, 10% of daily limit)`: limit 50 → 6 silent / 5 warn (`⚠️ 5 messages left today`) / 2 warn; limit 20 → threshold 2 → 3 left silent |
+| B4 | Go deeper | POST goes out with `mode: 'deep'`, re-asks the **original** question, the answer is replaced **in place** with the longer deep-research text, `go-deeper` count stays 1 (no extra bubble), response tagged `DEEP RESEARCH` |
+| B5 | Collapse routing | closing from Insights → Insights; closing from Holdings → **Holdings**, not Insights |
+
+Failure paths (in `AITab.tsx`) restore the original answer verbatim rather than
+appending a half-answer: validation-reject and stream-error both drop the deep
+result, keep the original text, and toast that the original is unchanged.

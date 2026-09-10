@@ -122,6 +122,8 @@ interface Message {
   content: string;
   id?: string;
   download?: DownloadPayload;
+  /** True when this response is the DEEP-research rerun of the same exchange. */
+  deep?: boolean;
 }
 
 /** Structured export payload attached to a downloadable AI response. */
@@ -726,6 +728,11 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
   const lastAiResponseRef = useRef('');
   const lastAiMessageRef = useRef<HTMLDivElement>(null); // last AI bubble DOM node (for scroll-to-top of new responses)
   const lastAiMessageIdRef = useRef<string | null>(null); // client-side AI message id (matches msg.id used for trade messageId)
+  // ── "Go deeper" — when set, the in-flight stream REPLACES this message's
+  // content instead of appending a new bubble. `deepOriginRef` keeps the
+  // pre-rerun text so a failed deep run can restore it verbatim.
+  const replaceTargetRef = useRef<string | null>(null);
+  const deepOriginRef = useRef<{ id: string; content: string } | null>(null);
 
   // ── Smooth streaming queue ──
   const charQueueRef = useRef<string[]>([]);
@@ -777,15 +784,29 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
   // ── portfolio context for AI ──
   const portfolioContext = buildLivePortfolioContext(liveAccount);
 
-  // ── Usage tracking (chat = 1 message, Deep Dive = 2 messages) ──
+  // ── Usage tracking ──
+  // Every response uses the standard (fast) model tier by default; there is no
+  // upfront mode selection any more. "Go deeper" (below a response) reruns that
+  // ONE exchange on the deep-research tier, which costs 2 messages.
   const [chatRemaining, setChatRemaining] = useState<number | null>(null);
-  const [deepMode, setDeepMode] = useState(false); // opt-in "Deep Dive" — single-shot
-  // Deep Dive costs 2 messages: disabled when fewer than 2 remain (null = not yet loaded).
-  const deepDisabled = chatRemaining !== null && chatRemaining < 2;
+  /** Id of the AI message currently being rerun by "Go deeper" (null = none). */
+  const [deepTargetId, setDeepTargetId] = useState<string | null>(null);
   const [tier, setTier] = useState('demo');
   const [usageStats, setUsageStats] = useState<any>(null); // full stats for settings panel
 
   // Compute the user's local date in browser timezone (not UTC)
+  // ── Low-limit warning ──
+  // The persistent "N messages left" counter is gone. We surface nothing by
+  // default and only warn when the user is genuinely close to the tier's daily
+  // limit. "Close" = the last 5 messages remaining OR 10% of the daily limit,
+  // whichever is SMALLER (no rounding — the smaller bound wins exactly).
+  const dailyLimit: number | null = usageStats?.chat?.daily?.limit ?? null;
+  const lowLimitThreshold = dailyLimit != null
+    ? Math.min(5, dailyLimit * 0.1)
+    : 5;
+  const showLowLimitWarning =
+    chatRemaining !== null && chatRemaining > 0 && chatRemaining <= lowLimitThreshold;
+
   const getLocalDate = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -820,13 +841,6 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
     refreshRemaining();
     refreshUsageStats();
   }, [refreshRemaining, refreshUsageStats]);
-
-  // Defensive: if remaining drops below 2 (e.g. a slow load lands on "1 left",
-  // or a race between arming and the count refreshing), dis-arm Deep Dive so a
-  // stale armed state can't slip a 2-cost send through the server guard.
-  useEffect(() => {
-    if (deepDisabled && deepMode) setDeepMode(false);
-  }, [deepDisabled, deepMode]);
 
   // ── Account switch: reset chat so another account's messages never leak ──
   const prevAccountRef = useRef<string | null>(null);
@@ -1303,9 +1317,28 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
     content: string,
     mode: 'chat' | 'alerts' | 'deep' = 'chat',
     additionalContext?: string,
-    retryOpts?: { retryAttempt: number; retryFailures: any[] },
+    retryOpts?: { retryAttempt: number; retryFailures: any[]; deepTargetId?: string },
   ) => {
     if (!content.trim() || loadingRef.current) return;
+
+    // ── "Go deeper" rerun ──
+    // Reruns the exchange that produced `deepTargetId` on the deep-research
+    // tier and REPLACES that answer in place (no new user bubble, no new
+    // message in the thread). Costs 2 messages, so guard client-side too — the
+    // server enforces the real limit regardless.
+    const deepTarget = retryOpts?.deepTargetId ?? null;
+    let deepContext = messages;
+    if (deepTarget) {
+      const targetIdx = messages.findIndex(m => m.id === deepTarget);
+      if (targetIdx < 0) return;
+      if (chatRemaining !== null && chatRemaining < 2) {
+        setToast(`Going deeper needs 2 messages — you have ${chatRemaining} left today.`);
+        return;
+      }
+      // Everything up to (not including) the answer being replaced — this ends
+      // on the original user question, so the rerun answers the SAME thing.
+      deepContext = messages.slice(0, targetIdx);
+    }
 
     setSwitchNotice(null); // switch acknowledgment divider is consumed by the next turn
 
@@ -1316,7 +1349,7 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
     const isBypass = bypassStepperRef.current;
     bypassStepperRef.current = false;
 
-    if (!isBypass && clarifyQueue.length > 0 && clarifyStep < clarifyQueue.length) {
+    if (!isBypass && !deepTarget && clarifyQueue.length > 0 && clarifyStep < clarifyQueue.length) {
       // Only intercept when the stepper is rendering for the CURRENT message.
       // If the stepper is NOT active (single-question mode), the clarify state
       // should have been cleared — this guard prevents stale state from eating
@@ -1363,9 +1396,12 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
     }
 
     const userMessage = { role: 'user' as const, content, id: crypto.randomUUID() };
-    const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
-    setInput('');
+    // A deep rerun never appends a user bubble — the question is already in the thread.
+    const newMessages = deepTarget ? deepContext : [...messages, userMessage];
+    if (!deepTarget) {
+      setMessages(newMessages);
+      setInput('');
+    }
     setRebalanceAction(null); // clear any staged rebalance buttons while the new turn runs
     setCustomAmountValue('');
     setLoading(true); loadingRef.current = true;
@@ -1380,8 +1416,7 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
       ? [firstUserMsg, ...recentMessages]
       : recentMessages;
 
-    // Single-shot: reset the Deep Dive toggle once a deep send is committed
-    if (mode === 'deep') setDeepMode(false);
+    // Deep-tier runs are one-shot by nature (there is no armed toggle any more).
 
     // 45s client-side timeout — aborts cleanly BEFORE Vercel's ~60s function cap
     // (Hobby plan; maxDuration:300 is silently clamped) so we can surface an honest
@@ -1455,10 +1490,16 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
       correctedSymbolsRef.current = new Set();
       checklistFrameRef.current = 0; // reset checklist animation stagger
 
-      const aiMsgId = crypto.randomUUID();
+      const aiMsgId = deepTarget ?? crypto.randomUUID();
       lastAiMessageIdRef.current = aiMsgId;
+      replaceTargetRef.current = deepTarget;
+      if (deepTarget) {
+        const origin = messages.find(m => m.id === deepTarget);
+        deepOriginRef.current = origin ? { id: deepTarget, content: origin.content } : null;
+        setDeepTargetId(deepTarget);
+      }
       downloadRef.current = null; // reset per-message — never carry a stale payload into a retry
-      setMessages(prev => [...prev, { role: 'ai', content: '', id: aiMsgId }]);
+      if (!deepTarget) setMessages(prev => [...prev, { role: 'ai', content: '', id: aiMsgId }]);
 
       // SSE events (data: {...}\n\n) are NOT guaranteed to arrive aligned to
       // reader.read() chunk boundaries — a single event can be split across
@@ -1629,6 +1670,28 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
         const rejectData = validationRejectRef.current;
         validationRejectRef.current = null;
 
+        // ── "Go deeper" failures never touch the thread structure ──
+        // The reject handlers below assume the AI message is the LAST item and
+        // pop it. A deep rerun replaces an existing (often mid-thread) bubble,
+        // so instead we restore its original text and report honestly.
+        if (replaceTargetRef.current) {
+          const origin = deepOriginRef.current;
+          const targetId = replaceTargetRef.current;
+          replaceTargetRef.current = null;
+          deepOriginRef.current = null;
+          setDeepTargetId(null);
+          if (origin) {
+            setMessages(prev => prev.map(m => m.id === origin.id ? { ...m, content: origin.content } : m));
+          } else {
+            setMessages(prev => prev.filter(m => m.id !== targetId));
+          }
+          setChecklistItems([]);
+          setScreeningMeta(null);
+          setLoading(false); loadingRef.current = false;
+          setToast('Couldn’t go deeper on that one — the original answer is unchanged.');
+          return;
+        }
+
         if (rejectData.regenerate && !rejectData.fatalValidationFailure) {
           // Auto-retry: keep the progress indicator (checklist) visible,
           // remove the empty AI message stub, and retry silently.
@@ -1704,7 +1767,17 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
       // Commit validated content to the AI message bubble
       const pendingDownload = downloadRef.current;
       downloadRef.current = null;
+      const replacedId = replaceTargetRef.current;
+      replaceTargetRef.current = null;
+      deepOriginRef.current = null;
+      setDeepTargetId(null);
       setMessages(prev => {
+        // "Go deeper": swap the SAME bubble's content for the deeper answer.
+        if (replacedId) {
+          return prev.map(m => m.id === replacedId
+            ? { ...m, role: 'ai' as const, content: finalContent, deep: true }
+            : m);
+        }
         const updated = [...prev];
         if (updated.length > 0 && updated[updated.length - 1].role === 'ai') {
           updated[updated.length - 1] = { ...updated[updated.length - 1], role: 'ai' as const, content: finalContent, ...(pendingDownload ? { download: pendingDownload } : {}) };
@@ -1723,6 +1796,24 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
     } catch (error: any) {
       console.error('Chat error:', error);
       setToast(null);
+      // ── "Go deeper" failed mid-flight ──
+      // Restore the original answer instead of appending an error bubble on top
+      // of the exchange the user was already reading.
+      const deepFailOrigin = deepOriginRef.current;
+      const deepFailId = replaceTargetRef.current;
+      if (deepFailId) {
+        replaceTargetRef.current = null;
+        deepOriginRef.current = null;
+        setDeepTargetId(null);
+        if (deepFailOrigin) {
+          setMessages(prev => prev.map(m => m.id === deepFailOrigin.id ? { ...m, content: deepFailOrigin.content } : m));
+        } else {
+          setMessages(prev => prev.filter(m => m.id !== deepFailId));
+        }
+        setToast(error?.name === 'AbortError'
+          ? 'Deep research timed out — the original answer is unchanged.'
+          : 'Couldn’t go deeper on that one — the original answer is unchanged.');
+      } else
       if (error?.status === 429) {
         const reason = error?.reason || error?.error || 'Usage limit reached';
         const resetsIn = error?.resetsIn || '';
@@ -1768,7 +1859,9 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
       if (userId) {
         try {
           // Await both saves before anything else — prevents losing the last message on refresh
-          const userSaved = await saveChatMessage(userId, 'user', content, accountId).catch((e: any) => { console.error('[AITab] user msg save failed:', e?.message); return null; });
+          // A "Go deeper" rerun re-uses the existing question, so saving another
+          // user row would duplicate it in history — only the answer is updated.
+          const userSaved = deepTarget ? 'skipped' : await saveChatMessage(userId, 'user', content, accountId).catch((e: any) => { console.error('[AITab] user msg save failed:', e?.message); return null; });
           if (lastAiResponseRef.current) {
             const aiSaved = await saveChatMessage(userId, 'assistant', lastAiResponseRef.current, accountId, lastAiMessageIdRef.current).catch((e: any) => { console.error('[AITab] ai msg save failed:', e?.message); return null; });
             console.log('[AITab] Saved: user=', !!userSaved, 'ai=', !!aiSaved);
@@ -1796,6 +1889,27 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
       setTimeout(() => scrollToTopOfLastResponse(true), 0);
     }
   };
+
+  // ── "Go deeper" — rerun ONE exchange on the deep-research tier ──
+  // Every response is produced by the standard (fast) tier by default. This is
+  // the only way to reach the deeper tier: it re-asks the SAME question that
+  // produced `aiMsgId` and replaces that answer in place with a more thorough
+  // one. Costs 2 messages, tracked server-side.
+  const goDeeper = useCallback((aiMsgId: string) => {
+    if (loadingRef.current) return;
+    const idx = messages.findIndex(m => m.id === aiMsgId);
+    if (idx <= 0) return;
+    for (let i = idx - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        sendMessage(messages[i].content, 'deep', undefined, {
+          retryAttempt: 0,
+          retryFailures: [],
+          deepTargetId: aiMsgId,
+        });
+        return;
+      }
+    }
+  }, [messages]);
 
   // ── Cross-tab prompt (bell → AI tab): consume a pendingPrompt set by the Header bell ──
   const sendMessageRef = useRef(sendMessage);
@@ -2328,7 +2442,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               {(() => {
                 // ── Show progress indicator while AI is generating ──
                 // Replaces raw reasoning text with branded pipeline stages
-                if (loading && i === messages.length - 1 && checklistItems.length > 0) {
+                if (loading && (i === messages.length - 1 || msg.id === deepTargetId) && checklistItems.length > 0) {
                   return <ProgressIndicator items={checklistItems} />;
                 }
                 const tldr = extractTLDR(msg.content);
@@ -2744,6 +2858,61 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 }}
               />
             )}
+
+            {/* "Go deeper" — re-asks the SAME question on the deep-research tier
+                and swaps this answer for a more thorough one (2 messages). */}
+            {(() => {
+              if (!msg.id) return null;
+              const done = msg.content.trim();
+              // Only complete, real answers get the affordance — never the empty
+              // streaming stub, a CLARIFY prompt, or a system/error line.
+              if (!done || done.length < 40) return null;
+              if (/^(\[CLARIFY:|📊|⏳|Sorry —)/.test(done)) return null;
+              if (!messages.slice(0, i).some(m => m.role === 'user')) return null;
+              const busy = deepTargetId === msg.id && loading;
+              return (
+                <div style={{ marginTop: '10px' }}>
+                  <button
+                    type="button"
+                    data-testid="go-deeper"
+                    data-msg-id={msg.id}
+                    data-deep-busy={busy ? 'true' : 'false'}
+                    disabled={busy || loading}
+                    onClick={() => goDeeper(msg.id!)}
+                    title="Re-run this answer with the deep-research model (uses 2 messages)"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      background: 'transparent',
+                      border: '1px solid rgba(34,211,238,0.45)',
+                      borderRadius: '999px',
+                      padding: '6px 13px',
+                      color: busy ? 'rgba(255,255,255,0.45)' : ACCENT,
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: busy || loading ? 'default' : 'pointer',
+                      fontFamily: 'inherit',
+                      opacity: busy || loading ? 0.7 : 1,
+                    }}
+                  >
+                    {busy ? 'Going deeper…' : '🔬 Go deeper'}
+                  </button>
+                  {msg.deep && (
+                    <span
+                      data-testid="deep-badge"
+                      style={{
+                        marginLeft: '8px', fontSize: '10px', fontWeight: 800,
+                        letterSpacing: '0.08em', color: '#c084fc',
+                        border: '1px solid rgba(192,132,252,0.35)',
+                        borderRadius: '999px', padding: '3px 8px',
+                        background: 'rgba(192,132,252,0.10)',
+                      }}
+                    >
+                      DEEP RESEARCH
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </React.Fragment>
           );
         })}
@@ -2846,90 +3015,25 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
       {/* ======== 3. INPUT ZONE — fixed at bottom with separator ======== */}
       <div style={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.015)', padding: '18px 16px 20px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))', position: 'relative', zIndex: 10 }}>
 
-        {/* Deep Dive segmented control + usage — left-aligned toggle, trailing count */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '12px',
-          marginBottom: '10px',
-        }}>
-          <div style={{
-            display: 'flex',
-            background: 'rgba(255,255,255,0.05)',
-            border: deepMode ? '1px solid rgba(192,132,252,0.5)' : '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '12px',
-            padding: '3px',
-            gap: '2px',
-            transition: 'border-color 0.2s ease',
-          }}>
-            <button
-              onClick={() => setDeepMode(false)}
-              aria-pressed={!deepMode}
-              style={{
-                padding: '5px 14px',
-                borderRadius: '9px',
-                fontSize: '11px',
-                fontWeight: 700,
-                border: 'none',
-                background: !deepMode ? 'rgba(34,211,238,0.15)' : 'transparent',
-                color: !deepMode ? ACCENT : TEXT_MUTED,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              Chat
-            </button>
-            <button
-              onClick={() => { if (!deepDisabled) setDeepMode(!deepMode); }}
-              disabled={deepDisabled}
-              aria-pressed={deepMode}
-              title={deepDisabled ? 'Deep Dive needs 2 messages' : (deepMode ? 'Deep Dive ON — tap to cancel' : 'Deep Dive: extended reasoning, uses 2 messages')}
-              style={{
-                padding: '5px 14px',
-                borderRadius: '9px',
-                fontSize: '11px',
-                fontWeight: 700,
-                border: 'none',
-                background: deepMode ? 'rgba(192,132,252,0.18)' : 'transparent',
-                color: deepDisabled ? 'rgba(255,255,255,0.25)' : (deepMode ? '#c084fc' : TEXT_MUTED),
-                cursor: deepDisabled ? 'not-allowed' : 'pointer',
-                opacity: deepDisabled ? 0.4 : 1,
-                fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              🔬 Deep Dive
-            </button>
+        {/* Low-limit warning — hidden by default.
+            The persistent "N left" counter was removed on purpose: limits are
+            tracked server-side and only surfaced when genuinely close (last 5
+            messages remaining OR 10% of the daily limit, whichever is smaller). */}
+        {showLowLimitWarning && (
+          <div
+            data-testid="chat-low-limit-warning"
+            data-messages-left={chatRemaining ?? ''}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              marginBottom: '10px', padding: '5px 11px',
+              background: 'rgba(245,158,11,0.10)',
+              border: '1px solid rgba(245,158,11,0.28)',
+              borderRadius: '999px',
+              fontSize: '11.5px', fontWeight: 600, color: WARNING,
+            }}
+          >
+            ⚠️ {chatRemaining} {chatRemaining === 1 ? 'message' : 'messages'} left today
           </div>
-
-          {/* Trailing context — quiet message count, or cost when armed */}
-          {deepMode ? (
-            <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#c084fc', whiteSpace: 'nowrap' }}>
-              uses 2 messages
-            </div>
-          ) : chatRemaining !== null ? (
-            <div style={{
-              fontSize: '11.5px',
-              color: chatRemaining <= 3 ? WARNING : TEXT_MUTED,
-              whiteSpace: 'nowrap',
-              transition: 'color 0.3s ease',
-            }}>
-              <b style={{ color: chatRemaining <= 3 ? WARNING : TEXT_DIM }}>{chatRemaining}</b> messages left
-            </div>
-          ) : null}
-        </div>
-
-        {/* Deep Dive disabled reason — explicit, not a silent disable (only when 1 left) */}
-        {deepDisabled && chatRemaining === 1 && (
-        <div style={{
-          fontSize: '11px',
-          color: WARNING,
-          marginBottom: '8px',
-        }}>
-          ⚠️ Deep Dive needs 2 messages — you have 1 left today
-        </div>
         )}
 
         {/* Input bar — with Explore button */}
@@ -2986,6 +3090,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             </button>
             <textarea
               ref={inputRef}
+              data-testid="chat-input"
               rows={1}
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -2994,10 +3099,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   const canSend = chatRemaining !== 0;
-                  if (canSend) sendMessage(input, deepMode ? 'deep' : 'chat');
+                  if (canSend) sendMessage(input, 'chat');
                 }
               }}
-              placeholder={deepMode ? 'Ask for an in-depth analysis — e.g. "real analysis of NVDA\'s moat"' : chatPlaceholder}
+              placeholder={chatPlaceholder}
               maxLength={500}
               disabled={chatRemaining === 0}
               style={{
@@ -3016,9 +3121,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               }}
             />
             <div
+              data-testid="chat-send"
               onClick={() => {
                 const canSend = chatRemaining !== 0;
-                if (canSend && input.trim()) sendMessage(input, deepMode ? 'deep' : 'chat');
+                if (canSend && input.trim()) sendMessage(input, 'chat');
               }}
               style={{
                 width: '34px',
@@ -3027,7 +3133,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 alignItems: 'center',
                 justifyContent: 'center',
                 background: input.trim() && chatRemaining !== 0
-                  ? (deepMode ? '#c084fc' : ACCENT)
+                  ? ACCENT
                   : 'rgba(255,255,255,0.12)',
                 borderRadius: '50%',
                 fontSize: '15px',
@@ -3037,7 +3143,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 fontWeight: 700,
               }}
             >
-              {deepMode ? '🔬' : '↑'}
+              ↑
             </div>
           </div>
         </div>
