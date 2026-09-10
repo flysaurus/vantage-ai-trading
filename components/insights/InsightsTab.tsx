@@ -322,8 +322,18 @@ export function InsightsTab() {
             padding: '16px 18px 18px',
           }}
         >
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--v-text-muted)' }}>
-            YOUR PORTFOLIO
+          {/* label row — orb icon + label, mirroring the hero card's
+              orb+"RUFUS NOTICED" treatment so the two card types read as a
+              family (same 12px gradient orb, same gap). */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span
+              aria-hidden="true"
+              data-testid="balance-orb"
+              style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--v-orb)', flexShrink: 0 }}
+            />
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--v-text-muted)' }}>
+              YOUR PORTFOLIO
+            </span>
           </div>
           <div data-testid="balance-section" style={{ marginTop: 12 }}>
             {accountState === 'ready' ? (

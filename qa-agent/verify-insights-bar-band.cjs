@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// Insights review pass — Em's four items (Sep 10):
+// Insights ROUND 3 — Em's corrected sizing (SUPERSEDES the earlier sizing) +
 //   A. "YOUR PORTFOLIO" balance block must be a real CARD on the canvas
 //      (white fill, 0.5px #E7EAE4 hairline, rounded, real padding) wrapping
 //      label + serif balance + Today/Total + "See Holdings →" — not bare text.
@@ -18,7 +18,7 @@ const fs = require('fs');
 
 const BASE = 'http://localhost:3002';
 const REF = 'ixjnuoslbzytubpplkot';
-const OUT = '/tmp/vantage-shots/insights-review';
+const OUT = '/tmp/vantage-shots/bar-band';
 fs.mkdirSync(OUT, { recursive: true });
 
 const session = JSON.parse(fs.readFileSync('/tmp/vantage-session.json', 'utf8'));
@@ -47,7 +47,8 @@ const ranked = [...rows].sort((a, b) => (b.market_value || 0) - (a.market_value 
 const top1 = ranked[0], top2 = ranked[1];
 const shareOf = (r) => ((r.market_value || 0) / totalMV) * 100;
 const expStat = `${Math.round(shareOf(top1) * 10) / 10}%`;
-const expRows = [`${top1.symbol} ${Math.round(shareOf(top1))}%`, `Other ${Math.round(100 - shareOf(top1))}%`];
+const expRows = [`${top1.symbol} ${Math.round(shareOf(top1))}%`, `${top2.symbol} ${Math.round(shareOf(top2))}%`,
+  `Other ${Math.round(100 - shareOf(top1) - shareOf(top2))}%`];
 const alpacaCash = 25000;
 
 function rawPositions(list) {
@@ -297,8 +298,6 @@ const readBarAndContent = (page) => page.evaluate(() => {
     bar: B(bar), barPosition: barCs ? barCs.position : null, barHeight: bar ? Math.round(bar.getBoundingClientRect().height) : null,
     navTop: nav ? nav.getBoundingClientRect().top : null,
     scrollerPadBottom: cs ? parseFloat(cs.paddingBottom) : null,
-    scrollerMarginBottom: cs ? parseFloat(cs.marginBottom) : null,
-    scrollerClientBottom: scroller ? scroller.getBoundingClientRect().bottom : null,
     scrollerMax: scroller ? { scrollTop: scroller.scrollTop, max: scroller.scrollHeight - scroller.clientHeight, clientH: scroller.clientHeight } : null,
     deck: B(q('hero-deck')), dots: B(q('deck-dots')),
     lowestContent: lowest ? { tag: lowest.tagName, testid: lowest.getAttribute('data-testid'), ...B(lowest) } : null,
@@ -327,161 +326,229 @@ const readDots = (page) => page.evaluate(() => {
   };
 });
 
+
+/* ═══════════════ ROUND 3 (Em's corrected sizing — SUPERSEDES v1) ═══════════════
+   Concentration card: compact top row (stat ~28px + 66px donut, top-1 + Other
+   legend), FULL-WIDTH sentence/sub-line beneath it, action row on ONE line with
+   Remind right-aligned. Your Portfolio card: 12px orb left of the label.
+   Ask Rufus bar: must float clear of content at EVERY scroll position — proven
+   with a clipped-visible-rect sweep, not a single measurement.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* New-contract expectations from the REAL fixture */
+const expStatTop1 = `${Math.round(shareOf(top1) * 10) / 10}%`;        // e.g. 30.3%
+const expLegendV2 = [`${top1.symbol} ${Math.round(shareOf(top1))}%`,
+  `Other ${Math.round(100 - shareOf(top1))}%`];
+
+const readConcentrationV2 = (page) => page.evaluate(() => {
+  const card = document.querySelector('[data-testid="insight-card"][data-trigger-type="concentration_single"]')
+    || document.querySelector('[data-testid="insight-card"][data-trigger-type="concentration_top3"]');
+  if (!card) return { found: false };
+  const q = (t) => document.querySelector(`[data-testid="${t}"]`);
+  const R = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, w: b.width, h: b.height, cx: (b.left + b.right) / 2, cy: (b.top + b.bottom) / 2 }; };
+  const row = q('concentration-top-row');
+  const stat = q('hero-stat');
+  const ring = card.querySelector('[data-testid="donut-column"] svg');
+  const legend = q('donut-legend');
+  const legendRows = [...document.querySelectorAll('[data-testid="donut-legend-row"]')].map((r) => {
+    const spans = [...r.querySelectorAll('span')];
+    return { text: `${spans[1] ? spans[1].textContent.trim() : ''} ${spans[2] ? spans[2].textContent.trim() : ''}`.trim() };
+  });
+  const sentence = q('card-sentence');
+  const caption = q('card-caption');
+  const actionRow = q('card-action-row') || q('card-primary-cta').parentElement;
+  const cta = q('card-primary-cta');
+  const ask = q('card-secondary-link');
+  const snooze = q('card-snooze');
+  const ctaR = R(cta), askR = R(ask), snoozeR = R(snooze);
+  const cardCS = getComputedStyle(card);
+  const statCS = getComputedStyle(stat);
+  const senCS = getComputedStyle(sentence);
+  const cardBox = card.getBoundingClientRect();
+  const leftEdge = cardBox.left + parseFloat(cardCS.paddingLeft);
+  const rightEdge = cardBox.right - parseFloat(cardCS.paddingRight);
+  const rowCS = getComputedStyle(actionRow);
+  return {
+    found: true,
+    card: R(card), cardBox: { x: cardBox.left, y: cardBox.top, w: cardBox.width, h: cardBox.height },
+    cardPad: { t: parseFloat(cardCS.paddingTop), r: parseFloat(cardCS.paddingRight), b: parseFloat(cardCS.paddingBottom), l: parseFloat(cardCS.paddingLeft) },
+    contentLeft: leftEdge, contentRight: rightEdge,
+    row: R(row), stat: R(stat), ring: R(ring), legend: R(legend), legendRows,
+    ringSize: ring ? { w: Math.round(ring.getBoundingClientRect().width), h: Math.round(ring.getBoundingClientRect().height) } : null,
+    statFontSize: stat ? parseFloat(statCS.fontSize) : null,
+    statWeight: stat ? statCS.fontWeight : null,
+    statSerif: /serif/i.test(statCS.fontFamily) && !/sans-serif/i.test(statCS.fontFamily),
+    statItalic: statCS.fontStyle === 'italic',
+    sentence: R(sentence), sentenceLineHeight: senCS.lineHeight, sentenceFontSize: parseFloat(senCS.fontSize),
+    caption: R(caption),
+    actionRow: R(actionRow), actionWrap: rowCS.flexWrap, actionGap: parseFloat(rowCS.gap || rowCS.columnGap),
+    cta: ctaR, ask: askR, snooze: snoozeR,
+    snoozeML: snooze ? getComputedStyle(snooze).marginLeft : null,
+    snoozeSpecifiedML: snooze ? snooze.style.marginLeft : null,
+    snoozeInline: !!(snoozeR && askR && ctaR && Math.abs(snoozeR.cy - askR.cy) <= 2 && Math.abs(snoozeR.cy - ctaR.cy) <= 2),
+  };
+});
+
+const readBalanceOrb = (page) => page.evaluate(() => {
+  const orb = document.querySelector('[data-testid="balance-orb"]');
+  const card = document.querySelector('[data-testid="balance-card"]');
+  if (!card) return { found: false };
+  const label = [...card.querySelectorAll('span')].find((s) => (s.textContent || '').trim() === 'YOUR PORTFOLIO');
+  const R = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, w: b.width, h: b.height, cy: (b.top + b.bottom) / 2 }; };
+  const cs = orb ? getComputedStyle(orb) : null;
+  return {
+    found: true,
+    orb: R(orb), label: R(label),
+    orbExists: !!orb,
+    size: orb ? Math.round(orb.getBoundingClientRect().width) : null,
+    bgImage: cs ? cs.backgroundImage : null,
+    radius: cs ? cs.borderRadius : null,
+    leftOfLabel: !!(orb && label && orb.getBoundingClientRect().right <= label.getBoundingClientRect().left + 1),
+    sameRow: !!(orb && label && Math.abs(((orb.getBoundingClientRect().top + orb.getBoundingClientRect().bottom) / 2) - ((label.getBoundingClientRect().top + label.getBoundingClientRect().bottom) / 2)) <= 3),
+    heroOrbBg: (() => {
+      const heroOrb = document.querySelector('[data-testid="insight-card"] [aria-hidden="true"]');
+      return heroOrb ? getComputedStyle(heroOrb).backgroundImage : null;
+    })(),
+  };
+});
+
+/** The core proof: for scrollTop 0→max, is ANY content visible in the bar band?
+ *  Uses CLIPPED visible rects (element rect ∩ scroller client rect) — an
+ *  unclipped getBoundingClientRect is NOT evidence when an ancestor clips. */
+const sweepBarOverlap = (page, steps = 40) => page.evaluate((STEPS) => {
+  const sc = document.querySelector('.content-area');
+  if (!sc) return { ok: false, reason: 'no .content-area' };
+  const bar = document.querySelector('[data-testid="ask-rufus-bar"]') || document.querySelector('.ask-rufus-bar');
+  if (!bar) return { ok: false, reason: 'no ask-rufus-bar' };
+  const barBox = bar.getBoundingClientRect();
+  const nav = document.querySelector('nav.fixed');
+  const scBox0 = sc.getBoundingClientRect();
+  const max = sc.scrollHeight - sc.clientHeight;
+  const orig = sc.scrollTop;
+  let worst = { gap: Infinity }, hits = [];
+  for (let i = 0; i <= STEPS; i++) {
+    sc.scrollTop = Math.round((max * i) / STEPS);
+    const scb = sc.getBoundingClientRect();
+    // visible band of the scroller
+    const vTop = Math.max(scb.top, 0), vBottom = Math.min(scb.bottom, window.innerHeight);
+    const cand = [...sc.querySelectorAll('button, a, [role="button"], [data-testid]')].filter((e) => {
+      if (e.getAttribute('aria-hidden') === 'true' || e.closest('[aria-hidden="true"]')) return false;
+      if (e.closest('[data-testid="ask-rufus-bar"]') || e.closest('nav')) return false;
+      const b = e.getBoundingClientRect();
+      return b.width > 8 && b.height > 8;
+    });
+    for (const e of cand) {
+      const b = e.getBoundingClientRect();
+      const visTop = Math.max(b.top, vTop), visBottom = Math.min(b.bottom, vBottom);
+      if (visBottom - visTop <= 0) continue;                 // fully clipped → invisible
+      const gap = barBox.top - visBottom;                    // >0 ⇒ clears the bar
+      if (gap < worst.gap) worst = { gap, tag: e.tagName, testid: e.getAttribute('data-testid'), scrollTop: sc.scrollTop, visBottom, barTop: barBox.top };
+      if (visBottom > barBox.top + 0.5) hits.push({ tag: e.tagName, testid: e.getAttribute('data-testid'), visBottom, barTop: barBox.top, scrollTop: sc.scrollTop, mount: b.height });
+    }
+  }
+  sc.scrollTop = orig;
+  return {
+    ok: true,
+    scrollerTop: scBox0.top, scrollerBottom: scBox0.bottom, scrollerClientH: sc.clientHeight,
+    barTop: barBox.top, navTop: nav ? nav.getBoundingClientRect().top : null,
+    max, worst, hits: hits.slice(0, 6), hitCount: hits.length, steps: STEPS,
+  };
+}, steps);
+
+
+/* ═══════════════════════════════════════════════════════════════
+   BAR-BAND GATE — the floating Ask Rufus bar must never cover content,
+   at ANY scroll position (round 3; two earlier rounds "verified clear"
+   from a single screenshot near max scroll, which was not evidence).
+   ═══════════════════════════════════════════════════════════════ */
 (async () => {
   const browser = await chromium.launch();
-  console.log('\n=== A. "YOUR PORTFOLIO" balance block must be a CARD ===');
-  {
-    const { ctx, page } = await setup(browser);
-    if (await gotoInsights(page)) {
-      const b = await readBalance(page);
-      rec('A1 balance-card exists', b.found);
-      if (b.found) {
-        rec('A2 white fill (--v-card) in light theme', b.background === 'rgb(255, 255, 255)', b.background);
-        rec('A3 0.5px hairline #E7EAE4', parseFloat(b.borderWidth) > 0 && parseFloat(b.borderWidth) <= 1 && b.borderStyle === 'solid' && b.borderColor === 'rgb(231, 234, 228)',
-          `${b.borderWidth} ${b.borderStyle} ${b.borderColor}`);
-        rec('A4 rounded corners', parseFloat(b.borderRadius) >= 12, b.borderRadius);
-        rec('A5 real padding on all sides (≥14px)', Math.min(b.paddingTop, b.paddingRight, b.paddingBottom, b.paddingLeft) >= 14,
-          `t${b.paddingTop} r${b.paddingRight} b${b.paddingBottom} l${b.paddingLeft}`);
-        rec('A6 wraps label + balance + Today/Total + See Holdings', b.amountInside && b.seeHoldingsInside && b.todayInside,
-          `amount=${b.amountInside} seeHoldings=${b.seeHoldingsInside} todayTotal=${b.todayInside}`);
-        rec('A7 content is inset from the card edge (frame, not bare text)',
-          b.amountLeft !== null && (b.amountLeft - b.box.x) >= 14 && b.amountTop > b.box.y,
-          `leftPad=${b.amountLeft === null ? 'n/a' : (b.amountLeft - b.box.x).toFixed(1)} topPad=${b.amountTop === null ? 'n/a' : (b.amountTop - b.box.y).toFixed(1)}`);
-        console.log('     card box:', JSON.stringify(b.box), 'canvas:', b.canvasBg);
+  const { ctx, page } = await setup(browser, { viewport: { width: 430, height: 932 } });
+  const ok = await gotoInsights(page);
+  if (!ok) { console.error('could not reach Insights'); process.exit(1); }
+  await page.waitForTimeout(2500);
+
+  const sweep = await page.evaluate(async () => {
+    const sc = document.querySelector('.content-area');
+    const bar = document.querySelector('[data-testid="ask-rufus-bar"]');
+    const nav = document.querySelector('nav.fixed');
+    const max = sc.scrollHeight - sc.clientHeight;
+    const barBox = bar.getBoundingClientRect();
+    const hidden = document.createElement('style');
+    hidden.textContent = '[data-testid="ask-rufus-bar"],nav.fixed{visibility:hidden!important}';
+    document.head.appendChild(hidden);
+
+    const hits = [];
+    let worstScrollerBottom = -Infinity;
+    for (let i = 0; i <= 40; i++) {
+      sc.scrollTop = Math.round((max * i) / 40);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const scb = sc.getBoundingClientRect();
+      worstScrollerBottom = Math.max(worstScrollerBottom, scb.bottom);
+      for (let y = Math.ceil(barBox.top) + 1; y < barBox.bottom; y += 4) {
+        for (let x = 8; x < window.innerWidth - 8; x += 24) {
+          const el = document.elementFromPoint(x, y);
+          if (el && el.closest('.content-area')) hits.push({ scrollTop: sc.scrollTop, x, y, tag: el.tagName, testid: el.getAttribute('data-testid') });
+        }
       }
-      await shot(page, 'R-A1-balance-card-context');
-      await shot(page, 'R-A2-balance-card', { el: '[data-testid="balance-card"]' });
-      // full-width balance card on a taller viewport too
-      await page.setViewportSize({ width: 430, height: 1400 });
-      await page.waitForTimeout(600);
-      await shot(page, 'R-A3-balance-card-wide');
     }
-    await ctx.close();
-  }
-  {
-    const { ctx, page } = await setup(browser, { theme: 'dark' });
-    if (await gotoInsights(page)) {
-      const b = await readBalance(page);
-      rec('A8 dark parity: panel fill + dark hairline', b.found && b.background === 'rgb(10, 15, 30)' && b.borderColor === 'rgb(20, 28, 46)',
-        `${b.background} / ${b.borderColor}`);
-      await shot(page, 'R-A4-balance-card-dark', { el: '[data-testid="balance-card"]' });
+    sc.scrollTop = 0;
+    hidden.remove();
+    return { max, barTop: barBox.top, barBottom: barBox.bottom, navTop: nav ? nav.getBoundingClientRect().top : null, worstScrollerBottom, hits: hits.slice(0, 6), hitCount: hits.length };
+  });
+
+  console.log(`\n=== Ask Rufus bar band (barTop=${sweep.barTop.toFixed(1)}, barBottom=${sweep.barBottom.toFixed(1)}, navTop=${sweep.navTop}) ===`);
+  rec("B1 the scroll viewport is CLIPPED at the bar's top edge (structural, not padding)",
+    Math.abs(sweep.worstScrollerBottom - sweep.barTop) <= 0.5,
+    `max scroller bottom over sweep=${sweep.worstScrollerBottom.toFixed(1)} vs barTop=${sweep.barTop.toFixed(1)}`);
+  rec('B2 with the bar hidden the ENTIRE bar band is geometrically empty at all 41 scroll positions (nothing can ever be under it)',
+    sweep.hitCount === 0,
+    sweep.hitCount ? `${sweep.hitCount} hits, e.g. ${JSON.stringify(sweep.hits[0])}` : `0 hits · 41 positions × ${Math.floor((sweep.barBottom - sweep.barTop) / 4)} rows × ${Math.floor((430 - 16) / 24)} columns`);
+  rec('B3 the sweep actually scrolled the full range', sweep.max > 40, `max=${sweep.max}px`);
+
+  const approach = await page.evaluate(async () => {
+    const sc = document.querySelector('.content-area');
+    const row = document.querySelector('[data-testid="card-action-row"]');
+    const cta = document.querySelector('[data-testid="card-primary-cta"]');
+    const bar = document.querySelector('[data-testid="ask-rufus-bar"]');
+    const max = sc.scrollHeight - sc.clientHeight;
+    const barTop = bar.getBoundingClientRect().top;
+    let best = { gap: Infinity, scrollTop: 0 };
+    for (let i = 0; i <= 40; i++) {
+      sc.scrollTop = Math.round((max * i) / 40);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const b = row.getBoundingClientRect(), scb = sc.getBoundingClientRect();
+      const visBottom = Math.min(b.bottom, scb.bottom);
+      if (visBottom - Math.max(b.top, scb.top) <= 0) continue;
+      const g = barTop - visBottom;
+      if (g < best.gap) best = { gap: g, scrollTop: sc.scrollTop };
     }
-    await ctx.close();
-  }
+    sc.scrollTop = best.scrollTop;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const cb = cta.getBoundingClientRect();
+    const hit = document.elementFromPoint((cb.left + cb.right) / 2, (cb.top + cb.bottom) / 2);
+    return { gap: best.gap, scrollTop: best.scrollTop, max, ctaText: cta.textContent.trim(), ctaHit: hit ? (hit.getAttribute('data-testid') || hit.tagName) : null };
+  });
+  rec("B4 the action row's CLOSEST achievable approach to the bar is clear (bar never covers Review / Ask Rufus / Remind)",
+    approach.gap >= 0, `closest gap=${approach.gap.toFixed(1)}px @ scrollTop ${approach.scrollTop}/${approach.max}`);
+  rec('B5 at that closest approach the CTA is still hit-testable at its own centre',
+    approach.ctaHit === 'card-primary-cta', `elementFromPoint → ${approach.ctaHit}`);
+  const expCta = CONC.action === 'REBALANCE' ? 'Trade'
+    : CONC.action.startsWith('REVIEW_POSITION:') ? `Review ${CONC.action.split(':')[1]}`
+    : null;
+  rec('B6 CTA label comes from the shared ActionButton mapping for the trigger action (no invented CTA)',
+    !!expCta && approach.ctaText.toLowerCase() === expCta.toLowerCase(),
+    `action=${CONC.action} rendered="${approach.ctaText}" expected="${expCta}"`);
 
-  console.log('\n=== B. concentration card: compact donut rail, tight 2-line legend ===');
-  {
-    const { ctx, page } = await setup(browser, { dsf: 3 });
-    if (await gotoInsights(page)) {
-      const r = await readRail(page);
-      if (r.found) {
-        rec('B1 compact donut rail hugs the 66px ring (was 108px)', Math.abs(r.railW - 66) <= 6, `${r.railW}px`);
-        rec('B2 ring horizontally centred in the rail', Math.abs(r.ringCx - r.railCx) <= 1,
-          `ring cx=${r.ringCx.toFixed(1)} rail cx=${r.railCx.toFixed(1)}`);
-        rec('B3 legend left edge aligned to ring left edge', Math.abs(r.legendLeft - r.ringLeft) <= 1.5,
-          `legend ${r.legendLeft.toFixed(1)} vs ring ${r.ringLeft.toFixed(1)}`);
-        rec('B4 legend right edge aligned to ring right edge (no bleed to rail edge)', Math.abs(r.legendRight - r.ringRight) <= 1.5,
-          `legend ${r.legendRight.toFixed(1)} vs ring ${r.ringRight.toFixed(1)}`);
-        rec('B5 ring→legend gap tight (≤8px, CSS says 5)', r.ringToLegend <= 8 && r.colGap === 5, `gap=${r.ringToLegend} cssGap=${r.colGap}`);
-        rec('B6 legend rows tight (CSS row gap 3)', r.rowGapCss === 3, `rowGap=${r.rowGapCss} measured=${r.rowGaps.join('/')}`);
-        rec('B7 exactly 2 legend rows (top holding + Other, real data)',
-          r.rows.length === 2 && r.rows.map((x) => x.text).join(' | ') === expRows.join(' | '),
-          r.rows.map((x) => x.text).join(' | '));
-        rec('B8 no legend text clipping/ellipsis', r.rows.every((x) => x.overflow <= 0.5), r.rows.map((x) => x.overflow).join('/'));
-        rec('B9 legend inside the rail box (no vertical overflow)', r.legendBottom <= r.railBottom + 0.6,
-          `legendBottom=${r.legendBottom.toFixed(1)} railBottom=${r.railBottom.toFixed(1)}`);
-        console.log('     rail:', JSON.stringify({ railW: r.railW, ringW: r.ringW, legendW: r.legendW, colHeight: r.colHeight }));
-      } else rec('B1 concentration card found', false);
-      await shot(page, 'R-B1-concentration-card', { el: '[data-testid="insight-card"][data-trigger-type="concentration_single"]' });
-      await shot(page, 'R-B2-donut-rail-zoom', { el: '[data-testid="card-right-col"]' });
-    }
-    await ctx.close();
-  }
+  await shot(page, 'BB-closest-approach');
+  await page.evaluate(() => { document.querySelector('.content-area').scrollTop = 0; });
+  await page.waitForTimeout(600);
+  await shot(page, 'BB-top');
 
-  console.log('\n=== C. Ask Rufus bar vs content (reserved space) ===');
-  {
-    const { ctx, page } = await setup(browser);
-    if (await gotoInsights(page)) {
-      // 1) scroll so the deck sits fully visible, bar right underneath it
-      const s1 = await scrollTo(page, 'hero-deck', 300);
-      const mid = await readBarAndContent(page);
-      await shot(page, 'R-C1-deck-above-bar');
-      const deckClearMid = mid.bar && mid.deck ? mid.bar.top - mid.deck.bottom : null;
-      rec('C1 bar sits below the deck in this scroll position (no overlap)', deckClearMid !== null && deckClearMid >= 0,
-        `deckBottom=${mid.deck ? mid.deck.bottom.toFixed(1) : 'n/a'} barTop=${mid.bar ? mid.bar.top.toFixed(1) : 'n/a'} clearance=${deckClearMid === null ? 'n/a' : deckClearMid.toFixed(1)}`);
-      rec('C1b scroll actually moved (scroller responsive)', !!(s1 && s1.ok && s1.max > 40), JSON.stringify(s1));
-      rec('C1e STRUCTURAL: the scroll viewport is clipped above the bar (nothing can render behind it)',
-        mid.scrollerClientBottom !== null && mid.bar && mid.scrollerClientBottom <= mid.bar.top + 0.5,
-        `scrollerBottom=${mid.scrollerClientBottom === null ? 'n/a' : mid.scrollerClientBottom.toFixed(1)} barTop=${mid.bar ? mid.bar.top.toFixed(1) : 'n/a'}`);
-
-      // 1b) the UNambiguous shot: deck bottom ~24px above the bar, nothing between
-      const s2 = await scrollDeckBottomAboveBar(page, 24);
-      const tight = await readBarAndContent(page);
-      const tightClear = tight.bar && tight.deck ? tight.bar.top - tight.deck.bottom : null;
-      await shot(page, 'R-C1b-deck-bottom-vs-bar');
-      rec('C1c deck bottom never crosses the bar (tight scroll)', tightClear !== null && tightClear >= 0,
-        `deckBottom=${tight.deck ? tight.deck.bottom.toFixed(1) : 'n/a'} barTop=${tight.bar ? tight.bar.top.toFixed(1) : 'n/a'} clearance=${tightClear === null ? 'n/a' : tightClear.toFixed(1)} ${JSON.stringify(s2)}`);
-
-      // 1c) horizontally scroll the deck to the Daily Brief / Weekly Snapshot
-      //     teaser so the teaser card and the floating bar share one frame.
-      const tinfo = await page.evaluate(() => {
-        const deck = document.querySelector('[data-testid="hero-deck"]');
-        if (!deck) return { ok: false };
-        deck.scrollLeft = deck.scrollWidth;
-        return { ok: true, scrollLeft: deck.scrollLeft, max: deck.scrollWidth - deck.clientWidth };
-      });
-      await page.waitForTimeout(1000);
-      const teaserBox = await page.evaluate(() => {
-        const cards = [...document.querySelectorAll('[data-testid="insight-card"]')];
-        const last = cards[cards.length - 1];
-        const bar = document.querySelector('[data-testid="ask-rufus-bar"]') || document.querySelector('.ask-rufus-bar');
-        if (!last || !bar) return null;
-        const b = last.getBoundingClientRect(), r = bar.getBoundingClientRect();
-        return { kind: last.getAttribute('data-card-kind'), bottom: b.bottom, top: b.top, barTop: r.top, clearance: r.top - b.bottom, cards: cards.length };
-      });
-      await shot(page, 'R-C1c-teaser-card-vs-bar');
-      rec('C1d teaser card + bar in one frame, no overlap', !!teaserBox && teaserBox.clearance >= 0,
-        `${JSON.stringify(teaserBox)} deckScroll=${JSON.stringify(tinfo)}`);
-
-      // 2) max scroll — nothing may be trapped under the bar
-      await page.evaluate(() => {
-        const sc = [...document.querySelectorAll('div')].filter((e) => e.scrollHeight > e.clientHeight + 40)
-          .sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight))[0];
-        if (sc) sc.scrollTop = sc.scrollHeight;
-      });
-      await page.waitForTimeout(900);
-      const bottom = await readBarAndContent(page);
-      const clear = bottom.bar && bottom.lowestContent ? bottom.bar.top - bottom.lowestContent.bottom : null;
-      rec('C2 at max scroll the lowest content clears the bar', clear !== null && clear >= 0,
-        `lowest=${bottom.lowestContent ? bottom.lowestContent.tag + (bottom.lowestContent.testid ? '[' + bottom.lowestContent.testid + ']' : '') : 'n/a'} bottom=${bottom.lowestContent ? bottom.lowestContent.bottom.toFixed(1) : 'n/a'} barTop=${bottom.bar ? bottom.bar.top.toFixed(1) : 'n/a'} clearance=${clear === null ? 'n/a' : clear.toFixed(1)}`);
-      rec('C3 the scroll container is CLIPPED above the bar (margin reserved = bar footprint) so padding-only clearance is no longer relied on',
-        bottom.scrollerMarginBottom !== null && bottom.barHeight !== null && bottom.scrollerMarginBottom >= bottom.barHeight,
-        `marginBottom=${bottom.scrollerMarginBottom} padBottom=${bottom.scrollerPadBottom} barHeight=${bottom.barHeight}`);
-      rec('C4 bar is fixed above the bottom nav, not overlapping it', !!bottom.bar && bottom.bar.bottom <= bottom.navTop + 1,
-        `barBottom=${bottom.bar ? bottom.bar.bottom.toFixed(1) : 'n/a'} navTop=${bottom.navTop === null ? 'n/a' : bottom.navTop.toFixed(1)}`);
-      await shot(page, 'R-C2-max-scroll-clearance');
-    }
-    await ctx.close();
-  }
-
-  console.log('\n=== D. deck dots ===');
-  {
-    const { ctx, page } = await setup(browser);
-    if (await gotoInsights(page)) {
-      await scrollTo(page, 'hero-deck', 240);
-      const d = await readDots(page);
-      rec('D1 deck-dots element renders', d.exists && d.visible, `exists=${d.exists} visible=${d.visible}`);
-      rec('D2 one dot per deck card', d.count > 0 && d.count === d.cardCount, `dots=${d.count} cards=${d.cardCount}`);
-      rec('D3 dots sit BELOW the deck', d.belowDeck, `deckBottom=${d.deckBottom ? d.deckBottom.toFixed(1) : 'n/a'} dotsTop=${d.dotBox ? d.dotBox.top.toFixed(1) : 'n/a'}`);
-      rec('D4 dots in viewport after scrolling to the deck', d.inViewport, JSON.stringify(d.dotBox));
-      rec('D5 first dot is the active one', d.aria.length > 0 && d.aria[0].active === 'true', JSON.stringify(d.aria.slice(0, 3)));
-      await shot(page, 'R-D1-deck-dots');
-    }
-    await ctx.close();
-  }
-
+  await ctx.close();
   await browser.close();
   const failed = results.filter((r) => !r.pass);
   console.log(`\n──────── ${results.length - failed.length}/${results.length} checks passed ────────`);
-  if (failed.length) { failed.forEach((f) => console.log('  ❌', f.name, '—', f.detail)); process.exit(1); }
-})().catch((e) => { console.error('harness error:', e); process.exit(2); });
+  fs.writeFileSync(`${OUT}/results.json`, JSON.stringify({ results, sweep, approach }, null, 2));
+  process.exit(failed.length ? 1 : 0);
+})().catch((e) => { console.error('harness error:', e); process.exit(1); });

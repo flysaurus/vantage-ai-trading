@@ -500,3 +500,113 @@ Holdings contrast arm.
   real backend (per-page `route()`), so it measured the wrong thing.
 * `page.evaluate` runs in the browser — Node-scope constants must be passed as
   arguments (`evaluate(fn, arg)`), not closed over.
+
+---
+
+# ROUND 3 — Em's corrections (SUPERSEDE the earlier concentration sizing)
+
+Three corrections after the review pass. Em is the authority on spec; where the
+recorded sizing disagreed, the code was changed to Em's numbers.
+
+## 1. Concentration card — compact restructure
+
+**Problem:** the split layout put the sentence in a narrow column beside the
+donut → 4-line wrap, and the action row wrapped so "Remind" fell to a second
+line and read as bottom-anchored. The card was also taller than it needed to be.
+
+**Fix (`components/insights/InsightCard.tsx`):**
+
+* `concentration-two-col` → **`concentration-top-row`**: one flex row holding
+  `card-left-col` (category label + stat) and `card-right-col` (donut + legend).
+* Sentence + sub-line moved **full-width BELOW the row** (this is what kills the
+  wrap — the text no longer shares the card with a 108px rail).
+* Stat `30px → 28px`; donut `72px → 66px` (`RING_STROKE 11 → 10`); legend
+  `topN 3 → 1` → **exactly 2 rows** (top holding + Other).
+* Action row: `flexWrap: 'wrap' → 'nowrap'`, tighter paddings/font sizes,
+  `flexShrink: 0` on all three controls → `Review/Trade` + `Ask Rufus` +
+  `Remind in Nd` on **one line**, Remind right-aligned via `margin-left:auto`.
+* Card padding `18/18/16 → 16/16/14`, tighter `marginTop`/`lineHeight` on
+  stat/sentence/caption.
+
+## 2. "YOUR PORTFOLIO" orb
+
+`components/insights/InsightsTab.tsx`: the label row is now
+`display:flex; align-items:center; gap:7` with a **12px orb**
+(`data-testid="balance-orb"`, `background: var(--v-orb)`) immediately left of the
+label — same gradient as the hero cards' `RUFUS NOTICED` orb.
+
+## 3. Ask Rufus bar overlap — why two rounds "passed" and Em still saw it
+
+**Root cause (inspection, not guesswork):** `.content-area` is `flex: 1` and its
+box extended to the **viewport bottom**, while `.ask-rufus-bar` is
+`position: fixed` with an opaque fill. The 156px `padding-bottom` only guaranteed
+clearance **at max scroll** — everywhere else the content scrolled *behind the
+bar*. A single screenshot near the end of the page could never show this, which
+is exactly why it kept being reported as "looks clear" and still felt broken.
+
+**Fix:** reserve the bar's band as a **margin on the scroll container** so the
+scroller's viewport is *clipped* at the bar's top edge:
+
+```css
+.app-shell[data-active-tab='insights'] .content-area { padding-bottom: 18px; margin-bottom: 132px; }
+@media (min-width: 1024px) { .app-shell[data-active-tab='insights'] .content-area { margin-bottom: 78px; } }
+```
+
+`components/app/MainApp.tsx` dropped its inline `padding: '0 0 156px'` so the
+stylesheet rule wins. **Padding can never fix a fixed overlay; only the clip
+boundary can.**
+
+## Evidence
+
+### `qa-agent/verify-insights-round3.cjs` → **28/28, exit 0**
+
+| # | Proof |
+|---|---|
+| E1.2–E1.5 | stat + donut share one row (stat[17→205], ring[217→283]); stat 28px w=800 non-italic sans; donut 66px |
+| E1.3/E1.8 | the top row is the FIRST element; sentence starts below it |
+| E1.6 | legend `XLF 30% \| Other 70%` — real fixture, exactly 2 rows |
+| E1.7/E1.10 | sentence + sub-line = 266px of 268px content width (99%) |
+| E1.9 | sentence = 3.00 lines (was 4+ in the narrow column) |
+| E1.11/E1.12 | `nowrap`, CTA/Ask/Remind all `cy=412.0`, Remind specified `margin-left:auto` |
+| E1.15 | whole card fits 430×932 (h=292.2, bottom 445.7) |
+| E2.1 | dark parity: 28px / 2 rows / nowrap |
+| E3.1–E3.4 | orb exists, 12px, `border-radius 50%`, identical gradient to the hero orb, left of + same row as the label |
+| E4.1–E4.3 | scroller client bottom **= 800.0 = barTop**, 0 interactive elements in the band across **41** positions |
+| E5.1–E5.5 | closest achievable approach of the action row to the bar = **241.3px**; CTA hit-test → `card-primary-cta` |
+
+### `qa-agent/verify-insights-bar-band.cjs` → **6/6, exit 0**
+
+A dedicated gate for the thing that was twice claimed fixed: with the bar and nav
+**hidden**, hit-test the whole band (`barTop+1 … barBottom`, every 4px × every
+24px) at 41 scroll positions → **0 hits**. The band is geometrically empty, not
+merely painted over. Plus CTA label mapping check (regression guard against an
+invented CTA: `REBALANCE → "Trade"`, `REVIEW_POSITION:X → "Review X"`).
+
+### Updated gates (they encoded the superseded sizing)
+
+* `verify-concentration-layout.cjs`: rail `108 → 66`, stat `30 → 28`, legend
+  `3 rows → 2` (line 2 = Other aggregate), arc 2 = Other, gutter `14 → 12`,
+  `concentration-top-row`, C10 remodeled (label → stat in the row, sentence +
+  sub-line full-width beneath).
+* `verify-insights-review.cjs`: scenario B (rail 66, 2-row legend, col gaps 5/3),
+  C1e (structural clip), C3 (`margin-bottom 132 / padding 18`, not padding-only).
+
+### No regressions
+
+`verify-insights.cjs` 65/65 · `verify-insights-polish.cjs` 46/46 ·
+`verify-insights-review.cjs` 30/30 · `verify-balance-loading.cjs` 17/17 ·
+`verify-concentration-layout.cjs` 48/48 · vitest insights-deck + insights-health-score + basketcard-pnl-format **27/27** ·
+`npx tsc --noEmit` → only the pre-existing `tests/etf-sectors.test.ts:124`.
+
+## Gotchas learned here
+
+* **A fixed overlay can never be cleared by padding.** Reserve the band as a
+  margin on the scroll container so the viewport is clipped at the overlay's edge.
+* A single screenshot is not evidence for a scroll-dependent bug; sweep the
+  scroll range and measure clipped rects (`rect ∩ scroller client box`).
+* `getComputedStyle(el).marginLeft` returns the **used** value for `auto`
+  (e.g. `25.5px`) — assert `el.style.marginLeft === 'auto'` for intent.
+* Legend rows render as separate spans with no whitespace between them:
+  `textContent` gives `XLF30%`; compare per-span.
+* Copying a harness header with `head -n N` silently drops the `browser` launch
+  when the original kept it inside the main IIFE.

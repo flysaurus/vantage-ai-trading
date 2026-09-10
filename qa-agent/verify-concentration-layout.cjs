@@ -202,7 +202,7 @@ const readConcCard = (page) => page.evaluate(() => {
   if (!card) return { found: false };
   const r = (el) => { const b = el.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height, right: b.right, bottom: b.bottom }; };
   const header = card.children[0];
-  const col = card.querySelector('[data-testid="concentration-two-col"]');
+  const col = card.querySelector('[data-testid="concentration-top-row"]') || card.querySelector('[data-testid="concentration-two-col"]');
   const left = card.querySelector('[data-testid="card-left-col"]');
   const right = card.querySelector('[data-testid="card-right-col"]');
   const cta = card.querySelector('[data-testid="card-primary-cta"]');
@@ -244,6 +244,10 @@ const readConcCard = (page) => page.evaluate(() => {
     col: col ? r(col) : null, card: r(card),
     legendRows, circles, order: seqOrdered ? seqEls.map(([n]) => n) : seqEls.map(([n]) => n),
     seqOrdered, seqTops: seq,
+    sentence: (() => { const s = card.querySelector('[data-testid="card-sentence"]'); return s ? r(s) : null; })(),
+    caption: (() => { const s = card.querySelector('[data-testid="card-caption"]'); return s ? r(s) : null; })(),
+    actionWrap: actionRow ? getComputedStyle(actionRow).flexWrap : null,
+    ringBox: (() => { const s = card.querySelector('[data-testid="donut-column"] svg'); return s ? r(s) : null; })(),
     statText: stat ? stat.textContent.trim() : null,
     statFont: st ? { family: st.fontFamily, style: st.fontStyle, weight: st.fontWeight, size: st.fontSize } : null,
     captionText: (card.querySelector('[data-testid="card-caption"]') || {}).textContent || '',
@@ -264,7 +268,7 @@ const readConcCard = (page) => page.evaluate(() => {
     await gotoInsights(page);
 
     const c = await readConcCard(page);
-    rec('C1 concentration card exists and uses the two-column split', c.found && c.twoCol, JSON.stringify(c.found ? { twoCol: c.twoCol } : c));
+    rec('C1 concentration card exists and renders the CORRECTED compact top row (stat + donut in one row)', c.found && c.twoCol, JSON.stringify(c.found ? { topRow: c.twoCol } : c));
 
     if (c.found) {
       // ── structure: header above, action row below, both full-width ──
@@ -274,36 +278,40 @@ const readConcCard = (page) => page.evaluate(() => {
       rec('C3 header spans the full card width (not column-scoped)',
         c.header && c.col && c.header.w >= c.col.w - 1,
         `header.w=${c.header && c.header.w.toFixed(1)} col.w=${c.col && c.col.w.toFixed(1)}`);
-      rec('C4 action row sits BELOW both columns',
-        c.actionRow && c.col && c.actionRow.y >= c.col.bottom - 1,
-        `row.top=${c.actionRow && c.actionRow.y.toFixed(1)} col.bottom=${c.col && c.col.bottom.toFixed(1)}`);
+      rec('C4 action row sits BELOW the full-width sentence + sub-line',
+        c.actionRow && c.caption && c.actionRow.y >= c.caption.bottom - 1,
+        `row.top=${c.actionRow && c.actionRow.y.toFixed(1)} caption.bottom=${c.caption && c.caption.bottom.toFixed(1)}`);
       rec('C5 action row is full-width (spans both columns)',
         c.actionRow && c.col && c.actionRow.w >= c.col.w - 1,
         `row.w=${c.actionRow && c.actionRow.w.toFixed(1)} col.w=${c.col && c.col.w.toFixed(1)}`);
 
       // ── column geometry ──
-      rec('C6 right column is the fixed ~108px donut rail',
-        c.right && Math.abs(c.right.w - 108) <= 2, `right.w=${c.right && c.right.w.toFixed(1)}`);
+      rec('C6 right column is the compact donut rail (hugs the 66px ring — was 108px)',
+        c.right && Math.abs(c.right.w - 66) <= 6, `right.w=${c.right && c.right.w.toFixed(1)} ring.w=${c.ringBox && c.ringBox.w.toFixed(1)}`);
       rec('C7 left column is the wider one (flex 1.2)',
         c.left && c.right && c.left.w > c.right.w, `left.w=${c.left && c.left.w.toFixed(1)} right.w=${c.right && c.right.w.toFixed(1)}`);
       rec('C8 columns sit side by side (right is to the right of left)',
         c.left && c.right && c.right.x >= c.left.right - 1, `left.right=${c.left && c.left.right.toFixed(1)} right.x=${c.right && c.right.x.toFixed(1)}`);
-      rec('C9 columns are top-aligned with each other',
-        c.left && c.right && Math.abs(c.left.y - c.right.y) <= 2, `Δy=${c.left && c.right ? Math.abs(c.left.y - c.right.y).toFixed(1) : 'n/a'}`);
+      rec('C9 donut block is vertically centred against the stat in the top row',
+        c.left && c.right && Math.abs((c.left.y + c.left.h / 2) - (c.right.y + c.right.h / 2)) <= 3,
+        `Δcy=${c.left && c.right ? Math.abs((c.left.y + c.left.h / 2) - (c.right.y + c.right.h / 2)).toFixed(1) : 'n/a'}`);
 
       // ── left column content + order ──
-      rec('C10 left column order = label → stat → sentence → sub-line',
+      rec('C10 order = label → stat in the top row, then sentence → sub-line full-width beneath it',
         c.seqOrdered, JSON.stringify(c.seqTops));
-      rec('C10b left column contains all four pieces',
+      rec('C10b all four pieces still render (label, stat, sentence, sub-line)',
         c.order.length === 4, JSON.stringify(c.order));
+      rec('C10c sentence spans the FULL card content width (supersedes the narrow column)',
+        c.sentence && c.col && c.card && c.sentence.w >= (c.card.w - 2 * 16) * 0.92,
+        `sentence.w=${c.sentence && c.sentence.w.toFixed(1)} card.w=${c.card && c.card.w.toFixed(1)}`);
       rec('C11 category label reads CONCENTRATION',
         /CONCENTRATION/.test(c.categoryText || ''), (c.categoryText || '').trim().slice(0, 40));
       rec('C12 hero stat carries the REAL largest-holding share',
         (c.statText || '').includes(expStat), `rendered=${c.statText} expected=${expStat}`);
       const isSerif = (f) => /serif/i.test(f) && !/sans-serif/i.test(f);
-      rec('C13 stat is ~30px bold sans, non-italic',
+      rec('C13 stat is 28px bold sans, non-italic (supersedes the 30/34px sizes)',
         !!c.statFont &&
-        Number.parseFloat(c.statFont.size) >= 28 && Number.parseFloat(c.statFont.size) <= 32 &&
+        Number.parseFloat(c.statFont.size) >= 27 && Number.parseFloat(c.statFont.size) <= 29 &&
         Number(c.statFont.weight) >= 700 &&
         c.statFont.style !== 'italic' &&
         !isSerif(c.statFont.family),
@@ -315,17 +323,17 @@ const readConcCard = (page) => page.evaluate(() => {
         (c.sentenceText || '').length > 30, (c.sentenceText || '').slice(0, 60));
 
       // ── right column: REAL donut + REAL legend ──
-      rec('C16 legend is 2–3 lines (top holdings + Other, never every position)',
-        c.legendRows.length >= 2 && c.legendRows.length <= 3, JSON.stringify(c.legendRows));
+      rec('C16 legend is EXACTLY 2 lines: top holding + Other (never every position)',
+        c.legendRows.length === 2, JSON.stringify(c.legendRows));
       rec(`C17 legend line 1 = ${expTop1Sym} ${expTop1Pct}% (real top holding)`,
         (c.legendRows[0] || '').includes(expTop1Sym) && (c.legendRows[0] || '').includes(String(expTop1Pct)),
         c.legendRows[0]);
-      rec(`C18 legend line 2 = ${expTop2Sym} ${expTop2Pct}% (real #2 holding)`,
-        (c.legendRows[1] || '').includes(expTop2Sym) && (c.legendRows[1] || '').includes(String(expTop2Pct)),
+      rec('C18 legend line 2 = Other bucket (real aggregate = 100 − top holding)',
+        /other/i.test(c.legendRows[1] || '') && (c.legendRows[1] || '').includes(String(Math.round(100 - shareOf(top1)))),
         c.legendRows[1]);
-      rec('C19 legend line 3 = Other bucket for the rest',
-        c.legendRows.length < 3 || (/other/i.test(c.legendRows[2] || '') && (c.legendRows[2] || '').includes(String(expOtherPct))),
-        c.legendRows[2] || '(no third line)');
+      rec('C19 no third legend line (top-2 holding is no longer listed)',
+        c.legendRows.length === 2 && !c.legendRows.some((r) => r.includes(expTop2Sym)),
+        `rows=${JSON.stringify(c.legendRows)}`);
       rec('C20 legend does NOT list a 3rd individual position',
         !c.legendRows.some((r) => r.includes(ranked[2].symbol)), `ranked[2]=${ranked[2].symbol} rows=${JSON.stringify(c.legendRows)}`);
 
@@ -334,9 +342,9 @@ const readConcCard = (page) => page.evaluate(() => {
       rec('C21 donut arc 1 = real ' + expTop1Sym + ' proportion (±0.5pt)',
         Math.abs(arc1 - expTop1Share) <= 0.005,
         `arc=${(arc1 * 100).toFixed(2)}% expected=${(expTop1Share * 100).toFixed(2)}%`);
-      rec('C22 donut arc 2 = real ' + expTop2Sym + ' proportion (±0.5pt)',
-        Math.abs(arc2 - expTop2Share) <= 0.005,
-        `arc=${(arc2 * 100).toFixed(2)}% expected=${(expTop2Share * 100).toFixed(2)}%`);
+      rec('C22 donut arc 2 = the Other aggregate (±0.5pt)',
+        Math.abs(arc2 - (1 - expTop1Share)) <= 0.005,
+        `arc=${(arc2 * 100).toFixed(2)}% expected=${((1 - expTop1Share) * 100).toFixed(2)}%`);
       rec('C23 donut ring count matches the legend (top-2 + Other)',
         c.circles.length === c.legendRows.length, `arcs=${c.circles.length} legend=${c.legendRows.length}`);
 
@@ -351,7 +359,7 @@ const readConcCard = (page) => page.evaluate(() => {
         const t = el.getAttribute('data-trigger-type');
         if (!t) return;
         out[t] = {
-          twoCol: !!el.querySelector('[data-testid="concentration-two-col"]'),
+          twoCol: !!el.querySelector('[data-testid="concentration-top-row"], [data-testid="concentration-two-col"]'),
           hasDonutColumn: !!el.querySelector('[data-testid="donut-column"]'),
           statSize: (() => { const s = el.querySelector('[data-testid="hero-stat"]'); return s ? getComputedStyle(s).fontSize : null; })(),
         };
@@ -419,19 +427,19 @@ const readConcCard = (page) => page.evaluate(() => {
     const { ctx, page } = await setup(browser, { viewport: { width: 320, height: 700 } });
     await gotoInsights(page);
     const c = await readConcCard(page);
-    rec('C35 narrow 320px: two-column split still renders', c.found && c.twoCol);
+    rec('C35 narrow 320px: compact top row still renders', c.found && c.twoCol);
     if (c.found) {
       rec('C36 narrow 320px: no element overflows the card box', c.offenders.length === 0, JSON.stringify(c.offenders));
       rec('C37 narrow 320px: page has no horizontal scrollbar', c.docOverflow <= 0, `overflow=${c.docOverflow}px`);
-      rec('C38 narrow 320px: right rail still 108px', Math.abs(c.right.w - 108) <= 2, `right.w=${c.right.w.toFixed(1)}`);
+      rec('C38 narrow 320px: donut rail stays 66px', Math.abs(c.right.w - 66) <= 6, `right.w=${c.right.w.toFixed(1)}`);
       rec('C39 narrow 320px: left column still has usable width', c.left.w >= 90, `left.w=${c.left.w.toFixed(1)}`);
       const statFits = c.statFont && Number.parseFloat(c.statFont.size) >= 28;
       rec('C40 narrow 320px: stat keeps its size and stays legible', statFits, JSON.stringify(c.statFont));
-      rec('C41 narrow 320px: legend still 2–3 lines, nothing clipped',
-        c.legendRows.length >= 2 && c.legendRows.length <= 3 && c.legendRows.every((r) => r.length > 2),
+      rec('C41 narrow 320px: legend still exactly 2 rows, nothing clipped',
+        c.legendRows.length === 2 && c.legendRows.every((r) => r.length > 2),
         JSON.stringify(c.legendRows));
-      rec('C42 narrow 320px: action row still below the columns',
-        c.actionRow.y >= c.col.bottom - 1, `row.top=${c.actionRow.y.toFixed(1)} col.bottom=${c.col.bottom.toFixed(1)}`);
+      rec('C42 narrow 320px: action row still below row + sentence',
+        c.actionRow.y >= (c.caption || c.col).bottom - 1, `row.top=${c.actionRow.y.toFixed(1)} below=${(c.caption || c.col).bottom.toFixed(1)}`);
       await shot(page, 'C-narrow-320-card', { el: '[data-testid="insight-card"]' });
       await shot(page, 'C-narrow-320-full');
     }
@@ -487,8 +495,8 @@ const readConcCard = (page) => page.evaluate(() => {
     // geometry sanity: real gutter between columns, legend inside the padding box
     const geo = await readConcCard(page);
     const gutter = geo.left && geo.right ? geo.right.x - geo.left.right : null;
-    rec('C46 column gutter is a deliberate 14px (not touching)',
-      gutter != null && Math.abs(gutter - 14) <= 1, `gutter=${gutter && gutter.toFixed(1)}px`);
+    rec('C46 top-row gutter is a deliberate 12px (compact, not touching)',
+      gutter != null && Math.abs(gutter - 12) <= 1, `gutter=${gutter && gutter.toFixed(1)}px`);
     const legendInside = await page.evaluate(() => {
       const card = document.querySelector('[data-testid="insight-card"]');
       const row = document.querySelector('[data-testid="donut-legend-row"]');

@@ -107,40 +107,39 @@ export function HoldingsDonut({ positions }: { positions: Position[] }) {
   );
 }
 
-/** Narrow variant for the two-column concentration card: compact ring with a
- *  2–3 line legend stacked DIRECTLY BENEATH it (top holdings + "Other").
- *  Never lists every position.
+/** Narrow variant for the concentration card's compact top row: 66px ring
+ *  with a 2-line legend stacked DIRECTLY BENEATH it — the single largest
+ *  holding + one "Other" aggregate. Never lists every position.
  *
- *  Alignment contract (approved two-column spec): the ~108px rail is a FIXED
- *  width; the ring is centred in it and the legend block is constrained to the
- *  ring's own width (RING_SIZE) and centred too — so the legend's right edge
- *  lines up with the ring's right edge instead of bleeding to the rail edge.
- *  Gap ring→legend (6px) and legend row gap (4px) are deliberately tight. */
-const RING_SIZE = 72;
-const RING_STROKE = 11;
+ *  Alignment contract: the legend block is constrained to the ring's own
+ *  width (RING_SIZE) and centred, so its edges line up with the ring — no
+ *  `margin-left: auto` on the pct spans (that right-aligns to the flex
+ *  container, not to the ring). */
+const RING_SIZE = 66;
+const RING_STROKE = 10;
 
 export function HoldingsDonutColumn({ positions }: { positions: Position[] }) {
-  const slices = useMemo(() => donutSlices(positions, 2), [positions]);
+  const slices = useMemo(() => donutSlices(positions, 1), [positions]);
   if (slices.length === 0) return null;
   return (
     <div
       data-testid="donut-column"
-      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: '100%' }}
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, width: '100%' }}
     >
       <DonutRing slices={slices} size={RING_SIZE} stroke={RING_STROKE} />
       <div
         data-testid="donut-legend"
-        style={{ display: 'flex', flexDirection: 'column', gap: 4, width: RING_SIZE, maxWidth: '100%' }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 3, width: RING_SIZE, maxWidth: '100%' }}
       >
         {slices.slice(0, 3).map((d) => (
           <div
             key={d.symbol}
             data-testid="donut-legend-row"
-            style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, lineHeight: 1.2 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10.5, lineHeight: 1.15 }}
           >
-            <span style={{ width: 7, height: 7, borderRadius: 2, background: d.color, flexShrink: 0 }} />
+            <span style={{ width: 6, height: 6, borderRadius: 2, background: d.color, flexShrink: 0 }} />
             <span
-              style={{ fontWeight: 700, color: 'var(--v-hero-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              style={{ fontWeight: 700, color: 'var(--v-hero-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}
             >
               {d.symbol}
             </span>
@@ -249,7 +248,7 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
   );
 
   const statEl = (fontSize: number) => (
-    <div style={{ position: 'relative', marginTop: 6 }}>
+    <div style={{ position: 'relative', marginTop: 4 }}>
       <div
         aria-hidden="true"
         data-testid="hero-stat-glow"
@@ -268,7 +267,7 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
           fontFamily: 'var(--font-sans, Inter, sans-serif)',
           fontWeight: 800,
           fontSize,
-          lineHeight: 1.1,
+          lineHeight: 1.05,
           letterSpacing: '-0.01em',
           color: 'var(--v-hero-text)',
         }}
@@ -281,7 +280,7 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
   const sentenceEl = sentence ? (
     <p
       data-testid="card-sentence"
-      style={{ fontSize: 13.5, lineHeight: 1.55, color: 'var(--v-hero-text-2)', marginTop: 10, overflowWrap: 'anywhere' }}
+      style={{ fontSize: 13.5, lineHeight: 1.45, color: 'var(--v-hero-text-2)', marginTop: 9, overflowWrap: 'anywhere' }}
     >
       {sentence}
     </p>
@@ -290,7 +289,7 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
   const captionEl = caption ? (
     <div
       data-testid="card-caption"
-      style={{ fontSize: 11, lineHeight: 1.45, color: 'var(--v-hero-text-3)', marginTop: 8, overflowWrap: 'anywhere' }}
+      style={{ fontSize: 11, lineHeight: 1.4, color: 'var(--v-hero-text-3)', marginTop: 6, overflowWrap: 'anywhere' }}
     >
       {caption}
     </div>
@@ -308,24 +307,29 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
       <CardHeader />
 
       {isConcentration ? (
-        /* ── CONCENTRATION CARD — two columns ──
-           RUFUS NOTICED + orb stay full-width above (CardHeader); the action
-           row stays full-width below. Left: label → stat → sentence → sub-line.
-           Right (fixed ~108px): donut + compact 2–3 line legend beneath it. */
-        <div
-          data-testid="concentration-two-col"
-          style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginTop: 12, minWidth: 0 }}
-        >
-          <div data-testid="card-left-col" style={{ flex: '1.2 1 0', minWidth: 0 }}>
-            {categoryEl}
-            {statEl(30)}
-            {sentenceEl}
-            {captionEl}
+        /* ── CONCENTRATION CARD ──
+           Row 1 (compact): category + stat (~28px) on the left, the 66px
+           donut with its 2-line legend (top holding + "Other") on the right.
+           Then the supporting sentence AND the sub-line render FULL-WIDTH
+           beneath that row — spanning the whole card — so they never wrap in
+           a narrow column beside the donut (the previous 4-line-wrap cause).
+           The action row below is a SINGLE line: CTA · Ask Rufus · Remind. */
+        <>
+          <div
+            data-testid="concentration-top-row"
+            style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, minWidth: 0 }}
+          >
+            <div data-testid="card-left-col" style={{ flex: '1 1 auto', minWidth: 0 }}>
+              {categoryEl}
+              {statEl(28)}
+            </div>
+            <div data-testid="card-right-col" style={{ flex: '0 0 auto', minWidth: 0 }}>
+              {showDonut && <HoldingsDonutColumn positions={positions} />}
+            </div>
           </div>
-          <div data-testid="card-right-col" style={{ flex: '0 0 108px', width: 108, minWidth: 0 }}>
-            {showDonut && <HoldingsDonutColumn positions={positions} />}
-          </div>
-        </div>
+          {sentenceEl}
+          {captionEl}
+        </>
       ) : (
         <>
           {/* category label */}
@@ -342,8 +346,13 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
         </>
       )}
 
-      {/* action row — explicit taps only; swipe never reaches these */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16, flexWrap: 'wrap' }}>
+      {/* action row — explicit taps only; swipe never reaches these.
+          SINGLE LINE (nowrap): CTA · Ask Rufus · Remind, with Remind pushed
+          right via margin-left:auto (never bottom-anchored with dead space). */}
+      <div
+        data-testid="card-action-row"
+        style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 14, flexWrap: 'nowrap', minWidth: 0 }}
+      >
         {primary && (
           <button
             type="button"
@@ -427,7 +436,7 @@ const cardStyle = (width: number | string): React.CSSProperties => ({
   background: 'var(--v-hero-card)',
   border: '0.5px solid var(--v-hero-card-border)',
   borderRadius: 20,
-  padding: '18px 18px 16px',
+  padding: '16px 16px 14px',
   boxSizing: 'border-box',
   textAlign: 'left',
 });
@@ -436,20 +445,21 @@ const categoryStyle: React.CSSProperties = {
   fontSize: 9.5,
   fontWeight: 800,
   letterSpacing: '0.08em',
-  marginTop: 12,
+  marginTop: 10,
 };
 
 const primaryBtnStyle: React.CSSProperties = {
   background: 'var(--v-hero-accent)',
   color: '#00272B',
   border: 'none',
-  borderRadius: 10,
-  padding: '10px 18px',
-  fontSize: 13.5,
+  borderRadius: 9,
+  padding: '9px 14px',
+  fontSize: 13,
   fontWeight: 700,
   cursor: 'pointer',
   fontFamily: 'inherit',
   whiteSpace: 'nowrap',
+  flexShrink: 0,
 };
 
 // Shared "Ask Rufus" link treatment (Insights screen): accent-coloured,
@@ -460,26 +470,28 @@ const rufusLinkStyle: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
   color: 'var(--v-hero-accent)',
-  padding: '10px 4px',
-  fontSize: 13,
+  padding: '9px 2px',
+  fontSize: 12.5,
   fontWeight: 600,
   cursor: 'pointer',
   fontFamily: 'inherit',
   textDecoration: 'none',
   whiteSpace: 'nowrap',
+  flexShrink: 0,
 };
 
 const snoozeBtnStyle: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
   color: 'var(--v-hero-text-3)',
-  padding: '10px 4px',
-  fontSize: 13,
+  padding: '9px 2px',
+  fontSize: 12.5,
   fontWeight: 600,
   cursor: 'pointer',
   fontFamily: 'inherit',
   marginLeft: 'auto',
   whiteSpace: 'nowrap',
+  flexShrink: 0,
 };
 
 /* ── CTA mapping (mirrors the pre-existing ActionButton semantics) ── */

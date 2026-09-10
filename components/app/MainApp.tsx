@@ -305,7 +305,13 @@ function AppShell() {
           <WatchlistBar />
         </>
       )}
-      <div className="content-area" style={isInsights ? { padding: '0 0 156px' } : undefined}>
+      {/* Insights reserves its own bottom band via CSS (see theme.css): the
+          scroll container must END above the floating Ask Rufus bar, otherwise
+          content scrolls BEHIND an opaque fixed bar and is covered at every
+          scroll position except the very end. Padding alone only clears the
+          end of the page, so the tab uses margin-bottom (= bar height + its
+          bottom offset) to clip the scroll viewport above the bar. */}
+      <div className="content-area">
         {isInsights ? (
           <InsightsTab />
         ) : (

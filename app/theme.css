@@ -189,3 +189,23 @@
 @media (prefers-reduced-motion: reduce) {
   .v-skel { animation: none; }
 }
+
+/* ── Insights: keep the floating Ask Rufus bar CLEAR of content ──────
+   The bar is `position: fixed` (bottom 78px, height 54px → it owns the
+   132px band above the viewport bottom; BottomNav owns the 64px below it).
+   A fixed bar overlays the scroller, so with only a padding-bottom the
+   content still scrolls BEHIND it — clear at the end of the page, covered
+   everywhere else. Reserving the band as a MARGIN on the scroll container
+   makes the scroller's viewport end exactly at the bar's top edge, so no
+   content can ever be visible underneath it at ANY scroll position. The
+   small padding-bottom keeps the last card off the clip line.
+   (Desktop has no BottomNav and the bar sits at bottom: 24px → 78px band.) */
+.app-shell[data-active-tab='insights'] .content-area {
+  padding-bottom: 18px;
+  margin-bottom: 132px;
+}
+@media (min-width: 1024px) {
+  .app-shell[data-active-tab='insights'] .content-area {
+    margin-bottom: 78px;
+  }
+}
