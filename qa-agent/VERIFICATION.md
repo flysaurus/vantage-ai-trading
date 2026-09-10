@@ -281,8 +281,15 @@ component tests need to render `.tsx`. No existing test is affected
 * locally `APP_URL` must be exported (or set in `qa-agent/.env`, gitignored), so
   a run can never silently aim at production.
 
-Verification: `workflow_dispatch` run on `master` (see the CI runs list) — the
-guard step reports `Live suite target: …` and the suite proceeds.
+Verification: the guard was proven by making it trip. Push run **34493609120**
+stopped at `Resolve live-suite target` in 11s with `env: APP_URL:` empty and
+`##[error]APP_URL is empty — the live suite has no target…` — the suite refuses
+to run rather than defaulting to a host. **Action for the repo owner: the
+variable `QA_APP_URL` does not exist yet**, so runs fail at the guard until it is
+created (Settings → Secrets and variables → Actions → Variables, value
+`https://vantage-ai-trading.vercel.app`, or
+`gh variable set QA_APP_URL --body https://vantage-ai-trading.vercel.app`).
+Once it exists the same step prints `Live suite target: …` and proceeds.
 
 ## 3. Type-check reality check
 
