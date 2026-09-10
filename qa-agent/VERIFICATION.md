@@ -297,3 +297,93 @@ Once it exists the same step prints `Live suite target: …` and proceeds.
 (`tests/etf-sectors.test.ts:124`), and it is a test file untouched by this
 redesign. The "94 errors" figure that circulated earlier was stale (Aug) and is
 not the current state — re-measured at this commit.
+
+---
+
+# Review pass: balance CARD, concentration rail alignment, bar clearance, deck dots
+
+Harness: `node qa-agent/verify-insights-review.cjs` → **29/29**, exit 0.
+No regressions: `verify-insights.cjs` **65/65**, `verify-insights-polish.cjs`
+**46/46**, insights vitest **27/27**.
+
+## A. "YOUR PORTFOLIO" is now a real card on the canvas (was bare text)
+
+**Root cause (not a regression):** the block was bare text from the very first
+Insights commit (`9d830a0`) — a `border-top` hairline plus text sitting directly
+on the canvas. The PART 2b section reorder (`2e271f8`) moved the block but only
+ever restyled the position, so the card container had never been built.
+
+**Fix:** `components/insights/InsightsTab.tsx` wraps the block in
+`[data-testid="balance-card"]` — `background: var(--v-card)` (light `#FFFFFF`,
+dark `#0A0F1E`), `border: 0.5px solid var(--v-card-border)` (light `#E7EAE4`,
+dark `#141C2E`), `border-radius: 16px`, `padding: 16px 18px 18px`, matching the
+other canvas cards (Portfolio Health 16px, quick-links 14px). The old
+`border-top` rule was removed — the card border replaces it. Inner testids
+(`balance-block`, `balance-section`, `balance-amount`, `see-holdings`) unchanged.
+
+Proven by measurement, light + dark:
+
+| check | value |
+| --- | --- |
+| fill (light / dark) | `rgb(255,255,255)` / `rgb(10,15,30)` |
+| hairline | `1px solid rgb(231,234,228)` (0.5px, snapped) / `rgb(20,28,46)` |
+| radius / padding | `16px` / `t16 r18 b18 l18` |
+| wraps | label + amount + Today/Total + See Holdings, all inside |
+| inset of content | left 19px, top 39.5px (a frame, not bare text) |
+
+## B. Concentration rail: ring centred, legend aligned to the ring, tight
+
+**Root cause:** the rail was `alignItems: stretch`, the legend block spanned the
+full 108px, and each legend % used `margin-left: auto` — so the percentages
+right-aligned to the *rail* edge while the 72px ring was centred, leaving the
+legend edges ~18px proud of the ring on both sides, with an 8px ring→legend gap.
+
+**Fix:** `HoldingsDonutColumn` in `components/insights/InsightCard.tsx` now uses
+`alignItems: center`, a `RING_SIZE = 72` constant, legend `width: RING_SIZE`,
+ring→legend gap `6px`, legend row gap `4px`. The rail itself stays the approved
+fixed `108px` (`flex: 0 0 108px`).
+
+| check | measured |
+| --- | --- |
+| rail width | 108px |
+| ring centre vs rail centre | 227.0 vs 227.0 |
+| legend left / right vs ring | 191.0/263.0 vs 191.0/263.0 (exact) |
+| ring→legend gap / row gap | 6px / 4px |
+| legend rows | `XLF 30% \| XLP 20% \| Other 50%` (real fixture, 3 rows) |
+| legend text clipping | 0px on every row |
+
+## C. Ask Rufus bar — reserved space confirmed, no trapped content
+
+The bar is `position: fixed` (content scrolls under it by design), so the test is
+whether anything can be *permanently* hidden:
+
+* reserved `padding-bottom: 156px` on `.content-area` vs a **54px** bar → 102px
+  of slack;
+* bar sits above the bottom nav (`barBottom 854` ≤ `navTop 868`) — it never
+  covers the nav;
+* **deck bottom can never reach the bar**: at `scrollTop 0` the deck bottom is at
+  y=668.5 vs bar top y=800 → **131.5px clearance**, and scrolling down only moves
+  the deck further away. Scrolled to the last teaser card (Weekly Snapshot,
+  `deck.scrollLeft = 1118/1118`), the card bottom is 666.5 → **133.5px clearance**;
+* at maximum scroll the lowest content element still clears the bar by **24px**.
+
+Screenshots: `R-C1-deck-above-bar`, `R-C1c-teaser-card-vs-bar`,
+`R-C2-max-scroll-clearance`.
+
+## D. Deck dot indicator — still there
+
+`[data-testid="deck-dots"]` renders, visible, **5 dots for 5 deck cards**
+(3 triggers + 2 teasers), positioned below the deck (`deckBottom 630.5` →
+`dotsTop 642.5`), first dot active (18px, `rgb(14,140,153)`) and the rest 6px
+`rgb(231,234,228)`. It was simply scrolled out of frame in the earlier
+screenshot, not missing.
+
+## Gotchas learned here
+
+* `scrollTop = el.offsetTop - off` silently no-ops when `offsetTop` is relative
+  to a positioned ancestor — use
+  `el.getBoundingClientRect().top - scroller rect top + scroller.scrollTop`.
+* `margin-left: auto` in a flex row right-aligns to the *flex container*, not to
+  a sibling above it — the source of the legend/ring misalignment.
+* Element screenshots under `/tmp` are rejected by the image tool; copy to
+  `/root/.openclaw/workspace/tmp-shots/…` first.

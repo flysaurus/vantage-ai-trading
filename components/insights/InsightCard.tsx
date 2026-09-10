@@ -109,16 +109,29 @@ export function HoldingsDonut({ positions }: { positions: Position[] }) {
 
 /** Narrow variant for the two-column concentration card: compact ring with a
  *  2–3 line legend stacked DIRECTLY BENEATH it (top holdings + "Other").
- *  Never lists every position. */
+ *  Never lists every position.
+ *
+ *  Alignment contract (approved two-column spec): the ~108px rail is a FIXED
+ *  width; the ring is centred in it and the legend block is constrained to the
+ *  ring's own width (RING_SIZE) and centred too — so the legend's right edge
+ *  lines up with the ring's right edge instead of bleeding to the rail edge.
+ *  Gap ring→legend (6px) and legend row gap (4px) are deliberately tight. */
+const RING_SIZE = 72;
+const RING_STROKE = 11;
+
 export function HoldingsDonutColumn({ positions }: { positions: Position[] }) {
   const slices = useMemo(() => donutSlices(positions, 2), [positions]);
   if (slices.length === 0) return null;
   return (
-    <div data-testid="donut-column" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'center' }}>
-        <DonutRing slices={slices} size={72} stroke={11} />
-      </div>
-      <div data-testid="donut-legend" style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+    <div
+      data-testid="donut-column"
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: '100%' }}
+    >
+      <DonutRing slices={slices} size={RING_SIZE} stroke={RING_STROKE} />
+      <div
+        data-testid="donut-legend"
+        style={{ display: 'flex', flexDirection: 'column', gap: 4, width: RING_SIZE, maxWidth: '100%' }}
+      >
         {slices.slice(0, 3).map((d) => (
           <div
             key={d.symbol}

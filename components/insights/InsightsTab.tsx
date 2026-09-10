@@ -286,9 +286,21 @@ export function InsightsTab() {
         )}
       </div>
 
-      {/* ── 3. Balance section (no chart) — directly under the header ── */}
+      {/* ── 3. Balance section (no chart) — directly under the header ──
+          This is a real CARD on the canvas (white fill in light, panel fill in
+          dark, 0.5px hairline, rounded, real padding) wrapping the label, the
+          serif-italic balance, Today/Total and "See Holdings →". It replaces
+          the earlier bare-text-on-canvas treatment, which was the bug. */}
       <div style={{ margin: '20px 20px 0' }} data-testid="balance-block">
-        <div style={{ borderTop: '0.5px solid var(--v-rule)', paddingTop: 18 }}>
+        <div
+          data-testid="balance-card"
+          style={{
+            background: 'var(--v-card)',
+            border: '0.5px solid var(--v-card-border)',
+            borderRadius: 16,
+            padding: '16px 18px 18px',
+          }}
+        >
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--v-text-muted)' }}>
             YOUR PORTFOLIO
           </div>
