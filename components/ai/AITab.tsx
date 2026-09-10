@@ -1804,12 +1804,16 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
     const { pendingPrompt, setPendingPrompt } = useTabStore.getState();
     if (pendingPrompt) {
       setPendingPrompt(null);
-      const t = setTimeout(() => {
+      // NOTE (Insights): do NOT return a cleanup that clears this timeout.
+      // React 18 StrictMode mounts effects twice in dev; the simulated
+      // unmount would clear the timer while `pendingPrompt` is already null,
+      // so the prompt was silently swallowed. Consuming the flag is enough
+      // (the remount reads null and is a no-op).
+      setTimeout(() => {
         sendMessageRef.current(pendingPrompt);
         wasAtBottomRef.current = true;
         scrollToBottom(true);
       }, 50);
-      return () => clearTimeout(t);
     }
   }, []);
 

@@ -959,7 +959,7 @@ export function PortfolioTab() {
   const { isConnected } = useBroker();
   const { activeAccount, activeAccountId } = useAccounts();
   const { user } = useAuth();
-  const { focusPosition, setFocusPosition, setTab, setPendingPrompt, setChatOpen } = useTabStore();
+  const { focusPosition, setFocusPosition, setTab, setPendingPrompt, setChatOpen, briefTarget, setBriefTarget } = useTabStore();
 
   // Hard boundary: Demo must NEVER show broker data. Scope data source by active account.
   const isShowingDemo = activeAccount?.isDemo ?? false;
@@ -1003,6 +1003,20 @@ export function PortfolioTab() {
     setTimeout(() => document.addEventListener('mousedown', handler), 0);
     return () => document.removeEventListener('mousedown', handler);
   }, [dailyExpanded, weeklyExpanded]);
+
+  // ── Cross-tab signal: expand a brief requested from the Insights deck teasers ──
+  // (Minimal addition required by the Insights tab's Daily Brief / Weekly Snapshot
+  //  teaser cards. Previously there was no global way to open these briefs.)
+  useEffect(() => {
+    if (!briefTarget) return;
+    setDailyExpanded(briefTarget === 'daily');
+    setWeeklyExpanded(briefTarget === 'weekly');
+    setBriefTarget(null);
+    const t = window.setTimeout(() => {
+      briefsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [briefTarget, setBriefTarget]);
   const positions: Position[] = displayAccount?.positions || [];
 
   // ── Top AI insight (Option B: single curated card on Portfolio, replaces prose) ──

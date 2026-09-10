@@ -3,12 +3,13 @@
 // Same tabs, same state — just vertical with labels.
 
 'use client';
-import { Home, TrendingUp, Settings } from 'lucide-react';
+import { Lightbulb, Briefcase, TrendingUp, Settings } from 'lucide-react';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 
-const TABS: { id: TabId; icon: typeof Home; label: string }[] = [
-  { id: 'today', icon: Home, label: 'Today' },
+const TABS: { id: TabId; icon: typeof Lightbulb; label: string }[] = [
+  { id: 'insights', icon: Lightbulb, label: 'Insights' },
+  { id: 'portfolio', icon: Briefcase, label: 'Holdings' },
   { id: 'invest', icon: TrendingUp, label: 'Invest' },
   { id: 'settings', icon: Settings, label: 'Settings' },
 ];

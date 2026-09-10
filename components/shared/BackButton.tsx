@@ -24,9 +24,9 @@ interface BackButtonProps {
 }
 
 const TAB_LABELS: Record<TabId, string> = {
-  today: 'Today',
+  insights: 'Insights',
   invest: 'Invest',
-  portfolio: 'Portfolio',
+  portfolio: 'Holdings',
   watchlist: 'Watchlist',
   settings: 'Settings',
 };

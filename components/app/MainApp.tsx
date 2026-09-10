@@ -22,8 +22,8 @@ import { TradeTab } from '@/components/trade/TradeTab';
 import { PortfolioTab } from '@/components/portfolio/PortfolioTab';
 import { SettingsTab } from '@/components/settings/SettingsTab';
 import WatchlistTab from '@/components/ai/WatchlistTab';
-import { TodayTab } from '@/components/today/TodayTab';
-import { AskRufusBar } from '@/components/today/AskRufusBar';
+import { InsightsTab } from '@/components/insights/InsightsTab';
+import { AskRufusBar } from '@/components/insights/AskRufusBar';
 import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider';
 import { AccountProvider, useAccounts } from '@/context/AccountContext';
 import { AccountSwitcher } from '@/components/accounts/AccountSwitcher';
@@ -40,7 +40,7 @@ import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 
 const TABS_WITH_MARKETBAR: Set<TabId> = new Set(['invest', 'portfolio']);
 
-const TAB_COMPONENTS: Record<Exclude<TabId, 'today'>, React.FC> = {
+const TAB_COMPONENTS: Record<Exclude<TabId, 'insights'>, React.FC> = {
   invest: TradeTab,
   portfolio: PortfolioTab,
   watchlist: WatchlistTab,
@@ -138,7 +138,7 @@ function AppShell() {
         setChatOpen(true);
         return;
       }
-      if (detail?.tab && ['today', 'portfolio', 'invest', 'watchlist', 'settings'].includes(detail.tab)) {
+      if (detail?.tab && ['insights', 'today', 'portfolio', 'invest', 'watchlist', 'settings'].includes(detail.tab)) {
         setTab(detail.tab);
         if (detail.section) {
           setTimeout(() => {
@@ -225,7 +225,7 @@ function AppShell() {
     if (tabParam === 'ai') {
       setChatOpen(true);
       window.history.replaceState({}, '', '/');
-    } else if (tabParam && ['today', 'portfolio', 'invest', 'watchlist', 'settings'].includes(tabParam)) {
+    } else if (tabParam && ['insights', 'today', 'portfolio', 'invest', 'watchlist', 'settings'].includes(tabParam)) {
       setTab(tabParam as TabId);
       window.history.replaceState({}, '', '/');
     }
@@ -275,11 +275,11 @@ function AppShell() {
     return <InvestorStyleOnboarding />;
   }
 
-  const isToday = activeTab === 'today';
+  const isInsights = activeTab === 'insights';
 
   const mainContent = (
     <>
-      {!isToday && (
+      {!isInsights && (
         <>
           <Header />
           <div className="flex items-center gap-2 px-4 py-1.5 border-b border-white/5">
@@ -290,9 +290,9 @@ function AppShell() {
           <WatchlistBar />
         </>
       )}
-      <div className="content-area" style={isToday ? { padding: '0 0 156px' } : undefined}>
-        {isToday ? (
-          <TodayTab />
+      <div className="content-area" style={isInsights ? { padding: '0 0 156px' } : undefined}>
+        {isInsights ? (
+          <InsightsTab />
         ) : (
           React.createElement(TAB_COMPONENTS[activeTab])
         )}
@@ -303,7 +303,7 @@ function AppShell() {
   );
 
   return (
-    <div className="app-shell bg-app">
+    <div className="app-shell bg-app" data-active-tab={activeTab}>
       {isDesktop && <DesktopSidebar />}
       {isDesktop ? <div className="main-panel">{mainContent}</div> : mainContent}
 

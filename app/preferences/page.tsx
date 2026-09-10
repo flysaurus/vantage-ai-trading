@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Settings2, Bell, Shield, Eye, ChevronRight, RefreshCw, User } from 'lucide-react';
 import BackButton from '@/components/shared/BackButton';
+import { ThemeToggle } from '@/components/settings/ThemeToggle';
 
 // ─── localStorage keys ───────────────────────────────────────
 const PREFS_KEY = 'vantage:preferences';
@@ -144,10 +145,10 @@ export default function PreferencesPage() {
                 <Eye size={15} style={{ color: '#8b5cf6' }} />
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>Theme</div>
-                  <div style={{ fontSize: 10, color: '#e2e8f0' }}>Dark mode (additional themes coming soon)</div>
+                  <div style={{ fontSize: 10, color: '#e2e8f0' }}>Light, Dark, or follow your system</div>
                 </div>
               </div>
-              <span style={{ fontSize: 11, color: '#94a3b8', padding: '4px 10px', borderRadius: 6, background: '#1e293b', border: '1px solid #334155' }}>Dark</span>
+              <ThemeToggle />
             </div>
           </div>
 

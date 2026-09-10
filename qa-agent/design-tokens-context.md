@@ -6,41 +6,53 @@ Reference context for any `/redesign` or `critique_design` call.
 
 Ages 18-45. Don't have time or expertise to trade themselves. Explicitly NOT looking to gamble or chase a quick buck. Every design decision should reinforce patience and discipline, never urgency or checking-in behavior.
 
-## Color Palette (final)
+## Theming
 
-### Canvas
-- Primary background: `#000814`
-- Secondary panel (demoted sections, Ask Rufus bar strip): `#050A14`
-- Card/bordered fill (secondary cards, notices): `#0A0F1E`
-- Ask Rufus bar fill: `#0F1626`
+Three modes: **Light**, **Dark**, **System** (follows the OS-level appearance setting and updates live if the OS setting changes while the app is open — do not require a restart). Default for new users: **Light**. The toggle lives in **Settings > Preferences**.
 
-### Borders/rules
-- Standard hairline (row dividers, section rules): `#141C2E`
-- Stronger border (bordered cards like "Build Basket"): `#2A3648`
-- Donut chart track (unfilled): `#1B2333`
-- Admin-restricted border: `#3A2E1C`
+Both palettes are first-class; neither is "legacy." Light is the default theme; Dark is a fully maintained alternative, not a fallback.
 
-### Text
-- Primary (headlines, key numbers, row titles): `#EAEEF7`
-- Secondary (body copy, insight text): `#C4CCDC`
-- Tertiary (muted labels, section headers like "PORTFOLIO VALUE"): `#8891A6`
-- Quaternary (timestamps, chart axis labels): `#5C6478`
-- Faintest (chart axis endpoints only): `#4A5268`
+- **Theme control:** the existing placeholder control under Settings > Preferences is updated from "Dark only" to the three real options (Light / Dark / System).
+- Where the component patterns further down this file cite explicit dark-canvas hex values, read them as the **Dark-theme** token and use the Light-theme equivalent token in light mode. Where earlier addenda cite dark-only hex values (e.g. the masthead orb gradient), the palettes in this section are authoritative for both themes; the addenda remain scoped to layout/behavior.
 
-### Semantic (color reserved for data ONLY, never decorative)
-- Gain/positive: `#3DDC84`
-- Loss/negative: `#F0716B`
-- View-only / restricted-amber: `#D9A94A`
-- Admin-restricted background tint: `#161008`
+### Light theme (default)
 
-### Accent (interactive/CTA only)
-- Primary accent (Rufus orb, active tab, primary CTA fill, links): `#5FD8DE`
-- Text-on-accent (button label color when background is `#5FD8DE`): `#00272B`
+- Canvas background: `#F5F7F4`
+- Card fill (white cards): `#FFFFFF`
+- Hero/AI-attributed card fill (Rufus cards — concentration risk, recommendations, Build Basket, chat responses with embedded cards): `#10182B` (dark navy — deliberate: Rufus's cards stay dark-navy "islands" even in light theme; this is the visual signature that makes AI-authored content identifiable at a glance)
+- Border/hairline: `#E7EAE4`
+- Text primary: `#10182B` · Text secondary: `#5B6472` · Text tertiary: `#8891A6`
+- Text-on-hero-card primary: `#FFFFFF` · Text-on-hero-card secondary: `#C7CEDB` · Text-on-hero-card tertiary: `#7C8AA0`
+- Accent (links, selected states, primary CTA fill except on hero cards): `#0E8C99`
+- Semantic gain: `#1E9E5A` · Semantic loss: `#D64545`
+- View-only tag: text `#8A6D1E` on background `rgba(217,169,74,0.15)`
+- Admin-restricted card: background `#FDF6E9`, border `#E8C976`, label `#8A6D1E`
 
-## Typography
+### Dark theme
 
-- Display/headline (balance number, lead-story stat, position price, screen titles like "Holdings"): serif italic, `var(--font-voice)` equivalent — use the existing Playfair italic already in the codebase, do not introduce a new font.
-- Body/UI (everything else — labels, row text, buttons): existing Inter/sans, unchanged.
+- Canvas background: `#000814`
+- Card fill: `#0A0F1E` · Hero card fill: same `#0A0F1E` family (no separate dark-on-dark distinction needed — the canvas itself already signals dark theme)
+- Border/hairline: `#141C2E`
+- Text primary: `#EAEEF7` · Text secondary: `#C4CCDC` · Text tertiary: `#8891A6` · Text quaternary: `#5C6478`
+- Accent: `#5FD8DE`
+- Semantic gain: `#3DDC84` · Semantic loss: `#F0716B`
+- View-only tag: text `#D9A94A` on background `rgba(217,169,74,0.1)`
+- Admin-restricted card: background `#161008`, border `#3A2E1C`, label `#D9A94A`
+
+### Shared across both themes (theme-independent)
+
+- **Typography:** serif italic (existing Playfair) for headline numbers, screen titles, and the masthead wordmark. Sans/Inter for everything else.
+- **Orb icon gradient:** radial, light-cyan to teal to deep-teal. Light theme uses `#9FF0F4` -> `#0E8C99` -> `#0A5A62`; dark theme uses `#9FF0F4` -> `#5FD8DE` -> `#1B7D82` (deeper stop in light theme for contrast against white surfaces).
+- **Hero-stat glow:** soft radial glow behind the large stat number on a hero card ONLY (e.g. concentration-risk %) — `#5FD8DE` at ~15-18% opacity, feathered, no hard stops. This is the one approved exception to "no gradients" in both themes, scoped to this one element only.
+
+### Ask Rufus bar (global, floating — not docked)
+
+- Fixed position above the bottom nav, with margin on left/right/bottom (14px) so it visually floats rather than sitting flush — NOT full-width edge-to-edge.
+- Rounded-full (24px radius).
+- Light theme: white fill, box-shadow `0 6px 18px rgba(16,24,43,0.15)`.
+- Dark theme: fill `#0F1626`, similar shadow at lower opacity for the dark canvas.
+- Orb icon on the right, placeholder text "Ask Rufus anything..."
+- Present on every tab, not scoped to one screen.
 
 ## Component patterns (final, reusable across all screens)
 
@@ -54,7 +66,7 @@ No card backgrounds or borders around individual rows — separate with a single
 `#161008` background, `#3A2E1C` border, `#D9A94A` label text, physically separated from the surrounding list by margin, never inline in the same undifferentiated stack as regular items.
 
 ### Ask Rufus bar
-Persistent, `#0F1626` fill, 20px border-radius, sits above the bottom nav on every tab (not scoped to one screen) — orb icon on the right, placeholder text "Ask Rufus anything..." at `#5C6478`.
+Persistent and floating above the bottom nav on every tab (not scoped to one screen) — see "Ask Rufus bar (global, floating — not docked)" under **Theming** for current geometry and theme-dependent fill/shadow. Orb icon on the right, placeholder text "Ask Rufus anything...".
 
 ## AI Noticed card pattern (locked, applies wherever triggers can fire)
 

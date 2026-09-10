@@ -1,8 +1,14 @@
 // ─── Ask Rufus Bar ─────────────────────────────────────────
-// Persistent floating bar above the bottom nav on every tab.
-// Tapping it opens the full-screen Ask Rufus chat overlay
-// (resumes the most recent conversation). Uses the finalized
-// accent tokens (#5FD8DE / #0F1626 / #5C6478).
+// Persistent floating bar above the bottom nav. Present on EVERY
+// tab (rendered once in components/app/MainApp.tsx), including the
+// Insights screen. Tapping it opens the full-screen Ask Rufus chat
+// overlay.
+//
+// Geometry/theme per the Theming spec (design-tokens-context.md):
+//   14px side margins (NOT edge-to-edge), 24px radius, orb on the
+//   right, placeholder "Ask Rufus anything...".
+//   Light: white fill + `0 6px 18px rgba(16,24,43,0.15)`.
+//   Dark:  #0F1626 fill + lower-opacity shadow.
 
 'use client';
 
@@ -18,6 +24,7 @@ export function AskRufusBar() {
         className="ask-rufus-bar"
         onClick={() => setChatOpen(true)}
         aria-label="Ask Rufus anything"
+        data-testid="ask-rufus-bar"
       >
         <span className="ask-rufus-placeholder">Ask Rufus anything...</span>
         <span className="ask-rufus-orb" aria-hidden="true" />
@@ -25,27 +32,27 @@ export function AskRufusBar() {
       <style>{`
         .ask-rufus-bar {
           position: fixed;
-          left: 16px;
-          right: 16px;
-          bottom: 76px; /* above 64px BottomNav */
+          left: 14px;
+          right: 14px;
+          bottom: 78px; /* clears 64px BottomNav + 14px gap */
           z-index: 45;
           height: 48px;
-          border-radius: 20px;
-          background: #0F1626;
-          border: 0.5px solid #141C2E;
-          box-shadow: 0 10px 32px rgba(0, 0, 0, 0.38);
+          border-radius: 24px;
+          background: var(--v-ask-bg);
+          border: 0.5px solid var(--v-ask-border);
+          box-shadow: var(--v-ask-shadow);
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 0 12px 0 18px;
+          padding: 0 10px 0 18px;
           cursor: pointer;
           font-family: inherit;
           transition: border-color 0.15s ease, box-shadow 0.15s ease;
         }
-        .ask-rufus-bar:hover { border-color: #2A3648; }
+        .ask-rufus-bar:hover { border-color: var(--v-ask-hover); }
         .ask-rufus-placeholder {
           font-size: 14px;
-          color: #5C6478;
+          color: var(--v-ask-placeholder);
           letter-spacing: 0.1px;
           font-family: var(--font-sans, 'Inter', sans-serif);
         }
@@ -54,8 +61,8 @@ export function AskRufusBar() {
           height: 28px;
           border-radius: 50%;
           flex-shrink: 0;
-          background: radial-gradient(circle at 32% 30%, #B8F2F5 0%, #5FD8DE 35%, #1B8A93 65%, #00272B 100%);
-          box-shadow: 0 0 14px rgba(95, 216, 222, 0.5);
+          background: var(--v-orb);
+          box-shadow: 0 0 14px rgba(95, 216, 222, 0.45);
         }
         @media (min-width: 1024px) {
           .ask-rufus-bar {
@@ -68,3 +75,5 @@ export function AskRufusBar() {
     </>
   );
 }
+
+export default AskRufusBar;

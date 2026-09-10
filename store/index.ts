@@ -34,10 +34,10 @@ const DEFAULT_WATCHLIST: WatchlistItem[] = [];
 const DEFAULT_INDEX_SYMBOLS = ['SPY', 'QQQ', 'IWM', 'DIA', 'XLF'];
 
 // ─── Tab State ───
-// 'today' = home screen (replaces Portfolio as the landing tab).
-// 'portfolio' is retained as the stand-in Holdings screen (reached via "See all holdings").
+// 'insights' = home screen (replaces the old 'today' tab).
+// 'portfolio' is the stand-in Holdings screen (reached via "See all holdings").
 // 'watchlist' is retained for URL-param / programmatic navigation but is not in the nav.
-export type TabId = 'today' | 'invest' | 'portfolio' | 'watchlist' | 'settings';
+export type TabId = 'insights' | 'invest' | 'portfolio' | 'watchlist' | 'settings';
 
 interface TabStore {
   activeTab: TabId;
@@ -51,10 +51,18 @@ interface TabStore {
   /** Whether the full-screen Ask Rufus chat overlay is open (replaces the old AI tab destination). */
   chatOpen: boolean;
   setChatOpen: (open: boolean) => void;
+  /**
+   * Cross-tab signal: which brief to expand in the Holdings screen.
+   * The Insights hero deck's Daily Brief / Weekly Snapshot teaser cards set
+   * this before navigating to 'portfolio'; PortfolioTab consumes + clears it.
+   * (There was no global way to open these briefs before.)
+   */
+  briefTarget: 'daily' | 'weekly' | null;
+  setBriefTarget: (target: 'daily' | 'weekly' | null) => void;
 }
 
 export const useTabStore = create<TabStore>((set) => ({
-  activeTab: 'today',
+  activeTab: 'insights',
   setTab: (tab) => set({ activeTab: tab }),
   focusPosition: null,
   setFocusPosition: (symbol) => set({ focusPosition: symbol }),
@@ -62,6 +70,8 @@ export const useTabStore = create<TabStore>((set) => ({
   setPendingPrompt: (prompt) => set({ pendingPrompt: prompt }),
   chatOpen: false,
   setChatOpen: (open) => set({ chatOpen: open }),
+  briefTarget: null,
+  setBriefTarget: (target) => set({ briefTarget: target }),
 }));
 
 // ─── Market Data ───

@@ -1,0 +1,153 @@
+/* ─── Vantage Theming: Light (default) / Dark / System ──────────
+ * Tokens are the single source of truth from
+ * `qa-agent/design-tokens-context.md` → "## Theming".
+ *
+ * Light is the DEFAULT. Dark is fully maintained (not a fallback).
+ * `data-theme` is set on <html> by lib/theme/theme-provider.tsx:
+ *   "system" resolves to light|dark via prefers-color-scheme and
+ *   re-resolves live when the OS appearance changes (no reload).
+ *
+ * These are additive `--v-*` tokens. They deliberately do NOT
+ * overwrite the legacy `--bg-primary` / `--accent` set in
+ * globals.css, so screens not yet migrated (Holdings / Invest /
+ * Settings) keep rendering exactly as before.
+ * ───────────────────────────────────────────────────────────── */
+
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+
+  /* surfaces */
+  --v-canvas: #f5f7f4;
+  --v-card: #ffffff;
+  --v-card-border: #e7eae4;
+  --v-rule: #e7eae4;
+  --v-panel: #ffffff;
+
+  /* Rufus hero cards — dark-navy "islands" in BOTH themes */
+  --v-hero-card: #10182b;
+  --v-hero-card-border: #1c2740;
+  --v-hero-text: #ffffff;
+  --v-hero-text-2: #c7cedb;
+  --v-hero-text-3: #7c8aa0;
+  --v-hero-muted-rule: rgba(255, 255, 255, 0.08);
+  /* hero cards are dark-navy islands in BOTH themes, so the
+     on-hero semantic colors are the dark-set values in both */
+  --v-hero-accent: #5fd8de;
+  --v-hero-warn: #d9a94a;
+  --v-hero-gain: #3ddc84;
+  --v-hero-loss: #f0716b;
+
+  /* text */
+  --v-text-primary: #10182b;
+  --v-text-secondary: #5b6472;
+  --v-text-muted: #8891a6;
+  --v-text-faint: #8891a6;
+
+  /* semantic */
+  --v-accent: #0e8c99;
+  --v-accent-text: #ffffff;
+  --v-gain: #1e9e5a;
+  --v-loss: #d64545;
+
+  /* view-only / admin */
+  --v-view-only-text: #8a6d1e;
+  --v-view-only-bg: rgba(217, 169, 74, 0.15);
+  --v-admin-bg: #fdf6e9;
+  --v-admin-border: #e8c976;
+  --v-admin-label: #8a6d1e;
+
+  /* orb + glow */
+  --v-orb: radial-gradient(circle at 32% 30%, #9ff0f4 0%, #0e8c99 55%, #0a5a62 100%);
+  --v-glow: rgba(95, 216, 222, 0.16);
+
+  /* ask-rufus bar */
+  --v-ask-bg: #ffffff;
+  --v-ask-border: #e7eae4;
+  --v-ask-placeholder: #7c8aa0;
+  --v-ask-shadow: 0 6px 18px rgba(16, 24, 43, 0.15);
+  --v-ask-hover: #e7eae4;
+
+  /* bottom nav */
+  --v-nav-bg: #ffffff;
+  --v-nav-border: #e7eae4;
+  --v-nav-idle: #5b6472;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --v-canvas: #000814;
+  --v-card: #0a0f1e;
+  --v-card-border: #141c2e;
+  --v-rule: #141c2e;
+  --v-panel: #0a0f1e;
+
+  --v-hero-card: #0a0f1e;
+  --v-hero-card-border: #141c2e;
+  --v-hero-text: #eaeeF7;
+  --v-hero-text-2: #c4ccdc;
+  --v-hero-text-3: #8891a6;
+  --v-hero-muted-rule: rgba(255, 255, 255, 0.10);
+  --v-hero-accent: #5fd8de;
+  --v-hero-warn: #d9a94a;
+  --v-hero-gain: #3ddc84;
+  --v-hero-loss: #f0716b;
+
+  --v-text-primary: #eaeeF7;
+  --v-text-secondary: #c4ccdc;
+  --v-text-muted: #8891a6;
+  --v-text-faint: #5c6478;
+
+  --v-accent: #5fd8de;
+  --v-accent-text: #00272b;
+  --v-gain: #3ddc84;
+  --v-loss: #f0716b;
+
+  --v-view-only-text: #d9a94a;
+  --v-view-only-bg: rgba(217, 169, 74, 0.1);
+  --v-admin-bg: #161008;
+  --v-admin-border: #3a2e1c;
+  --v-admin-label: #d9a94a;
+
+  --v-orb: radial-gradient(circle at 32% 30%, #9ff0f4 0%, #5fd8de 55%, #1b7d82 100%);
+  --v-glow: rgba(95, 216, 222, 0.2);
+
+  --v-ask-bg: #0f1626;
+  --v-ask-border: #141c2e;
+  --v-ask-placeholder: #5c6478;
+  --v-ask-shadow: 0 10px 32px rgba(0, 0, 0, 0.38);
+  --v-ask-hover: #2a3648;
+
+  --v-nav-bg: #0a0f1e;
+  --v-nav-border: #141c2e;
+  --v-nav-idle: #c4ccdc;
+}
+
+/* ── Insights screen canvas ───────────────────────────────────
+ * The shell/body stay on the legacy dark tokens so un-migrated
+ * screens are untouched. When Insights is the active tab we swap
+ * the shell canvas to the themed one. Scoped by data-active-tab
+ * (set in components/app/MainApp.tsx). */
+[data-theme='light'] .app-shell[data-active-tab='insights'],
+[data-theme='light'] .app-shell[data-active-tab='insights'] .content-area {
+  background: var(--v-canvas);
+}
+[data-theme='light'] .app-shell[data-active-tab='insights'] .bg-app,
+[data-theme='light'].bg-app {
+  background: var(--v-canvas);
+}
+[data-theme='light'] body:has(.app-shell[data-active-tab='insights']) {
+  background: var(--v-canvas);
+}
+[data-theme='dark'] .app-shell[data-active-tab='insights'],
+[data-theme='dark'] .app-shell[data-active-tab='insights'] .content-area {
+  background: var(--v-canvas);
+}
+[data-theme='dark'] .app-shell[data-active-tab='insights'] .bg-app,
+[data-theme='dark'].bg-app {
+  background: var(--v-canvas);
+}
+[data-theme='dark'] body:has(.app-shell[data-active-tab='insights']) {
+  background: var(--v-canvas);
+}

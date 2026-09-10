@@ -5,7 +5,9 @@ import { TabSessionGuard } from '@/components/providers/TabSessionGuard';
 import { InactivityWarning } from '@/components/providers/InactivityWarning';
 import { MilestoneToastProvider } from '@/context/MilestoneContext';
 import { MilestoneToastRenderer } from '@/components/gamification/MilestoneToastRenderer';
+import { ThemeProvider, THEME_BOOT_SCRIPT } from '@/lib/theme/theme-provider';
 import './globals.css';
+import './theme.css';
 
 export const metadata: Metadata = {
   title: 'Vantage — AI Portfolio Analysis',
@@ -40,10 +42,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <meta name="apple-mobile-web-app-title" content="Vantage" />
+        {/* Theme (Light default / Dark / System) — applied before first paint */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -58,6 +62,7 @@ export default function RootLayout({
         />
       </head>
       <body>
+        <ThemeProvider>
         <AuthProvider>
           <MilestoneToastProvider>
             <TabSessionGuard>
@@ -69,6 +74,7 @@ export default function RootLayout({
             </TabSessionGuard>
           </MilestoneToastProvider>
         </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
