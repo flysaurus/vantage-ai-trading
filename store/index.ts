@@ -129,10 +129,18 @@ export const useMarketStore = create<MarketStore>((set) => ({
 }));
 
 // ─── Portfolio ───
+// `accountScope` = which account id the resolved `account` belongs to.
+// PART 2 (stale cross-account balance): a resolved account is only valid for
+// the accountId it was fetched for. Without the scope tag, switching accounts
+// left the PREVIOUS account's real numbers in the store (loading stayed false)
+// and every consumer happily re-rendered them under the new account's name.
+// Consumers MUST treat `account` as unreadable unless `accountScope` matches
+// the currently-selected account id.
 interface PortfolioStore {
   account: AccountSummary | null;
+  accountScope: string | null;
   loading: boolean;
-  setAccount: (account: AccountSummary) => void;
+  setAccount: (account: AccountSummary, scope: string | null) => void;
   clearAccount: () => void;
   setLoading: (loading: boolean) => void;
   updatePosition: (symbol: string, updates: Partial<Position>) => void;
@@ -140,9 +148,10 @@ interface PortfolioStore {
 
 export const usePortfolioStore = create<PortfolioStore>((set) => ({
   account: null,
+  accountScope: null,
   loading: false,
-  setAccount: (account) => set({ account, loading: false }),
-  clearAccount: () => set({ account: null }),
+  setAccount: (account, scope) => set({ account, accountScope: scope, loading: false }),
+  clearAccount: () => set({ account: null, accountScope: null }),
   setLoading: (loading) => set({ loading }),
   updatePosition: (symbol, updates) =>
     set((s) => {

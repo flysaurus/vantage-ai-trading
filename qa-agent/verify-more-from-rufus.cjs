@@ -5,8 +5,8 @@
 //   • sits DIRECTLY BELOW the hero deck's dot indicator (and above the
 //     Portfolio Health card)
 //   • ONE compact line per item: icon + single-line Rufus-voice copy
-//   • surfaces event-impact INFO-tier notices + milestone/target-return
-//     crossings ONLY — never hero-deck items (no duplication)
+//   • surfaces event-impact notices of BOTH tiers (review + info) — this is the
+//     complete event-impact inventory, deliberately not filtered against the deck
 //   • actionable items (REVIEW_POSITION) get a "Review" link that uses the
 //     existing PositionCard navigation; informational items get NO action
 //   • copy is ALWAYS real generated/humanized copy — never the raw
@@ -163,14 +163,17 @@ const rect = (page, sel) => page.evaluate((s) => {
     rec('A1 More-from-Rufus section renders', !!list);
 
     if (list) {
-      // A2 — exactly the two eligible items (info event + milestone)
+      // A2 — ONLY event-impact items, BOTH tiers. The milestone/crossing row must
+      //      be GONE (it is now an inline badge on the position row).
       const rowCount = await page.$$eval('[data-testid="more-from-rufus-row"]', (n) => n.length);
-      rec('A2 Exactly 2 rows (info event + milestone)', rowCount === 2, `rows=${rowCount}`);
+      rec('A2 Exactly 2 rows (review-tier + info-tier event-impact)', rowCount === 2, `rows=${rowCount}`);
 
-      // A3 — deck item + review-tier event are NOT duplicated here
+      // A3 — a non-event-impact notice (the concentration deck card) never lands here
       const texts = await page.$$eval('[data-testid="more-from-rufus-text"]', (n) => n.map((e) => e.textContent.trim()));
-      rec('A3 Deck item not duplicated', !texts.some((t) => /Concentration risk/i.test(t)), JSON.stringify(texts));
-      rec('A4 Review-tier event not duplicated', !texts.some((t) => /NVDA reports Thursday/i.test(t)));
+      rec('A3 Non-event notice (concentration) not listed', !texts.some((t) => /Concentration risk/i.test(t)), JSON.stringify(texts));
+      rec('A4 Review-tier event IS listed (owns the Review link)', texts.some((t) => /NVDA reports Thursday/i.test(t)), JSON.stringify(texts));
+      rec('A4b Threshold/milestone crossing is NOT a list item any more',
+        !texts.some((t) => /XLF/.test(t) && /crossed/i.test(t)), JSON.stringify(texts));
 
       // A5 — copy hygiene: NO raw deterministic context anywhere in the section
       const section = await page.$eval('[data-testid="more-from-rufus"]', (el) => el.innerText);
@@ -192,7 +195,8 @@ const rect = (page, sel) => page.evaluate((s) => {
       })));
       const a = actionable.filter((r) => r.actionable === 'true');
       const info = actionable.filter((r) => r.actionable === 'false');
-      rec('A7 Exactly one actionable row with Review link', a.length === 1 && a[0].hasReview && a[0].ticker === 'XLF', JSON.stringify(a));
+      rec('A7 Exactly one actionable row, with a Review link for its REVIEW_POSITION action',
+        a.length === 1 && a[0].hasReview && a[0].ticker === 'NVDA', JSON.stringify(a));
       rec('A8 Informational row has NO action link', info.length === 1 && !info[0].hasReview, JSON.stringify(info));
 
       // A9 — one line per row (nowrap, no wrap → single-line height)
@@ -270,10 +274,48 @@ const rect = (page, sel) => page.evaluate((s) => {
 
   /* ── C. Nothing to surface → renders nothing ── */
   {
-    const deckOnly = [CONC, EVENT_REVIEW];
+    // A deck card (concentration) + a threshold crossing: neither is event-impact,
+    // so the list must render nothing at all.
+    const deckOnly = [CONC, MILESTONE];
     const { ctx, page } = await setup(browser, { theme: 'light', items: deckOnly });
     const present = await page.$('[data-testid="more-from-rufus"]');
-    rec('C1 Renders nothing when no eligible items', !present);
+    rec('C1 Renders nothing when no event-impact items exist', !present);
+    await ctx.close();
+  }
+
+  /* ── D. Review-tier event-impact that is NOT deck-eligible (no severity
+        field) → appears in the list WITH a working Review link. Proves the
+        link only ever appears for a real REVIEW_POSITION action. ── */
+  {
+    const reviewNoSev = item('mock-review-nosev', 'event_impact', 'XLF — regulatory update',
+      'XLF has a regulatory update — the SEC opened a comment window.',
+      'accent', '📰', 'REVIEW_POSITION:XLF', { symbol: 'XLF', category: 'regulatory' });
+    const infoWithAction = item('mock-info-with-action', 'event_impact', 'NVDA — earnings update',
+      'NVDA posted an earnings update — Q3 beat and raised guidance.',
+      'info', '📰', 'REVIEW_POSITION:NVDA', { symbol: 'NVDA', severity: 'info', category: 'earnings' });
+
+    const { ctx, page } = await setup(browser, { theme: 'light', items: [reviewNoSev, infoWithAction] });
+    const rows = await page.$$eval('[data-testid="more-from-rufus-row"]', (n) => n.map((e) => ({
+      actionable: e.getAttribute('data-actionable'),
+      hasReview: !!e.querySelector('[data-testid="more-from-rufus-review"]'),
+      ticker: e.querySelector('[data-testid="more-from-rufus-review"]')?.getAttribute('data-ticker') || null,
+      text: e.querySelector('[data-testid="more-from-rufus-text"]')?.textContent.trim(),
+    })));
+    const act = rows.filter((r) => r.actionable === 'true');
+    const inf = rows.filter((r) => r.actionable === 'false');
+    rec('D1 Review-tier event renders WITH a Review link', act.length === 1 && act[0].hasReview && act[0].ticker === 'XLF', JSON.stringify(rows));
+    rec('D2 Info-tier item with an action still gets NO link', inf.length === 1 && !inf[0].hasReview, JSON.stringify(inf));
+    rec('D3 Exactly 2 rows (both event-impact tiers)', rows.length === 2, `rows=${rows.length}`);
+
+    if (act.length) {
+      await page.locator('[data-testid="more-from-rufus-review"]').evaluate((el) => el.click());
+      await page.waitForTimeout(900);
+      const navState = await page.evaluate(() => ({
+        portfolioActive: !!document.querySelector('[data-testid="nav-portfolio"][aria-current="page"], [data-testid="nav-portfolio"][data-active="true"]'),
+        hasHoldingsHeading: /Holdings|Your Positions|Positions/i.test(document.body.innerText),
+      }));
+      rec('D4 Review link navigates to Holdings', navState.portfolioActive || navState.hasHoldingsHeading, JSON.stringify(navState));
+    }
     await ctx.close();
   }
 

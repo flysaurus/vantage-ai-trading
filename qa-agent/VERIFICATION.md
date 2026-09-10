@@ -850,3 +850,152 @@ touch devices: `portfolio/SellModal.tsx`, `portfolio/TradeTicket.tsx`,
 `trade/BasketBuyMoreTicket.tsx`, `disclosure/FIFOExplainer.tsx` (seven total). Each is a
 two-line swap to `usePageScrollLock` + `data-scroll-scope` on its own scroller —
 Em's call whether to sweep them.
+
+---
+
+# ROUND 7 — Em's four-part follow-up (PART 1a/1b/1c, PART 2, PART 3, PART 4)
+
+## PART 1a — "More from Rufus" is event-impact only
+
+`lib/insights/noticed-copy.ts`: `isMoreFromRufusEligible` now admits **event-impact
+items only** (review *and* info tier); `reviewTickerForItem` is severity-gated.
+Per Em's spec the section is the **complete event-impact inventory** — the earlier
+`deckIds` filter (which hid deck items) was removed from `MoreFromRufus.tsx` and
+`InsightsTab.tsx`, because it made the review-tier "Review" link unreachable.
+
+Verification — `qa-agent/verify-more-from-rufus.cjs` **20/20** (A1–A13, B1, C1, D1–D4):
+
+| What | Evidence |
+| --- | --- |
+| Only event-impact items listed | A2 → exactly 2 rows; A3 → concentration item NOT listed |
+| Review tier IS listed | A4 → review-tier row present (deck membership no longer excludes it) |
+| One actionable row w/ Review link | A7 |
+| Real Rufus-voice copy, never raw context | no `severity:`/`variant:` strings in any row body |
+| Review link navigates | D1–D4 → `setFocusPosition(symbol)` + `setTab('portfolio')`, landing on Holdings |
+| Empty state | C1 → single clean empty render |
+| Dark theme contrast | B1 → **11.83:1** |
+
+Screenshots: `/tmp/vantage-shots/more-from-rufus/MFR-{1..4}*.png` (light/dark full + section).
+
+## PART 1b — Threshold crossings are inline badges on the position row
+
+New `lib/insights/threshold-badge.ts` (`ThresholdCrossing`, `formatThresholdBadge`,
+`symbolOf`, `thresholdCrossings`, `crossingFor`) + `components/portfolio/ThresholdBadgePill.tsx`.
+`PositionCardV3.tsx` and `BasketCard.tsx` take `crossing(s)` and render the pill next to
+the ticker on a `flexWrap:'wrap'` row. `PortfolioTab.tsx` derives
+`crossings = thresholdCrossings(noticedAll)`. Crossings match on **symbol only**;
+several bands on one symbol keep the **widest**.
+
+Verification — `qa-agent/verify-threshold-badge.cjs` **27/27** (light + dark, T1–T13, scenario C):
+
+| What | Evidence |
+| --- | --- |
+| Badge text/format | `▼ crossed -20%` (loss) / `▲ crossed +250%` (gain) |
+| Only crossed rows get a badge | non-crossing rows render no pill |
+| Badge sits on the position row | pill inside the ticker row, not in any list |
+| Widest-band wins | symbol with two bands → single pill |
+| Contrast (card surface is dark navy in BOTH themes) | light loss **5.35:1**, dark loss **5.08:1** (was 4.09/3.89 — fixed by `--v-badge-loss: #ff8f85` + `--v-badge-loss-bg: rgba(255,143,133,.14/.16)` in both theme blocks) |
+
+Screenshots: `/tmp/vantage-shots/threshold-badge/row-{gain,loss}-{light,dark}.png`,
+`holdings-{light,dark}.png`.
+
+## PART 1c — raw-copy leak in the "+ Explore" chat picker
+
+Root cause: `PortfolioTab.tsx:1249` rendered `topNoticed.body` **raw** in the Holdings
+"Rufus Noticed" hero card. Fixed by wrapping in `humanizeNoticedItem(topNoticed)`
+(+ `data-testid="rufus-noticed-body"`). The two "content types" (`event_impact`
+notices and threshold/milestone crossings) both go through the humanizer in the
+AITab `+ Explore` picker already. Engine-side guard from ROUND 4 still holds:
+legacy raw rows are humanized at render time (27 pre-fix DB rows still need a
+one-time backfill — Em's call).
+
+## PART 2 — Cross-account stale balance flash: root-caused, reproduced, fixed
+
+**Root cause (evidence-backed, not merely a race):** stale store state was never
+cleared on account switch. `hooks/usePortfolio.ts` only set `loading` when
+`!account`, `PortfolioContext.setLoading` was never called, and there was no scope
+guard — so (1) the previous account's balance stayed rendered, and (2) a late
+response for account A could still overwrite account B.
+
+**Fix — scope tagging** (`store/index.ts` `accountScope`; `hooks/usePortfolio.ts`
+`scopeRef`/`prevScopeRef` + switch effect + a guard after **both** await points;
+`context/PortfolioContext.tsx` stamps the scope; `context/AccountContext.tsx`
+`setActiveAccount` synchronously calls `clearAccount()` + `setLoading(true)`;
+`InsightsTab`/`PortfolioTab` scope-gate `displayAccount`). Deliberately **not**
+nulling `PortfolioContext.account` — `AITab.tsx:665–672` and `:1443` dereference
+`liveAccount.<field>` unguarded.
+
+Verification — `qa-agent/verify-account-switch.cjs` (Playwright, **rAF painted-frame
+sampling**; a DOM sample between the tap and React's commit never paints, so only
+`requestAnimationFrame` samples count as user-visible):
+
+| Run | Result |
+| --- | --- |
+| `MODE=bug ENTRY=portfolio` (pre-fix worktree `:3003`) | **9/9 — bug reproduced:** Fidelity `$101,680` stayed painted for **2654ms across 110 rAF frames** with **no loading state**, then flipped |
+| `MODE=fixed ENTRY=portfolio` | **10/10** — 0 stale frames; loading state fills ~113ms→~2593ms; fresh B at ~2671ms |
+| `MODE=fixed ENTRY=insights` | **10/10** |
+
+Screenshots: `tmp-shots/account-switch/pre-fix/` and `post-fix/` (`1-before-switch-account-A`,
+`2-switcher-open`, `3-after-switch-+150/+600/+1500/+2800ms`, `4-final-account-B`, `timeline.json`).
+Pre-fix `+150ms` shows **Fidelity `$101,679.66` with Alpaca Paper selected**; post-fix
+`+150ms` shows the **"Loading portfolio data…" spinner and no number at all**.
+
+## PART 3 — Account switcher in the header / masthead
+
+One `AccountSwitcher` with a `variant` prop (`'header' | 'masthead'`) — the existing
+Settings > Accounts component, reused, not duplicated. Testids: trigger
+`data-testid={testId || 'account-switcher'}` (masthead uses `masthead-account`),
+menu `account-switcher-menu`, rows `account-switcher-item` + `data-account-id` /
+`data-account-name`. The Insights masthead's static account label is replaced by
+`<AccountSwitcher variant="masthead" testId="masthead-account">`.
+
+Evidence: `tmp-shots/final/part3-switcher/masthead-switcher-open.png` — the
+masthead account name opens the real account list (Demo Portfolio / Fidelity
+Investments / Alpaca Paper) from the Insights header.
+
+## PART 4 — Ask Rufus bar overlap fixed STRUCTURALLY, globally
+
+New `components/layout/PageScrollArea.tsx` owns **both** the scroll container
+(`.content-area` + `data-page-scroller`) **and** the floating bar
+(`<AskRufusBar barRef>`), and reserves `bar.bottom + bar.height + 12px` as a
+**margin** on the scroller (ResizeObserver + resize/mediaquery listeners;
+`FALLBACK_BAND = 54 + 78 + 12`; also sets `padding-bottom: 18px` and
+`scrollPaddingBottom`). `MainApp.tsx` renders every tab through it, so no screen can
+forget the fix. The previous **tab-scoped** CSS rule
+(`.app-shell[data-active-tab='insights'] .content-area { margin-bottom: 132px }`)
+is replaced by a global `[data-rufus-bar-band] { padding-bottom: 18px; }` — it had
+fixed Insights while Holdings / Invest / Settings kept scrolling under the bar.
+
+Why a margin and not padding: the bar is `position: fixed`, so content scrolls
+*behind* it at every non-terminal scroll position. Ending the scroller's viewport at
+the bar's top edge is the only structural guarantee.
+
+Verification — new `qa-agent/verify-bar-band-global.cjs` (all four tabs; asserts the
+shared scroller marker, exactly one bar, reserved band ≥ bar + 12px, true bottom
+reach, `scrollerBottom <= barTop`, last control clears the bar, and a
+`requestAnimationFrame`-free **visible-clip** probe counting elements whose
+*clipped* visible slice still reaches below the bar top at 25/50/75% of the scroll
+range):
+
+| Build | Result |
+| --- | --- |
+| **Pre-fix** `/tmp/vantage-prefix` (`:3003`) | **17/33** — no shared scroller anywhere; **Insights clean** (tab-scoped rule), but **Holdings 11 / Invest 11 / Settings 4 elements under the bar at every scroll position** (worst +132px; "Sign Out" hidden) |
+| **Post-fix** (`:3002`) | **33/33** — 0 elements under the bar on every screen at every scroll position; `scrollerBottom=788 ≤ barTop=800` |
+
+Settings regression Em reported (`Investor Style` → "Save Style"): S0–S3 pass —
+the sheet opens from the Settings row, "Save Style" is fully in the viewport
+(top 781.5 / bottom 832.0 of 932) and is the topmost element at its own centre
+point, i.e. genuinely clickable.
+
+Screenshots: `tmp-shots/final/part4-bar-band/` — `light-{insights,portfolio,invest,settings}-bottom.png`,
+`*-midscroll-{25,50,75}.png`, `settings-investor-style-full.png`, `settings-save-style.png`,
+and `prefix-settings-midscroll-25.png` for the before/after contrast.
+
+## Regression status after all four parts
+
+`npx tsc --noEmit` → only the pre-existing `tests/etf-sectors.test.ts:124` TS2345.
+`vitest run tests/{insights-threshold-badge,noticed-copy,insights-deck,insights-health-score}.test.ts` → **46/46**.
+`verify-insights.cjs` **65/65** · `verify-insights-polish.cjs` **46/46** ·
+`verify-insights-review.cjs` **28/28** · `verify-insights-round3.cjs` **28/28** ·
+`verify-more-from-rufus.cjs` **20/20** · `verify-threshold-badge.cjs` **27/27** ·
+`verify-bar-band-global.cjs` **33/33** · `verify-account-switch.cjs` **9/9 bug + 10/10 fixed**.

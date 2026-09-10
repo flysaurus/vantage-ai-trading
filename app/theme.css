@@ -27,6 +27,14 @@
   --v-skel-a: #ecefe9;
   --v-skel-b: #f7f9f5;
 
+  /* threshold-crossing badge — rendered on the ALWAYS-dark position cards,
+     so these are bright values in BOTH themes (the theme-tuned --v-gain/
+     --v-loss would be unreadable on #1a2235 in light mode). */
+  --v-badge-gain: #3ddc84;
+  --v-badge-loss: #ff8f85;
+  --v-badge-gain-bg: rgba(61, 220, 132, 0.14);
+  --v-badge-loss-bg: rgba(255, 143, 133, 0.14);
+
   /* Rufus hero cards — dark-navy "islands" in BOTH themes */
   --v-hero-card: #10182b;
   --v-hero-card-border: #1c2740;
@@ -91,6 +99,13 @@
   /* loading skeleton */
   --v-skel-a: #1b233c;
   --v-skel-b: #263051;
+
+  /* threshold-crossing badge — same bright values as light (the cards it sits
+     on are dark navy in both themes; the badge must not change with the theme). */
+  --v-badge-gain: #3ddc84;
+  --v-badge-loss: #ff8f85;
+  --v-badge-gain-bg: rgba(61, 220, 132, 0.16);
+  --v-badge-loss-bg: rgba(255, 143, 133, 0.16);
   --v-rule: #141c2e;
   --v-panel: #0a0f1e;
 
@@ -190,24 +205,22 @@
   .v-skel { animation: none; }
 }
 
-/* ── Insights: keep the floating Ask Rufus bar CLEAR of content ──────
-   The bar is `position: fixed` (bottom 78px, height 54px → it owns the
-   132px band above the viewport bottom; BottomNav owns the 64px below it).
-   A fixed bar overlays the scroller, so with only a padding-bottom the
-   content still scrolls BEHIND it — clear at the end of the page, covered
-   everywhere else. Reserving the band as a MARGIN on the scroll container
-   makes the scroller's viewport end exactly at the bar's top edge, so no
-   content can ever be visible underneath it at ANY scroll position. The
-   small padding-bottom keeps the last card off the clip line.
-   (Desktop has no BottomNav and the bar sits at bottom: 24px → 78px band.) */
-.app-shell[data-active-tab='insights'] .content-area {
+/* ── Ask Rufus bar: the bottom band is owned by <PageScrollArea> ──────
+   PART 4. The bar is `position: fixed`, so the scroll container underneath
+   must have its viewport CLIPPED above the bar (a margin), not just padded at
+   the end — otherwise content scrolls behind an opaque bar at every scroll
+   position except the very last one.
+
+   This used to be a TAB-SCOPED rule here
+     (`.app-shell[data-active-tab='insights'] .content-area { margin-bottom: 132px }`),
+   which fixed exactly one screen and let the next screen regress (Settings >
+   Investor Style "Save Style" was still covered). It is now owned by
+   components/layout/PageScrollArea.tsx, which MEASURES the real bar (height +
+   its own computed `bottom`, so the desktop breakpoint needs no constant) and
+   applies the band inline. The declarations below are only a first-paint
+   fallback for the measured value — never a per-screen patch. */
+[data-rufus-bar-band] {
   padding-bottom: 18px;
-  margin-bottom: 132px;
-}
-@media (min-width: 1024px) {
-  .app-shell[data-active-tab='insights'] .content-area {
-    margin-bottom: 78px;
-  }
 }
 
 /* ─── Chat overlay (Ask Rufus) ─────────────────────────────────

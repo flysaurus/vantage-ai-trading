@@ -5,6 +5,8 @@ import type { Position } from '@/types';
 import { usePositionLots } from '@/hooks/usePositionLots';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getActiveLotCount, formatFIFOLabel, type Lot } from '@/lib/fifo-engine';
+import { ThresholdBadgePill } from './ThresholdBadgePill';
+import type { ThresholdCrossing } from '@/lib/insights/threshold-badge';
 
 // ─── Props ─────────────────────────────────────────────────
 
@@ -23,6 +25,11 @@ interface PositionCardV3Props {
   inline?: boolean;
   /** Broker display name for source attribution ("Synced from X"). null = demo/unknown. */
   brokerLabel?: string | null;
+  /**
+   * Active threshold crossing for THIS position (target-return/-loss milestone).
+   * Rendered as a small pill next to the ticker. Most rows have none.
+   */
+  crossing?: ThresholdCrossing | null;
 }
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -62,6 +69,7 @@ export default function PositionCardV3({
   connectionId = null,
   inline = false,
   brokerLabel = null,
+  crossing = null,
 }: PositionCardV3Props) {
   const { user } = useAuth();
   const userId = user?.id as string | undefined;
@@ -290,7 +298,7 @@ export default function PositionCardV3({
 
           {/* Symbol + qty */}
           <div style={{ minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <span
                 style={{
                   fontWeight: 700,
@@ -301,6 +309,9 @@ export default function PositionCardV3({
               >
                 {pos.symbol}
               </span>
+
+              {/* Threshold-crossing badge: only rows with an ACTIVE crossing. */}
+              <ThresholdBadgePill crossing={crossing} testId={`threshold-badge-${pos.symbol}`} />
 
               {/* Lot badge: only when 2+ active lots */}
               {showLotBadge && (

@@ -16,24 +16,30 @@
 
 /* ── Which items belong in the secondary list? ─────────────── */
 //
-// (a) event-impact INFO-tier — purely informational, NO action link.
-// (b) position milestones (incl. user-configured target-return / target-loss
-//     crossings — the engine fires those through the SAME position_milestone
-//     type, see lib/noticed/engine.ts findNewTriggers) — actionable.
+// EVENT-IMPACT ONLY — both tiers:
+//   • review-tier → actionable, renders a "Review" link (when the item really
+//     carries a REVIEW_POSITION action).
+//   • info-tier   → purely informational, no action link.
 //
-// Deck-eligible types (concentration_*, idle_cash, bounce_back, and
-// event_impact review-tier) are deliberately NOT eligible here: they live in
-// the hero deck and must never be duplicated.
+// Target-return / milestone threshold crossings are deliberately NOT eligible:
+// they are no longer a list item anywhere — they surface as an inline badge on
+// the affected position's row (see lib/insights/threshold-badge.ts).
+//
+// Deck-eligible types (concentration_*, idle_cash, bounce_back and the
+// event-impact items already promoted into the hero deck) are likewise out —
+// they live in the hero deck and must never be duplicated.
 export function isMoreFromRufusEligible(item: any): boolean {
   if (!item || typeof item.triggerType !== 'string') return false;
-  if (item.triggerType === 'event_impact') return item?.meta?.severity === 'info';
-  if (item.triggerType === 'position_milestone') return true;
-  return false;
+  return item.triggerType === 'event_impact';
 }
 
 /** Deterministic ticker for the actionable "Review" link, or null when the
- *  item carries no REVIEW_POSITION marker (i.e. informational). */
+ *  item carries no REVIEW_POSITION marker (i.e. informational).
+ *
+ *  The link is ONLY rendered for review-tier items that carry a real action:
+ *  an info-tier notice must never look actionable. */
 export function reviewTickerForItem(item: any): string | null {
+  if (item?.meta?.severity && item.meta.severity !== 'review') return null;
   const action = item?.action ?? item?.meta?.action;
   if (typeof action !== 'string') return null;
   const PREFIX = 'REVIEW_POSITION:';

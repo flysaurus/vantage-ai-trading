@@ -39,6 +39,7 @@ import { apiGet, apiPost } from '@/lib/api-client';
 import { fmt, pctStr, splitCents } from '@/lib/insights/format';
 import { buildDeck, type DeckTeaser } from '@/lib/insights/deck';
 import { briefAskPrompt } from '@/lib/insights/brief';
+import { AccountSwitcher } from '@/components/accounts/AccountSwitcher';
 import { HeroDeck } from './HeroDeck';
 import { MoreFromRufus } from './MoreFromRufus';
 import { PortfolioHealthCard } from './PortfolioHealthCard';
@@ -54,8 +55,8 @@ function firstLine(content: string): string {
 }
 
 export function InsightsTab() {
-  const { account: brokerAccount, loading: brokerLoading } = usePortfolio();
-  const { account: liveAccount, loading: liveLoading, brokerMeta } = useLivePortfolio();
+  const { account: brokerAccount, accountScope: brokerScope, loading: brokerLoading } = usePortfolio();
+  const { account: liveAccount, accountScope: liveScope, loading: liveLoading, brokerMeta } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { activeAccount, activeAccountId } = useAccounts();
   const { user } = useAuth();
@@ -64,9 +65,17 @@ export function InsightsTab() {
   const isReadOnly = !isShowingDemo && !(activeAccount?.tradingEnabled ?? false);
   const isBrokerExpected = isConnected && !isShowingDemo;
 
-  const displayAccount = isBrokerExpected
-    ? (brokerAccount as AccountSummary | null)
-    : (liveAccount as AccountSummary | null);
+  // PART 2 — SCOPE GATE. A resolved account is only valid for the account id it
+  // was fetched for. If the id it carries doesn't match the currently-selected
+  // account, it is the PREVIOUS account's data and must not be displayed as
+  // this account's balance — not even for one frame. `null` here means "nothing
+  // resolved for this account yet" → the skeleton renders instead (never a
+  // number, and never another account's number).
+  const scopedAccount = isBrokerExpected
+    ? (brokerScope === (activeAccountId ?? null) ? (brokerAccount as AccountSummary | null) : null)
+    : (liveScope === (activeAccountId ?? null) ? (liveAccount as AccountSummary | null) : null);
+
+  const displayAccount = scopedAccount;
   const loading = isBrokerExpected ? brokerLoading : liveLoading;
 
   const positions: Position[] = displayAccount?.positions || [];
@@ -147,10 +156,6 @@ export function InsightsTab() {
     () => buildDeck({ items: noticedItems, dailyBrief: dailyTeaser, weeklySnapshot: weeklyTeaser }),
     [noticedItems, dailyTeaser, weeklyTeaser],
   );
-
-  // Ids already rendered in the hero deck — excluded from "More from Rufus"
-  // so nothing appears twice on the screen.
-  const deckIds = useMemo(() => new Set(deck.map((c) => String(c.id))), [deck]);
 
   // ── Brief modal (Daily Brief / Weekly Snapshot) ──
   // The deck teasers used to navigate to the Holdings screen, which yanked the
@@ -237,15 +242,10 @@ export function InsightsTab() {
               Vantage
             </span>
           </div>
-          <span
-            data-testid="masthead-account"
-            style={{
-              fontSize: 13, fontWeight: 600, color: 'var(--v-text-secondary)',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}
-          >
-            {accountName}
-          </span>
+          {/* The account name is the ACCOUNT SWITCHER trigger (PART 3): tapping it
+              on any screen opens the same account list Settings > Accounts uses.
+              Reuses <AccountSwitcher/> — no duplicate account data or list UI. */}
+          <AccountSwitcher variant="masthead" testId="masthead-account" fallbackLabel={accountName} />
         </div>
         {/* the ONE deliberate hairline deviation — 2px accent rule */}
         <div data-testid="masthead-rule" style={{ borderTop: '2px solid var(--v-accent)', marginTop: 12 }} />
@@ -469,7 +469,7 @@ export function InsightsTab() {
           Directly below the deck's dot indicator, above Portfolio Health.
           Only event-impact INFO-tier + milestone items; deck items excluded.
           Renders nothing when there is nothing to surface. */}
-      <MoreFromRufus items={noticedItems} deckIds={deckIds} />
+      <MoreFromRufus items={noticedItems} />
 
       {/* ── 6. Portfolio Health ──
           Gated on the same readiness flag: with no holdings yet the scorer

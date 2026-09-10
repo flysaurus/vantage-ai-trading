@@ -254,6 +254,27 @@ export function usePortfolio() {
   const mountedRef = useRef(true);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── PART 2: account-switch guard ──────────────────────────────────
+  // The resolved `account` belongs to the accountId it was fetched for
+  // (stamped as `accountScope`). When the user switches accounts, that value
+  // MUST be dropped immediately — otherwise the PREVIOUS account's real
+  // balance keeps rendering under the NEW account's name until the new fetch
+  // resolves (the confirmed cross-account stale-balance flash). The scope ref
+  // is also what makes a late response from the OLD account unable to
+  // overwrite the new account's data.
+  const scopeRef = useRef<string | null>(activeAccountId ?? null);
+  scopeRef.current = activeAccountId ?? null;
+  const prevScopeRef = useRef<string | null>(activeAccountId ?? null);
+
+  useEffect(() => {
+    const next = activeAccountId ?? null;
+    if (prevScopeRef.current === next) return;
+    console.error('[usePortfolio] account switched', prevScopeRef.current, '→', next, '— clearing resolved account, showing loading');
+    prevScopeRef.current = next;
+    clearAccount();
+    setLoading(true);
+  }, [activeAccountId, clearAccount, setLoading]);
+
   // ── Bridge gap: when broker connects, wipe stale demo data and
   //    set loading so UI shows skeleton (not stale demo or hardcoded fallback)
   useEffect(() => {
@@ -285,14 +306,14 @@ export function usePortfolio() {
         setAccount({
           ...demoAccount,
           sectorAllocations: allocations,
-        } as AccountSummary & { sectorAllocations: SectorAllocation[] });
+        } as AccountSummary & { sectorAllocations: SectorAllocation[] }, activeAccountId ?? null);
       })
       .catch(() => {
         if (mountedRef.current) {
           setError('Market data unavailable. Please try again.');
         }
       });
-  }, [isConnected, user?.investorStyle, setAccount]);
+  }, [isConnected, user?.investorStyle, setAccount, activeAccountId]);
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!broker || !isConnected) {
@@ -304,7 +325,13 @@ export function usePortfolio() {
       // Only surface the full-page spinner on the FIRST load (no account yet).
       // Subsequent 60s polls update in place — avoids unmounting/remounting the
       // chart + cards (the "full reload" flash) on every poll. (Phase 4)
-      if (!usePortfolioStore.getState().account) {
+      // PART 2: never trust a resolved account from a DIFFERENT account id —
+      // an account scope mismatch means the store holds another account's data,
+      // so we must also gate loading on that (same as "no account yet").
+      const scope = activeAccountId ?? null;
+      const storedScope = usePortfolioStore.getState().accountScope;
+      if (!usePortfolioStore.getState().account || storedScope !== scope) {
+        clearAccount();
         setLoading(true);
       }
       setError(null);
@@ -355,6 +382,14 @@ export function usePortfolio() {
         basketsPromise,
       ]);
 
+      // PART 2: the user may have switched accounts while this request was in
+      // flight. If so, these numbers belong to the OLD account — drop them on
+      // the floor and let the new scope's own refresh populate the store.
+      if (!mountedRef.current || scopeRef.current !== scope) {
+        console.error('[usePortfolio] discarding stale response for scope', scope, '(now', scopeRef.current, ')');
+        return;
+      }
+
       // SnapTrade's account call already returns positions — reuse them to avoid a
       // second broker round-trip. Fall back to getPositions() for brokers that don't
       // embed positions in the account response.
@@ -362,6 +397,13 @@ export function usePortfolio() {
         brokerAccount.positions && brokerAccount.positions.length > 0
           ? brokerAccount.positions
           : await broker.getPositions();
+
+      // PART 2: second (post-await) scope check — getPositions() above is another
+      // network hop, so the account can switch again during it.
+      if (!mountedRef.current || scopeRef.current !== scope) {
+        console.error('[usePortfolio] discarding stale positions for scope', scope, '(now', scopeRef.current, ')');
+        return;
+      }
 
       console.error('[usePortfolio] broker data received:', {
         equity: brokerAccount.equity,
@@ -515,7 +557,7 @@ export function usePortfolio() {
       setAccount({
         ...accountSummary,
         sectorAllocations: allocations,
-      } as AccountSummary & { sectorAllocations: SectorAllocation[] });
+      } as AccountSummary & { sectorAllocations: SectorAllocation[] }, scope);
 
       console.error('[usePortfolio] SUCCESS — positions:', positions.length, 'account equity:', accountSummary.equity);
 
@@ -543,7 +585,7 @@ export function usePortfolio() {
         if (mountedRef.current) refresh();
       }, RETRY_DELAY);
     }
-  }, [broker, isConnected, setAccount, setLoading, user?.id, activeAccountId]);
+  }, [broker, isConnected, clearAccount, setAccount, setLoading, user?.id, activeAccountId]);
 
   // Initial load
   useEffect(() => {
@@ -579,6 +621,10 @@ export function usePortfolio() {
 
   return {
     account,
+    // PART 2: which account id the resolved `account` belongs to. `null` means
+    // "nothing resolved yet". Consumers must not render `account` as the
+    // selected account's data unless this matches the selected account id.
+    accountScope: store.accountScope,
     loading: store.loading || false,
     error,
     refresh,

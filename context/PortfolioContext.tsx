@@ -163,6 +163,13 @@ interface BasketSellResult {
 interface PortfolioContextValue {
   /** Live-priced account summary */
   account: AccountSummary | null;
+  /**
+   * PART 2 — the account id `account` was resolved FOR. `null` means nothing is
+   * resolved for the currently-selected account yet, so `account` must NOT be
+   * rendered as the selected account's data (that was the cross-account stale
+   * balance flash). Compare with `activeAccountId` before displaying numbers.
+   */
+  accountScope: string | null;
   /** Whether quotes are still loading */
   loading: boolean;
   /** Error message if quote fetch failed */
@@ -238,6 +245,7 @@ interface PortfolioContextValue {
 
 const PortfolioContext = createContext<PortfolioContextValue>({
   account: null,
+  accountScope: null,
   loading: true,
   error: null,
   refresh: () => {},
@@ -354,6 +362,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
+  // ── PART 2: account scope for the resolved account ──────────────────
+  // `account` below is whatever was resolved for the account id it was
+  // fetched for. On an account SWITCH it must not be presented as the new
+  // account's data even for one frame (the cross-account stale-balance flash).
+  // Scope is stamped when a resolution commits and reset to null on switch, so
+  // display code can gate on `accountScope === activeAccountId`.
+  const [accountScope, setAccountScope] = useState<string | null>(null);
   // ── Refs for latest state (used by Supabase sync to avoid stale closures) ──
   const demoStateRef = useRef(demoState);
   const basketPositionsRef = useRef<BasketPosition[]>([]);
@@ -639,6 +654,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         };
 
         setAccount(summary);
+        if (!cancelled) setAccountScope(activeAccountId ?? null);
         console.error('[portfolio context] broker-load SUCCESS — equity:', summary.equity, 'positions:', summary.positions.length);
       } catch (e) {
         console.error('[portfolio context] broker-load FAILED:', e);
@@ -661,6 +677,15 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const interval = setInterval(() => loadBrokerAccount(true), 30000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [isConnected, broker, isShowingDemo, brokerRefreshNonce, activeAccountId]);
+
+  // ── PART 2: invalidate the resolved account the moment the selected
+  //    account changes. Broker data must go back to "nothing resolved" so the
+  //    UI shows its loading state instead of the previous account's numbers;
+  //    demo data is account-agnostic (derived from the investor style), so it
+  //    can be re-stamped immediately with no fetch to wait for. ──
+  useEffect(() => {
+    setAccountScope(isShowingDemo ? (activeAccountId ?? null) : null);
+  }, [activeAccountId, isShowingDemo]);
 
   // Fetch on mount and when state changes
   useEffect(() => {
@@ -1825,6 +1850,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     <PortfolioContext.Provider
       value={{
         account,
+        // PART 2: which account id `account` belongs to (null = nothing
+        // resolved for the selected account yet — render loading, never the
+        // previous account's numbers).
+        accountScope,
         loading,
         error,
         refresh: fetchData,

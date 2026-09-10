@@ -24,6 +24,8 @@ import BasketSellTicket from '@/components/trade/BasketSellTicket';
 import ActionButton from '@/components/ai/ActionButton';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import { apiGet, apiPost } from '@/lib/api-client';
+import { humanizeNoticedItem } from '@/lib/insights/noticed-copy';
+import { thresholdCrossings } from '@/lib/insights/threshold-badge';
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -954,8 +956,8 @@ export function PortfolioTab() {
     basketId: string;
   } | null>(null);
 
-  const { account: brokerAccount, loading: brokerLoading, error: brokerError } = usePortfolio();
-  const { account: liveAccount, loading: liveLoading, baskets, executeTrade, sellBasketPositions, refresh: refreshContext } = useLivePortfolio();
+  const { account: brokerAccount, accountScope: brokerScope, loading: brokerLoading, error: brokerError } = usePortfolio();
+  const { account: liveAccount, accountScope: liveScope, loading: liveLoading, baskets, executeTrade, sellBasketPositions, refresh: refreshContext } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { activeAccount, activeAccountId } = useAccounts();
   const { user } = useAuth();
@@ -986,9 +988,12 @@ export function PortfolioTab() {
     }));
   }, [isConnected, isShowingDemo, activeAccount, brokerLoading, liveLoading, brokerAccount, liveAccount, brokerError]);
 
+  // PART 2 — SCOPE GATE: only accept a resolved account that was fetched for the
+  // SELECTED account id. An id mismatch means the store still holds the previous
+  // account's real numbers → treat as unresolved (spinner), never display them.
   const displayAccount = isBrokerExpected
-    ? (brokerAccount as AccountSummary | null)
-    : (liveAccount as AccountSummary | null);
+    ? (brokerScope === (activeAccountId ?? null) ? (brokerAccount as AccountSummary | null) : null)
+    : (liveScope === (activeAccountId ?? null) ? (liveAccount as AccountSummary | null) : null);
   const loading = isBrokerExpected ? brokerLoading : liveLoading;
 
   // ── Close briefs on outside click ──
@@ -1021,17 +1026,26 @@ export function PortfolioTab() {
 
   // ── Top AI insight (Option B: single curated card on Portfolio, replaces prose) ──
   const [topNoticed, setTopNoticed] = useState<any>(null);
+  // ALL active notices — used for the inline threshold badges below. The hero
+  // card only wants one item, but the position rows need every active crossing.
+  const [noticedAll, setNoticedAll] = useState<any[]>([]);
   const fetchTopNoticed = useCallback(async () => {
     try {
       const res = await apiGet(`/api/ai/noticed?accountId=${encodeURIComponent(activeAccountId || 'demo')}`);
       if (res.ok) {
         const data = await res.json();
         const items = data.items || [];
+        setNoticedAll(items);
         setTopNoticed(items.find((i: any) => i.action) || items[0] || null);
       }
     } catch { /* ignore */ }
   }, [activeAccountId]);
   useEffect(() => { fetchTopNoticed(); }, [fetchTopNoticed]);
+
+  // ── Threshold crossings → inline badges on the affected position rows ──
+  // Crossings used to be list items; they belong next to the position instead.
+  // Symbols without an active crossing simply have no entry (no badge).
+  const crossings = useMemo(() => thresholdCrossings(noticedAll), [noticedAll]);
 
   const [topSnoozeOpen, setTopSnoozeOpen] = useState(false);
 
@@ -1246,7 +1260,7 @@ export function PortfolioTab() {
                 <VantageOrb size={20} animate={false} showEntrance={false} />
                 <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', color: accent }}>RUFUS NOTICED</span>
               </div>
-              <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 15, color: '#f1f5f9', lineHeight: 1.5 }}>{topNoticed.body}</div>
+              <div data-testid="rufus-noticed-body" style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 15, color: '#f1f5f9', lineHeight: 1.5 }}>{humanizeNoticedItem(topNoticed)}</div>
               {isRebalance && <ConcentrationDonut positions={displayPositions} />}
               {isIdleCash && <IdleCashIllustration />}
               {topNoticed.action && (
@@ -1543,6 +1557,7 @@ export function PortfolioTab() {
                     status: basket.status,
                   }}
                   userId={(user?.id as string) || undefined}
+                  crossings={crossings}
                   isExpanded={isExpanded}
                   isSelected={selectedSymbols.has(`basket:${basket.id}`)}
                   selectMode={selectMode}
@@ -1602,6 +1617,7 @@ export function PortfolioTab() {
                 <div key={pos.symbol} id={`position-${pos.symbol}`}>
                   <PositionCardV3
                     pos={pos}
+                    crossing={crossings[pos.symbol?.toUpperCase()] || null}
                     isSelected={selectedSymbols.has(pos.symbol)}
                     isExpanded={expandedSymbols.has(pos.symbol)}
                     onToggleSelect={() => toggleSelect(pos.symbol)}

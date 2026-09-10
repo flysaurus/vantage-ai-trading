@@ -10,7 +10,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import type { AccountEntry } from '@/app/api/accounts/route';
 import { apiGet } from '@/lib/api-client';
-import { useOrderStore } from '@/store';
+import { useOrderStore, usePortfolioStore } from '@/store';
 
 const STORAGE_KEY = 'vantage:activeAccount';
 
@@ -84,11 +84,23 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     // already updates in place. PortfolioContext + useOrders re-key off
     // activeAccountId and re-fetch automatically; we clear the order store here
     // so stale orders from the previous account don't linger during the refetch.
+    //
+    // PART 2 (stale cross-account balance): also INVALIDATE the resolved
+    // portfolio. The store holds the previous account's real equity/cash/positions
+    // with `loading === false`, so without this the old account's balance keeps
+    // rendering under the new account's name until the new fetch resolves.
+    // Clearing SYNCHRONOUSLY at click time (before any effect/async work) closes
+    // the window completely — the UI drops to its loading state on this tick.
     saveActiveAccount(accountId);
     setActiveAccountId(accountId);
 
     try {
       useOrderStore.getState().setOrders([]);
+    } catch { /* store not initialized in all contexts */ }
+
+    try {
+      usePortfolioStore.getState().clearAccount();
+      usePortfolioStore.getState().setLoading(true);
     } catch { /* store not initialized in all contexts */ }
   }, [activeAccountId]);
 

@@ -23,7 +23,7 @@ import { PortfolioTab } from '@/components/portfolio/PortfolioTab';
 import { SettingsTab } from '@/components/settings/SettingsTab';
 import WatchlistTab from '@/components/ai/WatchlistTab';
 import { InsightsTab } from '@/components/insights/InsightsTab';
-import { AskRufusBar } from '@/components/insights/AskRufusBar';
+import { PageScrollArea } from '@/components/layout/PageScrollArea';
 import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider';
 import { AccountProvider, useAccounts } from '@/context/AccountContext';
 import { AccountSwitcher } from '@/components/accounts/AccountSwitcher';
@@ -305,20 +305,19 @@ function AppShell() {
           <WatchlistBar />
         </>
       )}
-      {/* Insights reserves its own bottom band via CSS (see theme.css): the
-          scroll container must END above the floating Ask Rufus bar, otherwise
-          content scrolls BEHIND an opaque fixed bar and is covered at every
-          scroll position except the very end. Padding alone only clears the
-          end of the page, so the tab uses margin-bottom (= bar height + its
-          bottom offset) to clip the scroll viewport above the bar. */}
-      <div className="content-area">
+      {/* PART 4 — ONE owner for the scroller AND the Ask Rufus bar.
+          PageScrollArea measures the real bar (height + its own bottom offset,
+          so the desktop breakpoint is automatic) and reserves that band as a
+          margin on the scroll container. Every tab renders through it, so no
+          screen can be left covered — including Settings, where the Investor
+          Style "Save Style" button used to sit behind the bar. */}
+      <PageScrollArea>
         {isInsights ? (
           <InsightsTab />
         ) : (
           React.createElement(TAB_COMPONENTS[activeTab])
         )}
-      </div>
-      <AskRufusBar />
+      </PageScrollArea>
       {!isDesktop && <BottomNav />}
     </>
   );

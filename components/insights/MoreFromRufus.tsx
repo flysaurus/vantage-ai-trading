@@ -2,16 +2,23 @@
 // The compact secondary list that sits DIRECTLY BELOW the hero deck's dot
 // indicator and ABOVE the Portfolio Health card.
 //
-// It surfaces the items that are otherwise only reachable through the chat
-// input's "Explore" (+) picker:
-//   • event-impact INFO-tier notices — purely informational, no action link.
-//   • position milestones / target-return crossings — actionable, with a
-//     "Review" link that navigates EXACTLY like the existing REVIEW_POSITION
-//     flow (setFocusPosition(ticker) + setTab('portfolio')).
+// It surfaces EVENT-IMPACT notices — BOTH tiers — that are otherwise only
+// reachable through the chat input's "Explore" (+) picker:
+//   • review-tier → actionable, "Review" link that navigates EXACTLY like the
+//     existing REVIEW_POSITION flow (setFocusPosition(ticker) + setTab('portfolio')).
+//   • info-tier   → one line of copy, no action link.
+//
+// Threshold / target-return crossings are NOT in this list (never were meant to
+// be): they render as an inline badge on the affected position row.
 //
 // Every line is ONE row (icon + single-line copy + optional Review link).
 // Copy comes from humanizeNoticedItem() — real generated copy, never the raw
-// deterministic context. Items already shown in the hero deck are excluded.
+// deterministic context.
+//
+// NOTE: this list is the COMPLETE event-impact inventory. It is deliberately NOT
+// filtered against the hero deck: the deck is a browse-only carousel of the
+// top review-tier cards, while this list also carries the info-tier events (and
+// the review-tier rows that own the Review link).
 
 'use client';
 
@@ -26,8 +33,6 @@ import {
 interface Props {
   /** All active noticed items (already fetched by InsightsTab). */
   items: any[];
-  /** Ids of items already rendered in the hero deck — excluded here. */
-  deckIds?: Set<string>;
 }
 
 interface Row {
@@ -37,21 +42,20 @@ interface Row {
   ticker: string | null;
 }
 
-export function MoreFromRufus({ items, deckIds }: Props) {
+export function MoreFromRufus({ items }: Props) {
   const { setFocusPosition, setTab } = useTabStore();
 
   const rows: Row[] = useMemo(
     () =>
       (items || [])
         .filter(isMoreFromRufusEligible)
-        .filter((i) => !(deckIds && deckIds.has(String(i.id ?? i.triggerKey))))
         .map((i) => ({
           id: String(i.id ?? i.triggerKey),
           icon: (typeof i.icon === 'string' && i.icon.trim()) || '•',
           text: humanizeNoticedItem(i),
           ticker: reviewTickerForItem(i),
         })),
-    [items, deckIds],
+    [items],
   );
 
   // Nothing to surface → render nothing (no empty card, no layout gap).

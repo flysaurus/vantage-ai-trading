@@ -16,12 +16,23 @@
 
 import { useTabStore } from '@/store';
 
-export function AskRufusBar() {
+/**
+ * The bar is rendered by <PageScrollArea> (components/layout/PageScrollArea.tsx),
+ * which measures it to reserve the correct scroll band above it. The ref below
+ * is how that measurement reaches the real DOM node — there is no hardcoded
+ * bar height anywhere in the layout.
+ */
+export function AskRufusBar({
+  barRef,
+}: {
+  barRef?: React.RefObject<HTMLButtonElement | null>;
+} = {}) {
   const { setChatOpen } = useTabStore();
 
   return (
     <>
       <button
+        ref={barRef}
         type="button"
         className="ask-rufus-bar"
         onClick={() => setChatOpen(true)}

@@ -5,6 +5,8 @@ import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { getActiveLotCount, type Lot } from '@/lib/fifo-engine';
 import type { Position } from '@/types';
 import PositionCardV3 from './PositionCardV3';
+import { ThresholdBadgePill } from './ThresholdBadgePill';
+import { crossingFor, type ThresholdCrossing } from '@/lib/insights/threshold-badge';
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -54,6 +56,8 @@ interface BasketCardProps {
   onBuyTicker?: (ticker: BasketPositionForCard) => void;
   onSellTicker?: (ticker: BasketPositionForCard, lots: Lot[]) => void;
   connectionId?: string | null;
+  /** Active threshold crossings keyed by ticker — inline pill on the ticker row. */
+  crossings?: Record<string, ThresholdCrossing> | null;
 }
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -92,6 +96,7 @@ export default function BasketCard({
   onBuyTicker,
   onSellTicker,
   connectionId,
+  crossings = null,
 }: BasketCardProps) {
   // ── Lot data for all tickers in basket ──
   const [basketLots, setBasketLots] = useState<Record<string, Lot[]>>({});
@@ -424,10 +429,15 @@ export default function BasketCard({
                   }}
                 >
                   {/* Left: symbol · company name */}
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 700, fontSize: 13.5, color: '#ffffff' }}>
                       {ticker.symbol}
                     </span>
+                    {/* Threshold-crossing badge: only tickers with an ACTIVE crossing. */}
+                    <ThresholdBadgePill
+                      crossing={crossingFor(crossings, ticker.symbol)}
+                      testId={`threshold-badge-${ticker.symbol}`}
+                    />
                     {companyName && (
                       <span
                         style={{
