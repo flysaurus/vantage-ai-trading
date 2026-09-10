@@ -844,9 +844,9 @@ pre-existing `tests/etf-sectors.test.ts:124` error.
 
 ## Same class of bug elsewhere (flagged, NOT changed — out of scope)
 
-Eight other overlays lock `<body>` only, so they have the identical defect on
+Seven other overlays lock `<body>` only, so they have the identical defect on
 touch devices: `portfolio/SellModal.tsx`, `portfolio/TradeTicket.tsx`,
 `StrategySheet.tsx`, `BuildBasketModal.tsx`, `trade/BasketSellTicket.tsx`,
-`trade/BasketBuyMoreTicket.tsx`, `disclosure/FIFOExplainer.tsx`. Each is a
+`trade/BasketBuyMoreTicket.tsx`, `disclosure/FIFOExplainer.tsx` (seven total). Each is a
 two-line swap to `usePageScrollLock` + `data-scroll-scope` on its own scroller —
 Em's call whether to sweep them.
