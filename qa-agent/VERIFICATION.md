@@ -47,12 +47,14 @@ All network calls are route-mocked (canned accounts / broker / noticed / briefs)
 
 ## Interpretation notes / open questions
 
-- **Fallback semantics.** "Fallback = single 'no action needed' card, no
-  deck/dots" is implemented as *deck is completely empty*. Daily Brief /
-  Weekly Snapshot teasers are deck cards "when content exists", so a user with
-  no actionable trigger but a brief today sees a 1–2 card teaser deck, not the
-  fallback (scenario D2). If the intent is "no *trigger* → fallback, teasers
-  suppressed", that's a one-line change in `buildDeck()`.
+- **Fallback semantics — CONFIRMED with Em (2026-09-10).** "Fallback = single
+  'no action needed' card, no deck/dots" applies **only to the genuinely-empty
+  case**: no eligible trigger AND no Daily Brief / Weekly Snapshot teaser (e.g.
+  a day-one account with nothing generated yet). If teasers exist but no real
+  trigger is active, the **teaser-only deck with dots** is the correct
+  behaviour, not a bug (scenario D2). Locked by tests in
+  `tests/insights-deck.test.ts`; a teaser with a blank headline does not count
+  as content, so an empty brief cannot fake a non-empty deck.
 - **Dev-only nextjs-portal overlay** is hidden by the harness; it is not part of
   the app.
 - Mock portfolio has `dayChange=0` / `totalPnl=0`, so the balance section reads

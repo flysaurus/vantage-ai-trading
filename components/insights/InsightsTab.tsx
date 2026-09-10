@@ -234,7 +234,9 @@ export function InsightsTab() {
         )}
       </div>
 
-      {/* ── 3. Hero deck (or single fallback card) ── */}
+      {/* ── 3. Hero deck (or single fallback card) ──
+          The fallback is reserved for the GENUINELY-EMPTY case only (no eligible
+          trigger AND no brief teaser). A teaser alone is a real, browsable deck. */}
       <div style={{ marginTop: 18 }}>
         {deck.length > 0 ? (
           <HeroDeck

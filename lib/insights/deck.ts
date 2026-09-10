@@ -89,8 +89,17 @@ export interface BuildDeckInput {
 
 /**
  * Build the ordered hero deck.
- * Returns [] when nothing is active → caller renders the single
- * "no action needed" fallback card (no deck, no dots).
+ *
+ * FALLBACK CONTRACT (confirmed with Em, 2026-09-10):
+ *   - Returns [] ONLY for the genuinely-empty case — no eligible trigger AND
+ *     no Daily Brief / Weekly Snapshot teaser (e.g. a day-one account with
+ *     nothing generated yet). The caller then renders the single
+ *     "no action needed" card, with no deck and no dots.
+ *   - A teaser is enough to be a real deck: no active trigger + brief content
+ *     → teaser-only deck, WITH dots, browsable exactly like any other deck.
+ *     That is correct behaviour, not a bug.
+ *   - A teaser with a blank headline does not count as content (guarded below),
+ *     so an empty brief can never fake a non-empty deck.
  */
 export function buildDeck({ items, dailyBrief, weeklySnapshot }: BuildDeckInput): DeckCard[] {
   const triggers = (items || [])
@@ -103,10 +112,12 @@ export function buildDeck({ items, dailyBrief, weeklySnapshot }: BuildDeckInput)
     item,
   }));
 
-  if (dailyBrief && dailyBrief.headline) {
+  // A teaser only counts as content when it actually has a headline — otherwise
+  // an empty brief would fake a non-empty deck and hide the fallback.
+  if (dailyBrief?.headline?.trim()) {
     cards.push({ kind: 'daily_brief', id: '__daily_brief', teaser: dailyBrief });
   }
-  if (weeklySnapshot && weeklySnapshot.headline) {
+  if (weeklySnapshot?.headline?.trim()) {
     cards.push({ kind: 'weekly_snapshot', id: '__weekly_snapshot', teaser: weeklySnapshot });
   }
 

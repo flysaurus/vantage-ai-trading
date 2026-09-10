@@ -83,11 +83,38 @@ describe('insights deck — deterministic ordering', () => {
     expect(one).toEqual(['c', 'b', 'a']);
   });
 
-  it('returns an empty deck when nothing is eligible (caller renders the fallback)', () => {
+  it('returns an empty deck ONLY for the genuinely-empty case (caller renders the fallback)', () => {
     const deck = buildDeck({
       items: [t({ id: 'ms', triggerType: 'position_milestone' })],
       dailyBrief: null,
       weeklySnapshot: null,
+    });
+    expect(deck).toEqual([]);
+  });
+
+  it('a teaser ALONE is still a real deck — no fallback, dots included', () => {
+    // no eligible trigger, only brief content → teaser-only deck, NOT the fallback
+    const one = buildDeck({
+      items: [t({ id: 'ms', triggerType: 'position_milestone' })],
+      dailyBrief: { label: 'DAILY BRIEF', headline: 'Tech leads the tape' },
+      weeklySnapshot: null,
+    });
+    expect(one.map((c) => c.id)).toEqual(['__daily_brief']);
+
+    const two = buildDeck({
+      items: [],
+      dailyBrief: { label: 'DAILY BRIEF', headline: 'Tech leads the tape' },
+      weeklySnapshot: { label: 'WEEKLY SNAPSHOT', headline: 'Week in review' },
+    });
+    expect(two.map((c) => c.id)).toEqual(['__daily_brief', '__weekly_snapshot']);
+    expect(two.every((c) => c.kind !== 'trigger')).toBe(true);
+  });
+
+  it('an empty/blank teaser is not content — must not fake a non-empty deck', () => {
+    const deck = buildDeck({
+      items: [t({ id: 'ms', triggerType: 'position_milestone' })],
+      dailyBrief: { label: 'DAILY BRIEF', headline: '   ' },
+      weeklySnapshot: { label: 'WEEKLY SNAPSHOT', headline: '' },
     });
     expect(deck).toEqual([]);
   });
