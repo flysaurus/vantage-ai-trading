@@ -547,6 +547,31 @@ async function gotoInsights(page) {
     await ctx.close();
   }
 
+  // ── J. Stale deep link: ?tab=today must land on Insights, not a blank shell ──
+  {
+    const acctJson = accountResponse(pos.alpaca, alpacaCash, alpacaCash);
+    const { ctx, page } = await setup(browser, {
+      accountId: `snaptrade:${ALPACA}`,
+      meta: { brokerageSlug: 'ALPACA-PAPER', connectionId: ALPACA, name: 'Alpaca Paper', environment: 'paper', tradingEnabled: true, accountJson: acctJson },
+      noticed: FULL_SET, theme: 'light', viewport: { width: 430, height: 932 },
+    });
+    await page.goto(`${BASE}/?tab=today`, { waitUntil: 'domcontentloaded', timeout: 90000 });
+    await hideDevOverlay(page);
+    await page
+      .locator('[data-testid="hero-deck"], [data-testid="fallback-card"]')
+      .first()
+      .waitFor({ timeout: 45000 })
+      .catch(() => {});
+    await page.waitForTimeout(2500);
+    rec('J1 ?tab=today resolves to the Insights tab',
+      (await page.getAttribute('.app-shell', 'data-active-tab')) === 'insights');
+    rec('J2 stale deep link renders Insights (masthead present, not blank)',
+      (await page.locator('[data-testid="insights-masthead"]').count()) > 0 &&
+      (await page.locator('[data-testid="hero-deck"]').count()) > 0);
+    rec('J3 url is cleaned up', !page.url().includes('tab=today'));
+    await ctx.close();
+  }
+
   await browser.close();
 
   const failed = results.filter((r) => !r.pass);

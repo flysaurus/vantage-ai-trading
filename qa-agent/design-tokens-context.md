@@ -39,6 +39,17 @@ Both palettes are first-class; neither is "legacy." Light is the default theme; 
 - View-only tag: text `#D9A94A` on background `rgba(217,169,74,0.1)`
 - Admin-restricted card: background `#161008`, border `#3A2E1C`, label `#D9A94A`
 
+#### Derived dark surfaces (resolve from the palette above — do not invent new tokens)
+
+The replaced dark-only palette listed a handful of *roles* that are intentionally no longer standalone tokens. When a component needs one, derive it from the dark palette above:
+
+- **Secondary/nested panel** (was `#050A14`): use the canvas `#000814` as a nested surface inside a `#0A0F1E` card. In light mode the equivalent is `#F5F7F4` inside a `#FFFFFF` card.
+- **Stronger border** (was `#2A3648`): no longer needed — on a near-black canvas the standard `#141C2E` hairline already separates surfaces. Do not add a second border weight.
+- **Donut / chart track** (was `#1B2333`): use the border token (`#141C2E` dark, `#E7EAE4` light).
+- **Faintest chart endpoint** (was `#4A5268`): use text-tertiary (`#8891A6`) in both themes; dark may use text-quaternary `#5C6478` for the very end of a line.
+- **Text on accent fill** (was `#00272B`): use the canvas color as the on-accent text — `#000814` on dark accent `#5FD8DE`, `#FFFFFF` on light accent `#0E8C99`.
+- **Hero cards are dark-navy islands in BOTH themes.** Their internal palette is therefore the *dark* semantic set in both modes — see the constant `--v-hero-*` tokens in `app/theme.css`. Never theme-flip colors inside a hero card.
+
 ### Shared across both themes (theme-independent)
 
 - **Typography:** serif italic (existing Playfair) for headline numbers, screen titles, and the masthead wordmark. Sans/Inter for everything else.
@@ -125,9 +136,11 @@ This pass upgrades the ONE-card AI Noticed treatment for Rebalance (concentratio
 - Do NOT "improve" the idle-cash chart later by adding real numbers/percentages/index/timeframe — the illustrative-only constraint is intentional and locked.
 - Wash-sale, event-impact, bounce-back cards: unchanged.
 
-## Addendum — Today tab masthead + lead-stat glow (Sep 2026)
+## Addendum — Insights tab masthead + lead-stat glow (Sep 2026)
 
-### Masthead (app-level brand, top of Today tab)
+> **Naming note (PART 2):** this screen was previously called the **Today** tab. It is now the **Insights** tab (`TabId 'today' → 'insights'`), and it is the app's home screen. Everything in this addendum still applies; read "Today tab" as "Insights tab" throughout.
+
+### Masthead (app-level brand, top of Insights tab)
 
 - One row only: small orb icon (radial gradient `#9FF0F4 → #5FD8DE → #1B7D82`) + "Vantage" wordmark in serif italic at ~19px, top-left.
 - Directly beneath the masthead row: a **2px `#5FD8DE` accent rule**. This is the ONE deliberate deviation from the standard `#141C2E` hairline — used nowhere else in the app.
@@ -148,3 +161,36 @@ This pass upgrades the ONE-card AI Noticed treatment for Rebalance (concentratio
 ### Explainability chip (lead story)
 
 - A small muted caption (`#5C6478`, 11px) beneath the supporting sentence, factual and data-derived (e.g. "3 of 26 positions concentrated"), never hardcoded generic copy.
+
+## Addendum — Insights tab screen (PART 2) — Sep 2026
+
+The Insights tab is the home screen. Top-to-bottom, nothing else may be inserted between these blocks:
+
+1. **Masthead** — orb + "Vantage" serif-italic ~19px, account name right, one **2px** accent rule beneath.
+2. **Header row** (single row) — connection dot + investor-style text link on one side, VIEW ONLY tag on the other.
+3. **Hero deck** — swipeable, browse-only (see below).
+4. **Portfolio Health card** — deterministic score + 3 sub-scores.
+5. **Quick-links 2×2** — Rebalance plan · Risk reduction · Tax optimization · Goal tracker.
+6. **Balance section** — "YOUR PORTFOLIO" label, serif-italic balance, Today/Total, "See Holdings →". No chart.
+7. **Ask Rufus bar** — the global floating bar.
+
+### Hero deck (Rufus Noticed)
+
+- Card anatomy: orb + "RUFUS NOTICED" label, category label, large serif-italic stat with the approved glow, supporting sentence, chart/donut from real computed data, then an action row (primary CTA + secondary link + "Remind in Nd" snooze reusing the existing ActionButton/snooze logic).
+- Card width `min(86vw, 320px)`; the next card peeks in. Native scroll-snap; dots track the active card.
+- **Membership is deliberately narrow.** IN: `concentration_single`, `concentration_top3`, `event_impact` (**review** severity only), `idle_cash`, `bounce_back`, plus the Daily Brief / Weekly Snapshot teasers. OUT: `position_milestone`, `sentiment_shift`, `portfolio_drift`, `earnings_proximity`, `event_impact` (info), `wash_sale`. Milestones and info-tier events must never appear here — they belong to the secondary-notices pattern, which is not part of this screen.
+- **Priority order:** concentration-single > concentration-top3 > event-impact(review) > idle-cash > bounce-back > Daily Brief > Weekly Snapshot.
+- **Swipe is horizontal navigation ONLY.** A swipe must never trigger a dismiss, a snooze, or a CTA. Action handlers live exclusively on `<button onClick>`; the deck's pointer-drag writes only `scrollLeft` and swallows the trailing click after a >6px drag.
+- **Fallback is reserved for the genuinely-empty case:** no eligible trigger **and** no Daily Brief / Weekly Snapshot teaser (e.g. a day-one account). Then, and only then, a single "no action needed" card renders with no deck and no dots. If teasers exist but no trigger is active, the teaser-only deck (with dots) is the correct render.
+
+### Portfolio Health card
+
+- **Deterministic** — same inputs always produce the same score; no model, no randomness. `overall = round(0.40×diversification + 0.35×riskBalance + 0.25×returns)`, computed from already-rounded sub-scores. Grades: ≥80 Strong · ≥60 Fair · else Needs attention. The formula is documented in `lib/insights/health-score.ts`.
+- The supporting line must be data-derived and name a real holding with its real weight (e.g. "XLF is 30.3% of your holdings…") — never generic copy.
+- "Ask Rufus to explain" opens the chat pre-filled with a prompt that references the **real** score and all three sub-scores.
+
+### Quick-links 2×2
+
+- **Rebalance plan** and **Risk reduction** deep-link into the active trigger flow when one exists; otherwise they fall back to an Ask Rufus prompt.
+- **Tax optimization** and **Goal tracker** are always Ask Rufus — their subtitle reads "Ask Rufus" and the copy must never imply a feature that doesn't exist.
+- No milestone notices strip and no trend chart on this screen.

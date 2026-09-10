@@ -9,7 +9,7 @@ All network calls are route-mocked (canned accounts / broker / noticed / briefs)
 
 ## Result
 
-**62 / 62 checks pass.**
+**65 / 65 checks pass.**
 
 ## Scenarios
 
@@ -25,6 +25,7 @@ All network calls are route-mocked (canned accounts / broker / noticed / briefs)
 | G | Quick links 2×2 | rebalance → active drift alert (`data-branch="trigger"`); risk reduction → active concentration alert + focuses the symbol; tax + goals → Ask Rufus only, subtitle "Ask Rufus", no feature-implying copy |
 | H | Theme toggle (Preferences) | Light / Dark / System present; switching applies live with **0 navigations**; choice persists to `vantage:theme`; System resolves to the emulated OS appearance (dark → light) and also needs no reload |
 | I | Desktop parity | left sidebar with the same four tabs, no bottom nav |
+| J | Stale deep link | `?tab=today` (pre-rename id) resolves to the Insights tab, renders the masthead + deck instead of a blank content area, and the URL is cleaned up |
 
 ## Bugs found and fixed while verifying
 
@@ -44,6 +45,12 @@ All network calls are route-mocked (canned accounts / broker / noticed / briefs)
    `vantage:skipAccountSelect:v2` is set, so early screenshots showed the
    account picker and every synthesized pointer event was intercepted. The
    harness now sets that flag.
+4. **Stale `?tab=today` links rendered a blank shell (real bug, fixed).**
+   `MainApp`'s two navigation allowlists still accepted the pre-rename `'today'`
+   id, but `TAB_COMPONENTS` has no such entry, so `?tab=today` (or an old
+   custom nav event) set an unknown tab and rendered nothing. Both sites now go
+   through `resolveTab()`, which maps `today → insights` and rejects anything
+   unknown. Covered by scenario J.
 
 ## Interpretation notes / open questions
 

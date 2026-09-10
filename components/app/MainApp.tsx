@@ -40,6 +40,20 @@ import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 
 const TABS_WITH_MARKETBAR: Set<TabId> = new Set(['invest', 'portfolio']);
 
+/**
+ * Resolve an incoming navigation target to a real tab.
+ * `'today'` is the pre-rename id for the home screen — stale deep links
+ * (`?tab=today`, old custom events) must land on Insights, never on an
+ * unknown tab id (which would render an empty content area).
+ */
+function resolveTab(raw: unknown): TabId | null {
+  if (typeof raw !== 'string') return null;
+  const id = raw === 'today' ? 'insights' : raw;
+  return (['insights', 'portfolio', 'invest', 'watchlist', 'settings'] as string[]).includes(id)
+    ? (id as TabId)
+    : null;
+}
+
 const TAB_COMPONENTS: Record<Exclude<TabId, 'insights'>, React.FC> = {
   invest: TradeTab,
   portfolio: PortfolioTab,
@@ -138,8 +152,9 @@ function AppShell() {
         setChatOpen(true);
         return;
       }
-      if (detail?.tab && ['insights', 'today', 'portfolio', 'invest', 'watchlist', 'settings'].includes(detail.tab)) {
-        setTab(detail.tab);
+      const navTab = resolveTab(detail?.tab);
+      if (navTab) {
+        setTab(navTab);
         if (detail.section) {
           setTimeout(() => {
             document.getElementById(detail.section)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -225,8 +240,8 @@ function AppShell() {
     if (tabParam === 'ai') {
       setChatOpen(true);
       window.history.replaceState({}, '', '/');
-    } else if (tabParam && ['insights', 'today', 'portfolio', 'invest', 'watchlist', 'settings'].includes(tabParam)) {
-      setTab(tabParam as TabId);
+    } else if (resolveTab(tabParam)) {
+      setTab(resolveTab(tabParam) as TabId);
       window.history.replaceState({}, '', '/');
     }
   }, [setTab, setChatOpen]);
