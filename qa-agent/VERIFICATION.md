@@ -241,3 +241,52 @@ PART B removed by design, so `functional.spec.ts:489` failed. Rewritten as
   (skipped, with a warning, when the endpoints are unauthenticated).
 
 No app code changed for this — the behaviour was intentional; the test was stale.
+
+# Consistency pass: BasketCard PnL format + CI live-suite target
+
+## 1. BasketCard PnL formatting (app code)
+
+`components/portfolio/BasketCard.tsx` printed `+$1,234.56 (+5.0%)` — the exact
+reverse of the `+X% · +$Y` pattern the Holdings rows (PositionCardV3/PositionRow)
+and Position Detail already ship. Fixed with two module-scope helpers,
+`signedPct(n, digits)` and `signedUsd(n)`, so sign handling can't drift again:
+
+| surface | before | after |
+| --- | --- | --- |
+| collapsed total P/L | `+$1,234.56 (+5.0%)` | `+5.0% · +$1,234.56` |
+| collapsed Today line | `Today +$12.34 (+0.11%)` | `Today +0.11% · +$12.34` |
+| expanded Total Return | `+$1,234.56` | `+$1,234.56` (unchanged) |
+| per-ticker tiles | `-$12.34` / `-1.35%` | unchanged, signs now explicit |
+
+Verification — `tests/basketcard-pnl-format.test.ts` renders the **real
+component** through `react-dom/server` and asserts on the emitted markup:
+**5/5 pass** (`npx vitest run tests/basketcard-pnl-format.test.ts`), including a
+negative basket and a down ticker, plus a blanket "no `$x (y%)` anywhere in the
+card" guard.
+
+Enabling note: `tsconfig.json` sets `jsx: preserve` (Next owns the transform), so
+`vitest.config.ts` now sets `oxc: { jsx: { runtime: 'automatic' } }` — the option
+component tests need to render `.tsx`. No existing test is affected
+(insights suite re-run: 27/27 across the three files).
+
+## 2. CI live-suite target — no hardcoded host
+
+`qa-agent/helpers.ts` no longer carries `FALLBACK_APP_URL`, and
+`.github/workflows/qa-tests.yml` no longer carries an inline production URL:
+
+* `APP_URL: ${{ vars.QA_APP_URL }}` — the repository variable is the single
+  source of truth;
+* the `Resolve live-suite target` step fails the run loudly when it is empty,
+  and says exactly where to define it;
+* locally `APP_URL` must be exported (or set in `qa-agent/.env`, gitignored), so
+  a run can never silently aim at production.
+
+Verification: `workflow_dispatch` run on `master` (see the CI runs list) — the
+guard step reports `Live suite target: …` and the suite proceeds.
+
+## 3. Type-check reality check
+
+`npx tsc --noEmit` on the repo root reports **exactly 1 error**
+(`tests/etf-sectors.test.ts:124`), and it is a test file untouched by this
+redesign. The "94 errors" figure that circulated earlier was stale (Aug) and is
+not the current state — re-measured at this commit.

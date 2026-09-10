@@ -11,7 +11,21 @@ import type { Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 
-export const APP_URL = process.env.APP_URL || 'https://vantage-ai-trading.vercel.app';
+// Live-suite target. There is deliberately NO hardcoded fallback host: the
+// suite refuses to run without an explicit APP_URL, so a run can never silently
+// hit production (or any implicit host) instead of the intended target.
+function resolveAppUrl(): string {
+  const fromEnv = process.env.APP_URL?.trim();
+  if (fromEnv) return fromEnv;
+  throw new Error(
+    'APP_URL is not set — the live suite has no target.\n' +
+      '  CI:     define the repository variable QA_APP_URL (Settings → Secrets and variables → Actions → Variables);\n' +
+      '          .github/workflows/qa-tests.yml passes it through as APP_URL.\n' +
+      '  Local:  export APP_URL=http://localhost:3000 (or put it in qa-agent/.env).',
+  );
+}
+
+export const APP_URL = resolveAppUrl();
 export const SCREENSHOTS_DIR = process.env.SCREENSHOTS_DIR || './screenshots';
 
 // Ensure screenshots directory exists

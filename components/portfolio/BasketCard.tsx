@@ -63,6 +63,15 @@ const DOLLAR_FMT: Intl.NumberFormatOptions = {
   maximumFractionDigits: 2,
 };
 
+// ─── Signed value formatting ───────────────────────────────
+// The app's locked-in holdings pattern is `+X% · +$Y` (percentage first, then
+// dollars) — see PositionCardV3 / PositionRow. Negatives must keep their minus
+// sign, so never pair `Math.abs()` with an empty-string ternary.
+const signedPct = (n: number, digits = 1) =>
+  `${n >= 0 ? '+' : '-'}${Math.abs(n).toFixed(digits)}%`;
+const signedUsd = (n: number) =>
+  `${n >= 0 ? '+' : '-'}$${Math.abs(n).toLocaleString('en-US', DOLLAR_FMT)}`;
+
 // ─── Violet (basket) color ───
 const VIOLET = 'var(--violet, #b389f0)';
 // Fallback hex for violet
@@ -93,7 +102,6 @@ export default function BasketCard({
 
   const activePositions = basket.positions.filter(p => p.status === 'active');
   const plColor = basket.totalPnL >= 0 ? 'var(--gain, #10b981)' : 'var(--loss, #ef4444)';
-  const plSign = basket.totalPnL >= 0 ? '+' : '';
 
   // Fetch lots when expanded
   useEffect(() => {
@@ -322,7 +330,7 @@ export default function BasketCard({
                 marginTop: 2,
               }}
             >
-              {plSign}${Math.abs(basket.totalPnL).toLocaleString('en-US', DOLLAR_FMT)} ({plSign}{basket.totalPnLPct.toFixed(1)}%)
+              {signedPct(basket.totalPnLPct)} · {signedUsd(basket.totalPnL)}
             </div>
             <div
               style={{
@@ -332,7 +340,7 @@ export default function BasketCard({
                 marginTop: 2,
               }}
             >
-              Today {(basket.dailyPnL ?? 0) >= 0 ? '+' : ''}${Math.abs(basket.dailyPnL ?? 0).toLocaleString('en-US', DOLLAR_FMT)} ({(basket.dailyPnLPct ?? 0) >= 0 ? '+' : ''}{(basket.dailyPnLPct ?? 0).toFixed(2)}%)
+              Today {signedPct(basket.dailyPnLPct ?? 0, 2)} · {signedUsd(basket.dailyPnL ?? 0)}
             </div>
           </div>
 
@@ -364,11 +372,11 @@ export default function BasketCard({
           {/* ── Per-ticker rows ── */}
           {tickerRows.map((ticker, idx) => {
             const tPnLColor = ticker.totalPnL >= 0 ? 'var(--gain, #10b981)' : 'var(--loss, #ef4444)';
-            const tPnLSign = ticker.totalPnL >= 0 ? '+' : '';
+            const tPnLSign = ticker.totalPnL >= 0 ? '+' : '-';
             const todayPnL = ticker.dailyPnL ?? 0;
             const todayPnLPct = ticker.dailyPnLPct ?? 0;
             const todayColor = todayPnL >= 0 ? 'var(--gain, #10b981)' : 'var(--loss, #ef4444)';
-            const todaySign = todayPnL >= 0 ? '+' : '';
+            const todaySign = todayPnL >= 0 ? '+' : '-';
             const isTickerExpanded = expandedTickers.has(ticker.symbol);
             const displayAvgCost = ticker.hasMultiLot
               ? ticker.weightedAvgCost
@@ -565,7 +573,7 @@ export default function BasketCard({
                 Total Return
               </div>
               <div style={{ fontSize: 13, fontWeight: 700, color: plColor }}>
-                {plSign}${Math.abs(basket.totalPnL).toLocaleString('en-US', DOLLAR_FMT)}
+                {signedUsd(basket.totalPnL)}
               </div>
             </div>
             <div>

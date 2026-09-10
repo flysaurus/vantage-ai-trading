@@ -18,8 +18,24 @@ jobs:
     defaults:
       run:
         working-directory: qa-agent
+    env:
+      # Target of the live suite — never inferred from source, and deliberately
+      # with no hardcoded fallback: the repository variable QA_APP_URL is the
+      # single source of truth (Settings → Secrets and variables → Actions →
+      # Variables). If it is missing, the guard step below fails the run loudly
+      # instead of silently testing whatever host was baked into this file.
+      APP_URL: ${{ vars.QA_APP_URL }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve live-suite target
+        run: |
+          if [ -z "${APP_URL}" ]; then
+            echo "::error::APP_URL is empty — the live suite has no target. Define the repository variable QA_APP_URL (Settings → Secrets and variables → Actions → Variables), e.g. https://vantage-ai-trading.vercel.app"
+            echo "::error::No hardcoded fallback exists on purpose: a run must never test an implicit host."
+            exit 1
+          fi
+          echo "Live suite target: ${APP_URL}"
 
       - uses: actions/setup-node@v4
         with:
