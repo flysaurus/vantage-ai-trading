@@ -496,6 +496,71 @@ BOUNCE-BACK TRIGGERS (keys starting with BOUNCE_) — HARD RULES:
 };
 
 // ── Batch Haiku generation ──
+/** Single-line, humanized fallback copy for a trigger.
+ *
+ * The rule engine's `trigger.context` is a MACHINE string — e.g.
+ * `"NVDA: earnings event — <headline> (Reuters). severity: info. Informational
+ * only — no action needed."` — and it used to be written straight into
+ * `noticed_items.body`, so users saw "severity: info…" verbatim in the chat "+"
+ * picker whenever AI generation was skipped or failed. Never show that. Build a
+ * clean line from the structured fields instead.
+ */
+export function humanizeTriggerContext(t: NoticedTrigger): string {
+  const m: any = t.meta || {};
+  const headline = typeof m.headline === 'string' ? m.headline.replace(/\s+/g, ' ').trim() : '';
+  const base = String(t.title || '').replace(/\s+/g, ' ').trim();
+  const symbol = typeof m.symbol === 'string' && m.symbol.trim() ? m.symbol.trim().toUpperCase() : '';
+
+  // ── Structured fallbacks, per trigger type. Built ONLY from meta fields, so
+  //    they can never carry the machine context through. ──
+  const structured = ((): string => {
+    if (t.trigger_type === 'position_milestone' && symbol && Number.isFinite(Number(m.threshold))) {
+      const th = Number(m.threshold);
+      const cur = Number(m.currentPnlPct);
+      const now = Number.isFinite(cur) ? ` (now ${cur > 0 ? '+' : ''}${Math.round(cur)}%)` : '';
+      return `${symbol} crossed ${th > 0 ? '+' : ''}${th}%${now} — worth a look.`;
+    }
+    if (t.trigger_type === 'event_impact' && symbol) {
+      const PHRASE: Record<string, string> = {
+        regulatory: 'has a regulatory update', earnings: 'posted an earnings update',
+        corporate_action: 'has corporate news', product: 'has a product update',
+      };
+      const phrase = PHRASE[String(m.category || '')] || 'has an update';
+      return headline ? `${symbol} ${phrase} — ${headline}` : `${symbol} ${phrase}`;
+    }
+    if (t.trigger_type === 'idle_cash' && Number.isFinite(Number(m.amount))) {
+      const days = Number.isFinite(Number(m.daysIdle)) ? ` for ${Number(m.daysIdle)} trading days` : '';
+      return `$${Number(m.amount).toLocaleString()} of cash has been idle${days}.`;
+    }
+    return '';
+  })();
+
+  let line = '';
+  if (headline && base && !base.toLowerCase().includes(headline.toLowerCase())) {
+    line = `${base} — ${headline}`;
+  } else if (headline) {
+    line = headline;
+  } else {
+    line = base;
+  }
+  // Milestone/idle titles are deliberately terse ("BX -20%", "$100,865 cash idle");
+  // the structured sentence reads like Rufus and is what the user should see.
+  if (structured && (t.trigger_type === 'position_milestone' || t.trigger_type === 'idle_cash')) {
+    line = structured;
+  }
+  // Belt and braces: never let a machine field escape even if a caller passes a
+  // context-derived title. NOTE: the previous version re-assigned `base` here,
+  // which re-introduced the leak whenever the TITLE itself was the machine
+  // string (base === the very text we just rejected).
+  const MACHINE = /severity:|informational only|no action needed|total return threshold|position value:\s*\$|investor style:|after open orders|consecutive trading days/i;
+  const SAFE_FALLBACK = 'Something changed in your portfolio.';
+  if (!line) line = base;
+  if (!line || MACHINE.test(line)) {
+    line = structured || (!base || MACHINE.test(base) ? SAFE_FALLBACK : base);
+  }
+  return line.slice(0, 240);
+}
+
 export async function generateObservations(
   triggers: NoticedTrigger[],
   portfolioSummary: string,
@@ -648,6 +713,10 @@ export async function runNoticedPipeline(
     .eq('resolved', true)
     .in('trigger_key', allKeys);
 
+  // Re-activated cards that should get a fresh generation pass (declared here so
+  // the reactivation loop below can queue them).
+  const reactivatedForCopy: NoticedTrigger[] = [];
+
   // Re-activate resolved items that fired again
   if (resolvedItems && resolvedItems.length > 0) {
     await supabase
@@ -671,11 +740,19 @@ export async function runNoticedPipeline(
         update.follow_up = fresh.follow_up;
         // CRITICAL: refresh the body too. Re-fired cards were previously left
         // with their original (possibly stale/blended) body text forever, which
-        // leaked e.g. demo concentration copy into live accounts. Haiku is not
-        // re-run for reactivated cards, so use the freshly-computed
-        // deterministic context (correct for THIS account's positions).
-        update.body = fresh.context;
+        // leaked e.g. demo concentration copy into live accounts.
+        //
+        // NOTE (raw-context leak fix): this used to write `fresh.context` — the
+        // RAW deterministic string (e.g. "… severity: info. Informational only —
+        // no action needed.") straight into `body`, which is what users saw in
+        // the chat "+" picker. Two things changed:
+        //   1. we write a humanized one-liner instead (never the raw context),
+        //   2. the trigger is queued for a real generation pass below, so the
+        //      copy the user sees is Rufus-voice copy whenever the AI budget
+        //      allows it.
+        update.body = humanizeTriggerContext(fresh);
         update.fallback = true;
+        reactivatedForCopy.push(fresh);
       }
       await supabase
         .from('noticed_items')
@@ -690,6 +767,31 @@ export async function runNoticedPipeline(
   const trulyNew = allTriggers.filter(
     (t) => !existingKeys.has(t.trigger_key) && !resolvedKeys.has(t.trigger_key),
   );
+
+  // Re-activated cards get a REAL generation pass too (they used to be skipped
+  // entirely, which is why they permanently showed raw deterministic context).
+  // Bounded by the same budget check; the humanized body written above stands if
+  // the budget is exhausted or the model returns nothing for a key.
+  if (reactivatedForCopy.length > 0) {
+    try {
+      const reactBudget = await checkUsageLimit(userId, 'noticed');
+      if (reactBudget.allowed) {
+        const reactObs = await generateObservations(reactivatedForCopy, buildPortfolioSummary(input));
+        for (const t of reactivatedForCopy) {
+          const obs = reactObs.get(t.trigger_key);
+          if (!obs?.body) continue;
+          await supabase
+            .from('noticed_items')
+            .update({ body: obs.body, follow_up: obs.follow_up || t.follow_up, fallback: false })
+            .eq('user_id', userId)
+            .eq('account_id', accountId)
+            .eq('trigger_key', t.trigger_key);
+        }
+      }
+    } catch (err: any) {
+      console.warn('[noticed] Re-activated generation failed:', err?.message || err);
+    }
+  }
 
   // Budget-checked Haiku generation
   let haikuGenerated = false;
@@ -713,7 +815,7 @@ export async function runNoticedPipeline(
           trigger_type: trigger.trigger_type,
           trigger_key: trigger.trigger_key,
           title: trigger.title,
-          body: obs?.body || trigger.context,
+          body: obs?.body || humanizeTriggerContext(trigger),
           fallback: false,
           follow_up: obs?.follow_up || trigger.follow_up,
           variant: trigger.variant,
@@ -750,7 +852,7 @@ export async function runNoticedPipeline(
           trigger_type: trigger.trigger_type,
           trigger_key: trigger.trigger_key,
           title: trigger.title,
-          body: trigger.context,
+          body: humanizeTriggerContext(trigger),
           fallback: true,
           follow_up: trigger.follow_up,
           variant: trigger.variant,

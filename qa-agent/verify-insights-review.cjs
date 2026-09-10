@@ -229,44 +229,24 @@ const readBalance = (page) => page.evaluate(() => {
 const readRail = (page) => page.evaluate(() => {
   const card = document.querySelector('[data-testid="insight-card"][data-trigger-type="concentration_single"]');
   if (!card) return { found: false };
-  const rail = card.querySelector('[data-testid="card-right-col"]');
-  const col = card.querySelector('[data-testid="donut-column"]');
-  const legend = card.querySelector('[data-testid="donut-legend"]');
+  const B = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, w: b.width, h: b.height, cx: b.left + b.width / 2 }; };
+  const row = card.querySelector('[data-testid="concentration-top-row"]');
   const ring = card.querySelector('[data-testid="donut-column"] svg');
+  const rail = card.querySelector('[data-testid="card-right-col"]');
   const rowsEls = [...card.querySelectorAll('[data-testid="donut-legend-row"]')];
-  const B = (el) => { const b = el.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, w: b.width, h: b.height, cx: b.left + b.width / 2 }; };
-  const railB = rail ? B(rail) : null;
-  const ringB = ring ? B(ring) : null;
-  const legendB = legend ? B(legend) : null;
-  const rowBs = rowsEls.map(B);
-  const gaps = rowBs.slice(1).map((r, i) => r.top - rowBs[i].bottom);
-  const pinned = rowsEls.map((el) => {
-    const spans = [...el.querySelectorAll('span')];
-    // [chip, symbol, pct] — join the two text spans with a space for comparison
-    const symbol = spans[1] ? spans[1].textContent.trim() : '';
-    const pct = spans[2] ? spans[2].textContent.trim() : '';
-    return {
-      text: `${symbol} ${pct}`,
-      overflow: spans[1] ? spans[1].scrollWidth - spans[1].clientWidth : 0,
-    };
-  });
+  const stat = card.querySelector('[data-testid="hero-stat"]');
+  const cardB = B(card);
+  const rowB = B(row);
   return {
     found: true,
-    railW: railB ? Math.round(railB.w * 10) / 10 : null,
-    railCx: railB ? railB.cx : null,
-    ringCx: ringB ? ringB.cx : null,
-    ringW: ringB ? Math.round(ringB.w) : null,
-    ringLeft: ringB ? ringB.left : null, ringRight: ringB ? ringB.right : null,
-    legendLeft: legendB ? legendB.left : null, legendRight: legendB ? legendB.right : null,
-    legendW: legendB ? Math.round(legendB.w * 10) / 10 : null,
-    colGap: (() => { const c = getComputedStyle(col); return parseFloat(c.rowGap || c.gap); })(),
-    colHeight: col ? Math.round(col.getBoundingClientRect().height) : null,
-    ringToLegend: ringB && legendB ? Math.round((legendB.top - ringB.bottom) * 10) / 10 : null,
-    rowGapCss: (() => { const l = getComputedStyle(legend); return parseFloat(l.rowGap || l.gap); })(),
-    rowGaps: gaps.map((g) => Math.round(g * 10) / 10),
-    rows: pinned,
-    railBottom: railB ? railB.bottom : null,
-    legendBottom: legendB ? legendB.bottom : null,
+    railW: rail ? B(rail).w : null,
+    ringW: ring ? Math.round(B(ring).w) : null,
+    rows: rowsEls.map((el) => ({ text: (el.textContent || '').replace(/\s+/g, ' ').trim() })),
+    rowKids: row ? row.children.length : 0,
+    rowH: rowB ? Math.round(rowB.h * 10) / 10 : null,
+    cardH: cardB ? Math.round(cardB.h) : null,
+    statText: stat ? stat.textContent.trim() : '',
+    hasEmptyRail: !!card.querySelector('[data-testid="card-right-col"], [data-testid="card-left-col"]'),
   };
 });
 
@@ -369,31 +349,26 @@ const readDots = (page) => page.evaluate(() => {
     await ctx.close();
   }
 
-  console.log('\n=== B. concentration card: compact donut rail, tight 2-line legend ===');
+  console.log('\n=== B. concentration card: donut rail + legend REMOVED (round 4) ===');
   {
     const { ctx, page } = await setup(browser, { dsf: 3 });
     if (await gotoInsights(page)) {
       const r = await readRail(page);
       if (r.found) {
-        rec('B1 compact donut rail hugs the 66px ring (was 108px)', Math.abs(r.railW - 66) <= 6, `${r.railW}px`);
-        rec('B2 ring horizontally centred in the rail', Math.abs(r.ringCx - r.railCx) <= 1,
-          `ring cx=${r.ringCx.toFixed(1)} rail cx=${r.railCx.toFixed(1)}`);
-        rec('B3 legend left edge aligned to ring left edge', Math.abs(r.legendLeft - r.ringLeft) <= 1.5,
-          `legend ${r.legendLeft.toFixed(1)} vs ring ${r.ringLeft.toFixed(1)}`);
-        rec('B4 legend right edge aligned to ring right edge (no bleed to rail edge)', Math.abs(r.legendRight - r.ringRight) <= 1.5,
-          `legend ${r.legendRight.toFixed(1)} vs ring ${r.ringRight.toFixed(1)}`);
-        rec('B5 ring→legend gap tight (≤8px, CSS says 5)', r.ringToLegend <= 8 && r.colGap === 5, `gap=${r.ringToLegend} cssGap=${r.colGap}`);
-        rec('B6 legend rows tight (CSS row gap 3)', r.rowGapCss === 3, `rowGap=${r.rowGapCss} measured=${r.rowGaps.join('/')}`);
-        rec('B7 exactly 2 legend rows (top holding + Other, real data)',
-          r.rows.length === 2 && r.rows.map((x) => x.text).join(' | ') === expRows.join(' | '),
-          r.rows.map((x) => x.text).join(' | '));
-        rec('B8 no legend text clipping/ellipsis', r.rows.every((x) => x.overflow <= 0.5), r.rows.map((x) => x.overflow).join('/'));
-        rec('B9 legend inside the rail box (no vertical overflow)', r.legendBottom <= r.railBottom + 0.6,
-          `legendBottom=${r.legendBottom.toFixed(1)} railBottom=${r.railBottom.toFixed(1)}`);
-        console.log('     rail:', JSON.stringify({ railW: r.railW, ringW: r.ringW, legendW: r.legendW, colHeight: r.colHeight }));
+        rec('B1 ROUND 4: no donut rail column survives (card-right-col gone)', !r.railW && !r.ringW, `railW=${r.railW}`);
+        rec('B2 ROUND 4: no ring rendered', !r.ringW && r.ringW !== 0, `ringW=${r.ringW}`);
+        rec('B3 ROUND 4: no legend rows rendered', r.rows.length === 0, `rows=${r.rows.length}`);
+        rec('B4 top row holds exactly category + stat (2 children, one line)',
+          r.rowKids === 2 && r.rowH <= 54, `kids=${r.rowKids} h=${r.rowH}`);
+        rec('B5 no absolutely/grid-positioned leftovers (no empty rail box)',
+          !r.hasEmptyRail, `hasEmptyRail=${r.hasEmptyRail}`);
+        rec('B6 stat still shows the REAL share (removal changed no data)', (r.statText || '').includes(expStat),
+          `stat="${r.statText}" expected "${expStat}"`);
+        rec('B7 the freed space is reclaimed — card is shorter than the round-3 rail layout',
+          r.cardH <= 260, `cardH=${r.cardH} (round-3 rail layout measured ≈250 with the ring row)`);
+        console.log('     card:', JSON.stringify({ cardH: r.cardH, rowH: r.rowH, kids: r.rowKids }));
       } else rec('B1 concentration card found', false);
       await shot(page, 'R-B1-concentration-card', { el: '[data-testid="insight-card"][data-trigger-type="concentration_single"]' });
-      await shot(page, 'R-B2-donut-rail-zoom', { el: '[data-testid="card-right-col"]' });
     }
     await ctx.close();
   }

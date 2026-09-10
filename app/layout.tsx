@@ -51,12 +51,22 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              // SW disabled — diagnosing React #310 (stale cache serving old JS chunks)
-              // if ('serviceWorker' in navigator) {
-              //   window.addEventListener('load', () => {
-              //     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
-              //   });
-              // }
+              // Service worker kill-switch.
+              // A cache-first SW ('vantage-v1') used to be registered here. Disabling
+              // the registration does NOT unregister clients that already have it —
+              // those devices keep serving the OLD JS chunks forever, which is why
+              // shipped changes (PART B chat etc.) appeared "not applied" on a real
+              // device while being present in the deployed bundle.
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations()
+                  .then(function (rs) { rs.forEach(function (r) { r.unregister(); }); })
+                  .catch(function () {});
+              }
+              if (window.caches && caches.keys) {
+                caches.keys()
+                  .then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); })
+                  .catch(function () {});
+              }
             `,
           }}
         />

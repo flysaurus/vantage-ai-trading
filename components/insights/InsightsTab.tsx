@@ -8,8 +8,11 @@
 //      Sits directly under the header, BEFORE the deck.
 //   4. Hero deck — swipeable, BROWSE-ONLY (see components/insights/HeroDeck).
 //      Falls back to a single "no action needed" card (no deck, no dots).
-//   5. Portfolio Health — deterministic score + 3 sub-scores.
-//   6. Quick-links 2×2.
+//   5. More from Rufus — compact secondary notices (see MoreFromRufus):
+//      event-impact INFO-tier + position milestones, i.e. the items otherwise
+//      only reachable through the chat "Explore" (+) picker. Deck items excluded.
+//   6. Portfolio Health — deterministic score + 3 sub-scores.
+//   7. Quick-links 2×2.
 //   (+ the Ask Rufus bar, rendered globally in MainApp on every tab)
 //
 // Serif italic is used in exactly TWO places on this screen: the "Vantage"
@@ -37,6 +40,7 @@ import { fmt, pctStr, splitCents } from '@/lib/insights/format';
 import { buildDeck, type DeckTeaser } from '@/lib/insights/deck';
 import { briefAskPrompt } from '@/lib/insights/brief';
 import { HeroDeck } from './HeroDeck';
+import { MoreFromRufus } from './MoreFromRufus';
 import { PortfolioHealthCard } from './PortfolioHealthCard';
 import { QuickLinks } from './QuickLinks';
 import { BriefModal, type BriefKind } from './BriefModal';
@@ -143,6 +147,10 @@ export function InsightsTab() {
     () => buildDeck({ items: noticedItems, dailyBrief: dailyTeaser, weeklySnapshot: weeklyTeaser }),
     [noticedItems, dailyTeaser, weeklyTeaser],
   );
+
+  // Ids already rendered in the hero deck — excluded from "More from Rufus"
+  // so nothing appears twice on the screen.
+  const deckIds = useMemo(() => new Set(deck.map((c) => String(c.id))), [deck]);
 
   // ── Brief modal (Daily Brief / Weekly Snapshot) ──
   // The deck teasers used to navigate to the Holdings screen, which yanked the
@@ -340,11 +348,11 @@ export function InsightsTab() {
               <div>
                 <span
                   data-testid="balance-amount"
-                  style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 32, color: 'var(--v-text-primary)', lineHeight: 1 }}
+                  style={{ fontFamily: 'var(--font-sans, Inter, sans-serif)', fontWeight: 800, letterSpacing: '-0.02em', fontSize: 40, color: 'var(--v-text-primary)', lineHeight: 1 }}
                 >
                   ${dollars}
                 </span>
-                <span style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 20, color: 'var(--v-text-muted)' }}>
+                <span style={{ fontFamily: 'var(--font-sans, Inter, sans-serif)', fontWeight: 700, fontSize: 24, color: 'var(--v-text-muted)' }}>
                   .{cents}
                 </span>
               </div>
@@ -457,7 +465,13 @@ export function InsightsTab() {
         )}
       </div>
 
-      {/* ── 5. Portfolio Health ──
+      {/* ── 5. More from Rufus ──
+          Directly below the deck's dot indicator, above Portfolio Health.
+          Only event-impact INFO-tier + milestone items; deck items excluded.
+          Renders nothing when there is nothing to surface. */}
+      <MoreFromRufus items={noticedItems} deckIds={deckIds} />
+
+      {/* ── 6. Portfolio Health ──
           Gated on the same readiness flag: with no holdings yet the scorer
           returns 0 / "Needs attention", which would flash a wrong verdict for
           exactly the same reason the balance used to flash $0.00. */}

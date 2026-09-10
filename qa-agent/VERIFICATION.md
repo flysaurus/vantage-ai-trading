@@ -610,3 +610,79 @@ invented CTA: `REBALANCE → "Trade"`, `REVIEW_POSITION:X → "Review X"`).
   `textContent` gives `XLF30%`; compare per-span.
 * Copying a harness header with `head -n N` silently drops the `browser` launch
   when the original kept it inside the main IIFE.
+
+---
+
+# ROUND 4 — donut removed, bold-sans balance, real noticed copy, trade-rec cards
+
+Nine additive corrections on top of the round-3 build (no rewrite).
+
+## What changed
+
+| # | Requirement | Where | Result |
+|---|---|---|---|
+| 1 | Remove the donut + legend from the concentration card | `components/insights/InsightCard.tsx` | `concentration-top-row` = category + stat only; `card-left-col`/`card-right-col`/`HoldingsDonutColumn` gone; sentence + sub-line full width |
+| 2 | Balance number = big bold SANS (never italic serif) | `components/insights/InsightsTab.tsx` | Inter 800 / 40px, cents 24px/700 — verified light + dark |
+| 3 | Skeleton, never blurred digits | `verify-balance-loading.cjs` | 17/17; `balance-amount` is **removed from the DOM** while pending |
+| 4 | "Remind in 5d" really suppresses for 5 days | `verify-snooze-5d.cjs` | 7/7 live: DB row + exactly +5.000 days + pipeline re-run does not re-fire |
+| 5 | Chat window actually themed | `components/ai/AITab.tsx` | full `--v-chat-*` conversion; deterministic placeholder; SW kill-switch |
+| 6 | Trade recommendations render as a structured card | `lib/ai/trade-recs.ts` + `components/ai/TradeRecCard.tsx` | clause-based detection; `tests/trade-recs.test.ts` 8/8 |
+| 7 | "More from Rufus" section | `components/insights/MoreFromRufus.tsx` + `lib/insights/noticed-copy.ts` | below the deck dots, above Portfolio Health — `verify-more-from-rufus.cjs` 15/15 |
+| 8 | Raw context leaking in the chat "+" picker | `lib/noticed/engine.ts` (generation) + picker guard | root-caused + fixed at the source — `verify-noticed-copy.cjs` 11/11 |
+
+## Item 8 — root cause (this is the important one)
+
+`lib/noticed/event-impact.ts` builds a **machine** context string —
+`"MSFT: corporate action event — <headline> (Reuters). severity: info.
+Informational only — no action needed."` — and the engine wrote it straight into
+`noticed_items.body` whenever AI copy generation was skipped (budget), failed,
+or the item was **re-activated**. The Explore ("+") sheet renders `item.body`
+verbatim, so users saw the machine string.
+
+`position_milestone` / `idle_cash` had the same shape
+(`"BX: crossed -20% total return threshold… Position value: $129.07."`).
+
+Fixes, in order of importance:
+
+1. **Generation** — `humanizeTriggerContext()` in `lib/noticed/engine.ts` now
+   (a) rejects every machine marker, (b) builds a real line from structured
+   meta for milestone / idle-cash / event-impact, and (c) is applied on the
+   re-activation path as well. A unit test caught a second-order bug here: the
+   old guard re-assigned `base`, so a *machine title* leaked through.
+2. **Re-activation** — re-activated items now go through the same
+   budget-checked generation pass as new ones instead of re-using the stored body.
+3. **Render (last resort)** — the picker passes every row through
+   `humanizeNoticedItem()` from `lib/insights/noticed-copy.ts`, so rows written
+   before the fix cannot leak either. Generation is the contract; the guard is
+   belt-and-braces.
+
+Live DB scan (42 rows): **0 rows written after the fix leak**; 27 legacy rows
+exist and are held back by the render guard.
+
+## Updated gates (they encoded superseded contracts)
+
+* `verify-insights-polish.cjs` P2e: `balance IS serif-italic` → **bold sans, not italic** (round-4 global rule).
+* `verify-insights-round3.cjs` E1.2/E1.5/E1.6/E1.8 + E2.1: donut/legend → **no donut, no legend, full-width sentence**.
+* `verify-concentration-layout.cjs` C1/C6–C9/C16–C21/C26/C38–C41/C46/C47: rail/legend geometry → **single top row, no leftovers**.
+* `verify-insights-review.cjs` scenario B: rail/legend → **nothing left behind + reclaimed height**.
+* New: `verify-noticed-copy.cjs`, `shot-round4.cjs`, `tests/noticed-copy.test.ts`.
+
+## No regressions
+
+`verify-insights.cjs` **65/65** · `verify-insights-polish.cjs` **46/46** ·
+`verify-insights-round3.cjs` **28/28** · `verify-concentration-layout.cjs` **46/46** ·
+`verify-insights-review.cjs` **28/28** · `verify-brief-chat.cjs` **41/41** ·
+`verify-balance-loading.cjs` **17/17** · `verify-more-from-rufus.cjs` **15/15** ·
+`verify-noticed-copy.cjs` **11/11** · `shot-round4.cjs` **12/12** ·
+vitest (`trade-recs` + `noticed-copy` + `insights-deck` + `insights-health-score` + `basketcard-pnl-format`) **40/40** ·
+`npx tsc --noEmit` → only the pre-existing `tests/etf-sectors.test.ts:124`.
+
+## Flagged for Em (not changed)
+
+* **Italic-serif numbers elsewhere**: `.hero-value` / `.hero-cents` in
+  `app/globals.css` (~L1189–1203) render the Holdings/Portfolio balance
+  (`PortfolioTab.tsx:200-201`) in italic serif. That screen is out of scope for
+  this round → flagged for your call.
+* **"More from Rufus" position**: your wording said "above Your Portfolio"; the
+  established order has the balance block *above* the deck, so the section went
+  below the deck dots / above Portfolio Health. Say the word and it moves.

@@ -244,11 +244,16 @@ const readScroller = (page) => page.evaluate(() => {
     await shot(page, 'P2-section-order-viewport');
     await shot(page, 'P2-section-order-full', { fullPage: true });
 
-    /* ── P2: the balance number keeps its serif italic ── */
+    /* ── P2 (ROUND 4): the balance number is BOLD SANS, never italic serif.
+          Global rule: italic serif belongs to the "Vantage" wordmark and the
+          "Rufus" chat title ONLY — never to a number. ── */
     const balFont = await page.locator('[data-testid="balance-amount"]').evaluate((el) => {
-      const s = getComputedStyle(el); return { family: s.fontFamily, style: s.fontStyle };
+      const s = getComputedStyle(el);
+      return { family: s.fontFamily, style: s.fontStyle, weight: s.fontWeight, size: s.fontSize, letterSpacing: s.letterSpacing };
     });
-    rec('P2e balance number is still serif-italic', /serif/i.test(balFont.family) && balFont.style === 'italic',
+    const balSans = !(/serif/i.test(balFont.family) && !/sans-serif/i.test(balFont.family));
+    rec('P2e balance number is bold SANS and NOT italic (round-4 rule)',
+      balSans && balFont.style !== 'italic' && Number(balFont.weight) >= 700,
       JSON.stringify(balFont));
 
     /* ── P3: no italic serif inside a deck card ── */

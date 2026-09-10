@@ -209,3 +209,48 @@
     margin-bottom: 78px;
   }
 }
+
+/* ─── Chat overlay (Ask Rufus) ─────────────────────────────────
+ * The chat is a themed surface now: light by default like the rest of
+ * the app, dark preserved. `--v-chat-on-accent` is the text color that
+ * sits ON an accent-filled button (white on the dark-teal light accent,
+ * near-black on the bright-cyan dark accent).
+ * ───────────────────────────────────────────────────────────── */
+:root,
+[data-theme='light'] {
+  --v-chat-panel: linear-gradient(180deg, #ffffff 0%, #fbfcfa 100%);
+  --v-chat-surface: #ffffff;
+  --v-chat-border: #e7eae4;
+  --v-chat-text: #10182b;
+  --v-chat-text-2: #45505f;
+  --v-chat-text-3: #5b6472;
+  --v-chat-text-4: #7c8899;
+  --v-chat-text-5: #98a2b3;
+  --v-chat-fill: rgba(16, 24, 43, 0.045);
+  --v-chat-fill-strong: rgba(16, 24, 43, 0.09);
+  --v-chat-accent: #0e8c99;
+  --v-chat-accent-soft: rgba(14, 140, 153, 0.12);
+  --v-chat-accent-border: rgba(14, 140, 153, 0.4);
+  --v-chat-on-accent: #ffffff;
+  --v-chat-scrim: rgba(16, 24, 43, 0.35);
+  --v-chat-input-bg: #ffffff;
+}
+
+[data-theme='dark'] {
+  --v-chat-panel: linear-gradient(180deg, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0.015) 40%, rgba(10,15,30,0.4) 100%);
+  --v-chat-surface: #10162a;
+  --v-chat-border: rgba(255, 255, 255, 0.1);
+  --v-chat-text: rgba(255, 255, 255, 0.85);
+  --v-chat-text-2: rgba(255, 255, 255, 0.7);
+  --v-chat-text-3: rgba(255, 255, 255, 0.5);
+  --v-chat-text-4: rgba(255, 255, 255, 0.4);
+  --v-chat-text-5: rgba(255, 255, 255, 0.25);
+  --v-chat-fill: rgba(255, 255, 255, 0.06);
+  --v-chat-fill-strong: rgba(255, 255, 255, 0.1);
+  --v-chat-accent: #5fd8de;
+  --v-chat-accent-soft: rgba(34, 211, 238, 0.15);
+  --v-chat-accent-border: rgba(34, 211, 238, 0.45);
+  --v-chat-on-accent: #0b1220;
+  --v-chat-scrim: rgba(0, 0, 0, 0.55);
+  --v-chat-input-bg: rgba(20, 28, 48, 0.9);
+}

@@ -216,13 +216,19 @@ const readConcCard = (page) => page.evaluate(() => {
   });
   // DOM order inside the left column (measured, not inferred)
   const seqEls = [
-    ['category', left ? left.children[0] : null],
+    ['category', col ? col.children[0] : null],
     ['stat', card.querySelector('[data-testid="hero-stat"]')],
     ['sentence', card.querySelector('[data-testid="card-sentence"]')],
     ['caption', card.querySelector('[data-testid="card-caption"]')],
   ].filter(([, el]) => !!el);
   const seq = seqEls.map(([n, el]) => [n, el.getBoundingClientRect().top]);
-  const seqOrdered = seq.every(([, top], i) => i === 0 || top >= seq[i - 1][1] - 1);
+  // ROUND 4: category + stat share ONE flex row (tops differ by design), so the
+  // order contract is row → sentence → caption, compared by BOTTOM/TOP edges.
+  const colBox = col ? col.getBoundingClientRect() : null;
+  const sentenceBox = (() => { const e = card.querySelector('[data-testid="card-sentence"]'); return e ? e.getBoundingClientRect() : null; })();
+  const captionBox = (() => { const e = card.querySelector('[data-testid="card-caption"]'); return e ? e.getBoundingClientRect() : null; })();
+  const seqOrdered = !!colBox && !!sentenceBox && !!captionBox &&
+    colBox.bottom <= sentenceBox.top + 1 && sentenceBox.bottom <= captionBox.top + 1;
   const stat = card.querySelector('[data-testid="hero-stat"]');
   const st = stat ? getComputedStyle(stat) : null;
   const cardBox = card.getBoundingClientRect();
@@ -242,6 +248,17 @@ const readConcCard = (page) => page.evaluate(() => {
     twoCol: !!col, left: left ? r(left) : null, right: right ? r(right) : null,
     header: header ? r(header) : null, actionRow: actionRow ? r(actionRow) : null,
     col: col ? r(col) : null, card: r(card),
+    // ROUND 4: the concentration card has NO donut. Top row = category + stat only.
+    topRowKids: col ? [...col.children].map((el) => ({
+      testid: el.getAttribute('data-testid') || null,
+      tag: el.tagName.toLowerCase(),
+      text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40),
+      box: r(el),
+    })) : [],
+    hasDonutColumn: !!card.querySelector('[data-testid="donut-column"]'),
+    donutLegendCount: card.querySelectorAll('[data-testid="donut-legend-row"]').length,
+    svgCircleCount: card.querySelectorAll('svg circle').length,
+    statTop: (() => { const s = card.querySelector('[data-testid="hero-stat"]'); return s ? s.getBoundingClientRect().top : null; })(),
     legendRows, circles, order: seqOrdered ? seqEls.map(([n]) => n) : seqEls.map(([n]) => n),
     seqOrdered, seqTops: seq,
     sentence: (() => { const s = card.querySelector('[data-testid="card-sentence"]'); return s ? r(s) : null; })(),
@@ -252,7 +269,7 @@ const readConcCard = (page) => page.evaluate(() => {
     statFont: st ? { family: st.fontFamily, style: st.fontStyle, weight: st.fontWeight, size: st.fontSize } : null,
     captionText: (card.querySelector('[data-testid="card-caption"]') || {}).textContent || '',
     sentenceText: (card.querySelector('[data-testid="card-sentence"]') || {}).textContent || '',
-    categoryText: left && left.children[0] ? left.children[0].textContent.trim() : '',
+    categoryText: col && col.children[0] ? col.children[0].textContent.trim() : '',
     hasBounceChart: !!card.querySelector('svg line'),
     offenders,
     docOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -268,7 +285,7 @@ const readConcCard = (page) => page.evaluate(() => {
     await gotoInsights(page);
 
     const c = await readConcCard(page);
-    rec('C1 concentration card exists and renders the CORRECTED compact top row (stat + donut in one row)', c.found && c.twoCol, JSON.stringify(c.found ? { topRow: c.twoCol } : c));
+    rec('C1 concentration card exists and renders the ROUND-4 top row (category + stat, no donut)', c.found && c.twoCol, JSON.stringify(c.found ? { topRow: c.twoCol } : c));
 
     if (c.found) {
       // ── structure: header above, action row below, both full-width ──
@@ -285,16 +302,24 @@ const readConcCard = (page) => page.evaluate(() => {
         c.actionRow && c.col && c.actionRow.w >= c.col.w - 1,
         `row.w=${c.actionRow && c.actionRow.w.toFixed(1)} col.w=${c.col && c.col.w.toFixed(1)}`);
 
-      // ── column geometry ──
-      rec('C6 right column is the compact donut rail (hugs the 66px ring — was 108px)',
-        c.right && Math.abs(c.right.w - 66) <= 6, `right.w=${c.right && c.right.w.toFixed(1)} ring.w=${c.ringBox && c.ringBox.w.toFixed(1)}`);
-      rec('C7 left column is the wider one (flex 1.2)',
-        c.left && c.right && c.left.w > c.right.w, `left.w=${c.left && c.left.w.toFixed(1)} right.w=${c.right && c.right.w.toFixed(1)}`);
-      rec('C8 columns sit side by side (right is to the right of left)',
-        c.left && c.right && c.right.x >= c.left.right - 1, `left.right=${c.left && c.left.right.toFixed(1)} right.x=${c.right && c.right.x.toFixed(1)}`);
-      rec('C9 donut block is vertically centred against the stat in the top row',
-        c.left && c.right && Math.abs((c.left.y + c.left.h / 2) - (c.right.y + c.right.h / 2)) <= 3,
-        `Δcy=${c.left && c.right ? Math.abs((c.left.y + c.left.h / 2) - (c.right.y + c.right.h / 2)).toFixed(1) : 'n/a'}`);
+      // ── ROUND 4: no donut, no legend, no split columns ──
+      const kids = c.topRowKids || [];
+      rec('C6 top row is ONE row with exactly 2 children (category + stat) — no donut rail',
+        kids.length === 2, JSON.stringify(kids.map((k) => k.testid || k.tag)));
+      const statNode = await page.$('[data-testid="concentration-top-row"] [data-testid="hero-stat"]');
+      const statIn2nd = statNode ? await page.evaluate(() => {
+        const row = document.querySelector('[data-testid="concentration-top-row"]');
+        const stat = row.querySelector('[data-testid="hero-stat"]');
+        return [...row.children].findIndex((ch) => ch.contains(stat));
+      }) : -1;
+      rec('C7 the 2nd top-row child carries the stat (the 1st is the category label)',
+        kids.length === 2 && statIn2nd === 1, `stat is child #${statIn2nd}`);
+      rec('C8 category and stat are vertically centred against each other',
+        kids.length === 2 && Math.abs((kids[0].box.y + kids[0].box.h / 2) - (kids[1].box.y + kids[1].box.h / 2)) <= 4,
+        `Δcy=${kids.length === 2 ? Math.abs((kids[0].box.y + kids[0].box.h / 2) - (kids[1].box.y + kids[1].box.h / 2)).toFixed(1) : 'n/a'}`);
+      rec('C9 the old split columns are GONE (card-left-col / card-right-col)',
+        !c.left && !c.right && !c.hasDonutColumn,
+        `left=${!!c.left} right=${!!c.right} donutCol=${c.hasDonutColumn}`);
 
       // ── left column content + order ──
       rec('C10 order = label → stat in the top row, then sentence → sub-line full-width beneath it',
@@ -322,31 +347,22 @@ const readConcCard = (page) => page.evaluate(() => {
       rec('C15 supporting sentence is present',
         (c.sentenceText || '').length > 30, (c.sentenceText || '').slice(0, 60));
 
-      // ── right column: REAL donut + REAL legend ──
-      rec('C16 legend is EXACTLY 2 lines: top holding + Other (never every position)',
-        c.legendRows.length === 2, JSON.stringify(c.legendRows));
-      rec(`C17 legend line 1 = ${expTop1Sym} ${expTop1Pct}% (real top holding)`,
-        (c.legendRows[0] || '').includes(expTop1Sym) && (c.legendRows[0] || '').includes(String(expTop1Pct)),
-        c.legendRows[0]);
-      rec('C18 legend line 2 = Other bucket (real aggregate = 100 − top holding)',
-        /other/i.test(c.legendRows[1] || '') && (c.legendRows[1] || '').includes(String(Math.round(100 - shareOf(top1)))),
-        c.legendRows[1]);
-      rec('C19 no third legend line (top-2 holding is no longer listed)',
-        c.legendRows.length === 2 && !c.legendRows.some((r) => r.includes(expTop2Sym)),
-        `rows=${JSON.stringify(c.legendRows)}`);
-      rec('C20 legend does NOT list a 3rd individual position',
-        !c.legendRows.some((r) => r.includes(ranked[2].symbol)), `ranked[2]=${ranked[2].symbol} rows=${JSON.stringify(c.legendRows)}`);
-
-      const arc1 = c.circles[0] ? c.circles[0].fraction : -1;
-      const arc2 = c.circles[1] ? c.circles[1].fraction : -1;
-      rec('C21 donut arc 1 = real ' + expTop1Sym + ' proportion (±0.5pt)',
-        Math.abs(arc1 - expTop1Share) <= 0.005,
-        `arc=${(arc1 * 100).toFixed(2)}% expected=${(expTop1Share * 100).toFixed(2)}%`);
-      rec('C22 donut arc 2 = the Other aggregate (±0.5pt)',
-        Math.abs(arc2 - (1 - expTop1Share)) <= 0.005,
-        `arc=${(arc2 * 100).toFixed(2)}% expected=${((1 - expTop1Share) * 100).toFixed(2)}%`);
-      rec('C23 donut ring count matches the legend (top-2 + Other)',
-        c.circles.length === c.legendRows.length, `arcs=${c.circles.length} legend=${c.legendRows.length}`);
+      // ── ROUND 4: donut + legend REMOVED entirely, freed space reclaimed ──
+      rec('C16 NO donut column in the concentration card',
+        !c.hasDonutColumn && c.svgCircleCount === 0,
+        `donutCol=${c.hasDonutColumn} svgCircles=${c.svgCircleCount}`);
+      rec('C17 NO donut legend rows anywhere in the card',
+        (c.donutLegendCount || 0) === 0 && (c.legendRows || []).length === 0,
+        `legendRows=${JSON.stringify(c.legendRows)}`);
+      rec('C18 no donut arc fragments survive (no stale ring geometry)',
+        (c.circles || []).length === 0, `arcs=${(c.circles || []).length}`);
+      rec('C19 the stat still carries the REAL largest-holding share (donut removal changed no data)',
+        (c.statText || '').includes(expStat), `rendered=${c.statText} expected=${expStat}`);
+      rec('C20 top row is stat-height only (no 66px donut rail inflating it)',
+        c.col.h <= 54, `topRow.h=${c.col.h.toFixed(1)} (round-3 rail forced >=66)`);
+      rec('C21 no dead vertical gap: the top row hugs the header (no empty donut slot)',
+        c.header && c.col && (c.col.y - c.header.bottom) <= 16,
+        `gap=${c.header && c.col ? (c.col.y - c.header.bottom).toFixed(1) : 'n/a'}`);
 
       await shot(page, 'C-concentration-two-col', { el: '[data-testid="insight-card"]' });
       await shot(page, 'C-insights-full', { fullPage: true });
@@ -379,11 +395,11 @@ const readConcCard = (page) => page.evaluate(() => {
     const before = await deck.getAttribute('data-active-index');
     const box = await deck.boundingBox();
     const concRightCol = await page.evaluate(() => {
-      const el = document.querySelector('[data-testid="card-right-col"]');
+      const el = document.querySelector('[data-testid="concentration-top-row"] [data-testid="hero-stat"]');
       const b = el.getBoundingClientRect();
       return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
     });
-    // drag starting ON the new donut column — the riskiest place to start a swipe
+    // drag starting ON the concentration stat — the riskiest place to start a swipe
     await page.mouse.move(concRightCol.x, concRightCol.y);
     await page.mouse.down();
     await page.mouse.move(concRightCol.x - 60, concRightCol.y, { steps: 6 });
@@ -391,7 +407,7 @@ const readConcCard = (page) => page.evaluate(() => {
     await page.mouse.up();
     await page.waitForTimeout(1000);
     const after = await deck.getAttribute('data-active-index');
-    rec('C26 swipe starting on the donut rail still navigates the deck',
+    rec('C26 swipe starting on the concentration stat still navigates the deck',
       before !== after, `${before} → ${after}`);
     rec('C27 swipe fired NO chat request', chatPosts.length === 0, `${chatPosts.length} posts`);
     rec('C28 swipe fired NO dismiss/snooze', dismissPosts.length === 0, `${dismissPosts.length} posts`);
@@ -431,13 +447,13 @@ const readConcCard = (page) => page.evaluate(() => {
     if (c.found) {
       rec('C36 narrow 320px: no element overflows the card box', c.offenders.length === 0, JSON.stringify(c.offenders));
       rec('C37 narrow 320px: page has no horizontal scrollbar', c.docOverflow <= 0, `overflow=${c.docOverflow}px`);
-      rec('C38 narrow 320px: donut rail stays 66px', Math.abs(c.right.w - 66) <= 6, `right.w=${c.right.w.toFixed(1)}`);
-      rec('C39 narrow 320px: left column still has usable width', c.left.w >= 90, `left.w=${c.left.w.toFixed(1)}`);
+      rec('C38 narrow 320px: no donut rail (removed in round 4)', !c.hasDonutColumn && !c.left && !c.right);
+      rec('C39 narrow 320px: the top row spans the usable card width', c.col.w >= c.card.w - 2 * 16 - 2,
+        `topRow.w=${c.col.w.toFixed(1)} card.w=${c.card.w.toFixed(1)}`);
       const statFits = c.statFont && Number.parseFloat(c.statFont.size) >= 28;
       rec('C40 narrow 320px: stat keeps its size and stays legible', statFits, JSON.stringify(c.statFont));
-      rec('C41 narrow 320px: legend still exactly 2 rows, nothing clipped',
-        c.legendRows.length === 2 && c.legendRows.every((r) => r.length > 2),
-        JSON.stringify(c.legendRows));
+      rec('C41 narrow 320px: no legend rows to clip (donut removed)',
+        c.legendRows.length === 0 && (c.donutLegendCount || 0) === 0, JSON.stringify(c.legendRows));
       rec('C42 narrow 320px: action row still below row + sentence',
         c.actionRow.y >= (c.caption || c.col).bottom - 1, `row.top=${c.actionRow.y.toFixed(1)} below=${(c.caption || c.col).bottom.toFixed(1)}`);
       await shot(page, 'C-narrow-320-card', { el: '[data-testid="insight-card"]' });
@@ -492,21 +508,27 @@ const readConcCard = (page) => page.evaluate(() => {
       hit.barTop == null || hit.ctaBottom <= hit.barTop + 1, `ctaBottom=${hit.ctaBottom && hit.ctaBottom.toFixed(1)} barTop=${hit.barTop && hit.barTop.toFixed(1)}`);
     await shot(page, 'C-narrow-320-cta-visible');
 
-    // geometry sanity: real gutter between columns, legend inside the padding box
+    // geometry sanity (ROUND 4): the top row is ONE row with no donut, so the
+    // gutter check becomes a real-centering + full-width check, and the old
+    // legend-inside-padding check becomes "nothing was left behind".
     const geo = await readConcCard(page);
-    const gutter = geo.left && geo.right ? geo.right.x - geo.left.right : null;
-    rec('C46 top-row gutter is a deliberate 12px (compact, not touching)',
-      gutter != null && Math.abs(gutter - 12) <= 1, `gutter=${gutter && gutter.toFixed(1)}px`);
-    const legendInside = await page.evaluate(() => {
+    const kidsRow = geo.topRowKids || [];
+    const gutter = kidsRow.length === 2 ? kidsRow[1].box.x - (kidsRow[0].box.x + kidsRow[0].box.w) : null;
+    rec('C46 top-row gutter between category and stat is a deliberate 12px',
+      gutter != null && Math.abs(gutter - 12) <= 2, `gutter=${gutter == null ? 'n/a' : gutter.toFixed(1)}px`);
+    const leftovers = await page.evaluate(() => {
       const card = document.querySelector('[data-testid="insight-card"]');
-      const row = document.querySelector('[data-testid="donut-legend-row"]');
-      const cb = card.getBoundingClientRect(), rb = row.getBoundingClientRect();
-      const rowRight = row.lastElementChild ? row.lastElementChild.getBoundingClientRect().right : rb.right;
-      return { cardRight: cb.right, rowRight };
+      return {
+        donut: !!card.querySelector('[data-testid="donut-column"]'),
+        legend: !!card.querySelector('[data-testid="donut-legend-row"]'),
+        svgCircles: card.querySelectorAll('svg circle').length,
+        right: card.getBoundingClientRect().right,
+        rowRight: (document.querySelector('[data-testid="concentration-top-row"]') || { getBoundingClientRect: () => ({ right: -1 }) }).getBoundingClientRect().right,
+      };
     });
-    rec('C47 legend percentages stay inside the card padding box',
-      legendInside.rowRight <= legendInside.cardRight - 4,
-      `rowRight=${legendInside.rowRight.toFixed(1)} cardRight=${legendInside.cardRight.toFixed(1)}`);
+    rec('C47 no donut/legend leftovers, and the top row stays inside the card padding box',
+      !leftovers.donut && !leftovers.legend && leftovers.svgCircles === 0 && leftovers.rowRight <= leftovers.right - 4,
+      `donut=${leftovers.donut} legend=${leftovers.legend} arcs=${leftovers.svgCircles} rowRight=${leftovers.rowRight.toFixed(1)} cardRight=${leftovers.right.toFixed(1)}`);
     await ctx.close();
   }
 

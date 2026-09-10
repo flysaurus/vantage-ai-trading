@@ -347,6 +347,7 @@ const readConcentrationV2 = (page) => page.evaluate(() => {
   const q = (t) => document.querySelector(`[data-testid="${t}"]`);
   const R = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, w: b.width, h: b.height, cx: (b.left + b.right) / 2, cy: (b.top + b.bottom) / 2 }; };
   const row = q('concentration-top-row');
+  const rowKids = row ? row.children.length : 0;
   const stat = q('hero-stat');
   const ring = card.querySelector('[data-testid="donut-column"] svg');
   const legend = q('donut-legend');
@@ -373,7 +374,7 @@ const readConcentrationV2 = (page) => page.evaluate(() => {
     card: R(card), cardBox: { x: cardBox.left, y: cardBox.top, w: cardBox.width, h: cardBox.height },
     cardPad: { t: parseFloat(cardCS.paddingTop), r: parseFloat(cardCS.paddingRight), b: parseFloat(cardCS.paddingBottom), l: parseFloat(cardCS.paddingLeft) },
     contentLeft: leftEdge, contentRight: rightEdge,
-    row: R(row), stat: R(stat), ring: R(ring), legend: R(legend), legendRows,
+    row: R(row), rowKids, stat: R(stat), ring: R(ring), legend: R(legend), legendRows,
     ringSize: ring ? { w: Math.round(ring.getBoundingClientRect().width), h: Math.round(ring.getBoundingClientRect().height) } : null,
     statFontSize: stat ? parseFloat(statCS.fontSize) : null,
     statWeight: stat ? statCS.fontWeight : null,
@@ -466,27 +467,27 @@ const sweepBarOverlap = (page, steps = 40) => page.evaluate((STEPS) => {
       rec('E1.1 concentration trigger card renders', c.found);
       if (c.found) {
         // stat + donut side by side in a compact top row
-        rec('E1.2 stat and donut share one top row (vertically overlapping, stat left of ring)',
-          !!(c.stat && c.ring && c.row) && c.ring.top < c.stat.bottom && c.ring.bottom > c.stat.top && c.stat.right <= c.ring.left,
-          `stat[${c.stat ? c.stat.left.toFixed(0) : 'n/a'}→${c.stat ? c.stat.right.toFixed(0) : 'n/a'}] ring[${c.ring ? c.ring.left.toFixed(0) : 'n/a'}→${c.ring ? c.ring.right.toFixed(0) : 'n/a'}]`);
+        rec('E1.2 ROUND 4: the top row holds category + stat ONLY — no donut, no rail',
+          !!(c.stat && c.row) && !c.ring && c.rowKids === 2,
+          `rowKids=${c.rowKids} ring=${c.ring ? 'present' : 'absent'}`);
         rec('E1.3 top row is the FIRST element under the header (no sentence/caption above it)',
           !!(c.sentence && c.row) && c.row.bottom <= c.sentence.top + 1, `rowBottom=${c.row ? c.row.bottom.toFixed(1) : 'n/a'} sentenceTop=${c.sentence ? c.sentence.top.toFixed(1) : 'n/a'}`);
         rec('E1.4 stat = ~28px bold SANS, non-italic (supersedes the 30/34px sizes)',
           Math.abs(c.statFontSize - 28) <= 1 && Number(c.statWeight) >= 700 && !c.statSerif && !c.statItalic,
           `${c.statFontSize}px w=${c.statWeight} serif=${c.statSerif} italic=${c.statItalic}`);
-        rec('E1.5 donut shrunk to 66px', c.ringSize && Math.abs(c.ringSize.w - 66) <= 1, JSON.stringify(c.ringSize));
-        rec('E1.6 legend = top holding + Other ONLY (2 rows, real data)',
-          c.legendRows.length === 2 && c.legendRows.map((r) => r.text).join(' | ') === expLegendV2.join(' | '),
-          `got [${c.legendRows.map((r) => r.text).join(' | ')}] want [${expLegendV2.join(' | ')}]`);
+        rec('E1.5 ROUND 4: donut removed entirely from the concentration card',
+          !c.ringSize && !c.ring, `ringSize=${JSON.stringify(c.ringSize)}`);
+        rec('E1.6 ROUND 4: legend removed too — the stat carries the share',
+          c.legendRows.length === 0, `legendRows=[${c.legendRows.map((r) => r.text).join(' | ')}]`);
         // sentence FULL WIDTH beneath the row
         const sW = c.sentence ? c.sentence.w : 0;
         const contentW = c.contentRight - c.contentLeft;
         rec('E1.7 supporting sentence renders FULL WIDTH (≥ 92% of the card content width)',
           c.sentence && sW >= contentW * 0.92,
           `sentence=${sW.toFixed(1)} contentW=${contentW.toFixed(1)} (${contentW ? ((sW / contentW) * 100).toFixed(0) : 'n/a'}%)`);
-        rec('E1.8 sentence starts BELOW the top row and spans past the donut column (not a narrow column)',
-          !!(c.sentence && c.row && c.ring) && c.sentence.top >= c.row.bottom - 1 && c.sentence.right > c.ring.left,
-          `sentenceTop=${c.sentence ? c.sentence.top.toFixed(1) : 'n/a'} rowBottom=${c.row ? c.row.bottom.toFixed(1) : 'n/a'} sentenceRight=${c.sentence ? c.sentence.right.toFixed(1) : 'n/a'} ringLeft=${c.ring ? c.ring.left.toFixed(1) : 'n/a'}`);
+        rec('E1.8 sentence starts BELOW the top row and spans the full card width',
+          !!(c.sentence && c.row) && c.sentence.top >= c.row.bottom - 1 && c.sentence.w >= contentW * 0.92,
+          `sentenceTop=${c.sentence ? c.sentence.top.toFixed(1) : 'n/a'} rowBottom=${c.row ? c.row.bottom.toFixed(1) : 'n/a'} sentenceW=${c.sentence ? c.sentence.w.toFixed(1) : 'n/a'} contentW=${contentW.toFixed(1)}`);
         rec('E1.9 sentence wraps in ≤ 3 lines (was 4+ in the narrow column)',
           c.sentence && c.sentence.h <= c.sentenceLineHeight ? false : c.sentence.h / parseFloat(c.sentenceLineHeight) <= 3.01,
           `h=${c.sentence ? c.sentence.h.toFixed(1) : 'n/a'} lineHeight=${c.sentenceLineHeight} → ${c.sentence ? (c.sentence.h / parseFloat(c.sentenceLineHeight)).toFixed(2) : 'n/a'} lines`);
@@ -525,9 +526,9 @@ const sweepBarOverlap = (page, steps = 40) => page.evaluate((STEPS) => {
     if (await gotoInsights(page)) {
       await scrollTo(page, 'hero-deck', 150);
       const c = await readConcentrationV2(page);
-      rec('E2.1 same corrected layout in dark theme',
-        c.found && Math.abs(c.statFontSize - 28) <= 1 && c.actionWrap === 'nowrap' && c.legendRows.length === 2,
-        c.found ? `stat=${c.statFontSize}px rows=${c.legendRows.length} wrap=${c.actionWrap}` : 'card missing');
+      rec('E2.1 same (ROUND 4, donut-free) layout in dark theme',
+        c.found && Math.abs(c.statFontSize - 28) <= 1 && c.actionWrap === 'nowrap' && !c.ring && c.legendRows.length === 0,
+        c.found ? `stat=${c.statFontSize}px ring=${!!c.ring} legend=${c.legendRows.length} wrap=${c.actionWrap}` : 'card missing');
       await shot(page, 'R3-3-concentration-card-dark', { el: '[data-testid="insight-card"][data-trigger-type="concentration_single"]' });
     }
     await ctx.close();

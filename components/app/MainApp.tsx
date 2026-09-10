@@ -332,7 +332,7 @@ function AppShell() {
       {chatOpen && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 99990,
-          background: '#000814', display: 'flex', flexDirection: 'column',
+          background: 'var(--v-canvas)', display: 'flex', flexDirection: 'column',
         }}>
           <AITab messages={chatMessages} setMessages={setChatMessages} onClose={() => setChatOpen(false)} />
         </div>

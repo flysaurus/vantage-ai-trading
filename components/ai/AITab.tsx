@@ -25,6 +25,9 @@ import { SummaryCard } from '@/components/ai/SummaryCard';
 import { PositionCards } from '@/components/ai/PositionCards';
 import { ExportControls } from '@/components/ai/ExportControls';
 import ActionButton from '@/components/ai/ActionButton';
+import TradeRecCard from '@/components/ai/TradeRecCard';
+import { detectTradeRecommendations } from '@/lib/ai/trade-recs';
+import { humanizeNoticedItem } from '@/lib/insights/noticed-copy';
 import { useTabStore } from '@/store';
 import { HoldingsCallout } from '@/components/ai/HoldingsCallout';
 import { ProgressIndicator, type ChecklistItem } from '@/components/ai/ProgressIndicator';
@@ -37,19 +40,19 @@ import { ChatHistory } from '@/components/ai/ChatHistory';
 
 
 // ── Design tokens (vantage-ai-tab-redesign.html) ──
-const GLASS_BG = 'rgba(255,255,255,0.05)';
-const GLASS_BG_LIGHTER = 'rgba(255,255,255,0.035)';
-const GLASS_BG_SUBTLE = 'rgba(255,255,255,0.03)';
-const BORDER_ACCENT = 'rgba(34,211,238,0.25)';
-const BORDER_SUBTLE = 'rgba(255,255,255,0.06)';
-const BORDER_MUTED = 'rgba(255,255,255,0.07)';
-const TEXT_BODY = 'rgba(255,255,255,0.85)';
-const TEXT_SUBTLE = 'rgba(255,255,255,0.4)';
-const TEXT_MUTED = 'rgba(255,255,255,0.35)';
-const TEXT_DIM = 'rgba(255,255,255,0.25)';
-const ACCENT = '#22d3ee';
-const GAIN = '#10b981';
-const WARNING = '#f59e0b';
+const GLASS_BG = 'var(--v-chat-fill)';
+const GLASS_BG_LIGHTER = 'var(--v-chat-fill)';
+const GLASS_BG_SUBTLE = 'var(--v-chat-fill)';
+const BORDER_ACCENT = 'var(--v-chat-accent-border)';
+const BORDER_SUBTLE = 'var(--v-chat-border)';
+const BORDER_MUTED = 'var(--v-chat-border)';
+const TEXT_BODY = 'var(--v-chat-text)';
+const TEXT_SUBTLE = 'var(--v-chat-text-4)';
+const TEXT_MUTED = 'var(--v-chat-text-4)';
+const TEXT_DIM = 'var(--v-chat-text-5)';
+const ACCENT = 'var(--v-chat-accent)';
+const GAIN = 'var(--v-gain)';
+const WARNING = 'var(--v-hero-warn)';
 const BACKDROP_BLUR = 'blur(20px)';
 
 // ── TL;DR extraction: client-side heuristic, zero API cost ──
@@ -207,17 +210,12 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(days / 7)}w`;
 }
 
-// ── Rotating chat placeholder pool ──────────────────────────
-const PLACEHOLDERS = [
-  'Ask about your portfolio…',
-  'What should my next move be?',
-  'Curious about a stock? Ask away…',
-  'Ask about any stock or the market…',
-  'Looking for new opportunities? Ask Rufus…',
-  "What's Rufus noticing today?",
-  'Research any stock, sector, or strategy…',
-  'Markets, stocks, or your portfolio — ask anything',
-];
+// ── Chat input placeholder ─────────────────────────────────
+// MUST be deterministic. This used to be a pool of 8 strings picked at random
+// per mount, so the legacy line ("Markets, stocks, or your portfolio — ask
+// anything") showed up ~7 times out of 8 and made the PART B placeholder change
+// look like it had never shipped. One string, always.
+const CHAT_PLACEHOLDER = 'Ask about your portfolio…';
 
 export function AITab({ messages, setMessages, onClose }: AITabProps) {
   const router = useRouter();
@@ -657,7 +655,7 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
   const [noticedLoaded, setNoticedLoaded] = useState(false);
   const [snoozeTarget, setSnoozeTarget] = useState<string | null>(null); // item id for popover
   // ── Rotating placeholder: picked once on mount ──
-  const [chatPlaceholder] = useState(() => PLACEHOLDERS[Math.floor(Math.random() * PLACEHOLDERS.length)]);
+  const [chatPlaceholder] = useState(CHAT_PLACEHOLDER);
 
   const fetchNoticed = useCallback(async () => {
     if (!liveAccount) return;
@@ -1935,7 +1933,7 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
   const handleMarketPulse = async (e: React.MouseEvent) => {
     const el = e.currentTarget as HTMLElement;
     el.style.transition = 'box-shadow 0s';
-    el.style.boxShadow = '0 0 0 2px #22d3ee';
+    el.style.boxShadow = '0 0 0 2px var(--v-chat-accent)';
     setTimeout(() => {
       el.style.transition = 'box-shadow 400ms ease-out';
       el.style.boxShadow = '';
@@ -1979,7 +1977,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
     if (e) {
       const el = e.currentTarget as HTMLElement;
       el.style.transition = 'box-shadow 0s';
-      el.style.boxShadow = '0 0 0 2px #22d3ee';
+      el.style.boxShadow = '0 0 0 2px var(--v-chat-accent)';
       setTimeout(() => {
         el.style.transition = 'box-shadow 400ms ease-out';
         el.style.boxShadow = '';
@@ -2003,13 +2001,13 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
   const [showExplore, setShowExplore] = useState(false);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative', background: 'linear-gradient(180deg, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0.015) 40%, rgba(10,15,30,0.4) 100%)', margin: '8px 12px 6px 12px', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative', background: 'linear-gradient(180deg, var(--v-chat-fill) 0%, var(--v-chat-fill) 40%, rgba(10,15,30,0.4) 100%)', margin: '8px 12px 6px 12px', overflow: 'hidden' }}>
       {/* Previous session banner */}
       {previousSession && messages.length === 0 && (
         <div
           style={{
-            background: '#1a2235',
-            border: '1px solid #2a3448',
+            background: 'var(--v-chat-surface)',
+            border: '1px solid var(--v-chat-border)',
             borderRadius: '10px',
             margin: '8px 16px 0 16px',
             padding: '12px 16px',
@@ -2018,7 +2016,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             alignItems: 'center',
           }}
         >
-          <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
+          <span style={{ fontSize: '12px', color: 'var(--v-chat-text-3)' }}>
             💬 Previous conversation from {previousSession.date}
           </span>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -2026,9 +2024,9 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               onClick={dismissPreviousSession}
               style={{
                 background: 'transparent',
-                border: '1px solid #374151',
+                border: '1px solid var(--v-chat-border)',
                 borderRadius: '6px',
-                color: '#94a3b8',
+                color: 'var(--v-chat-text-4)',
                 fontSize: '12px',
                 padding: '4px 12px',
                 cursor: 'pointer',
@@ -2053,10 +2051,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 }
               }}
               style={{
-                background: 'rgba(34,211,238,0.15)',
-                border: '1px solid #22d3ee',
+                background: 'var(--v-chat-accent-soft)',
+                border: '1px solid var(--v-chat-accent)',
                 borderRadius: '6px',
-                color: '#22d3ee',
+                color: 'var(--v-chat-accent)',
                 fontSize: '12px',
                 padding: '4px 12px',
                 cursor: 'pointer',
@@ -2090,11 +2088,11 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--v-chat-fill)',
+              border: '1px solid var(--v-chat-border)',
               borderRadius: '50%',
-              color: 'rgba(255,255,255,0.75)',
-              fontSize: '17px',
+              color: 'var(--v-chat-text)',
+              fontSize: '19px',
               cursor: 'pointer',
               fontFamily: 'inherit',
               lineHeight: 1,
@@ -2112,10 +2110,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: showMenu ? 'rgba(34,211,238,0.15)' : 'rgba(255,255,255,0.06)',
-              border: showMenu ? '1px solid rgba(34,211,238,0.3)' : '1px solid rgba(255,255,255,0.1)',
+              background: showMenu ? 'var(--v-chat-accent-soft)' : 'var(--v-chat-fill)',
+              border: showMenu ? '1px solid var(--v-chat-accent-border)' : '1px solid var(--v-chat-border)',
               borderRadius: '50%',
-              color: showMenu ? ACCENT : 'rgba(255,255,255,0.6)',
+              color: showMenu ? ACCENT: 'var(--v-chat-text-3)',
               fontSize: '15px',
               cursor: 'pointer',
               fontFamily: 'inherit',
@@ -2126,7 +2124,9 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           </button>
 
         </div>
-        <div style={{ fontSize: '15px', fontWeight: 800, color: '#22d3ee' }}>Rufus</div>
+        {/* "Rufus" is one of exactly TWO places allowed to use italic serif
+            (the other is the "Vantage" wordmark). Never on a number. */}
+        <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: '17px', fontWeight: 500, color: 'var(--v-chat-accent)' }}>Rufus</div>
         {/* Live pulse indicator */}
         <div style={{
           width: '7px',
@@ -2147,10 +2147,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            background: 'var(--v-chat-fill)',
+            border: '1px solid var(--v-chat-border)',
             borderRadius: '8px',
-            color: 'rgba(255,255,255,0.6)',
+            color: 'var(--v-chat-text-3)',
             fontSize: '16px',
             cursor: 'pointer',
             fontFamily: 'inherit',
@@ -2162,7 +2162,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         </button>
         <style>{`
           @keyframes vantageLivePulse {
-            0% { box-shadow: 0 0 0 0 rgba(34,211,238,0.5); }
+            0% { box-shadow: 0 0 0 0 var(--v-chat-accent-border); }
             70% { box-shadow: 0 0 0 8px rgba(34,211,238,0); }
             100% { box-shadow: 0 0 0 0 rgba(34,211,238,0); }
           }
@@ -2174,8 +2174,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         <div style={{
           flexShrink: 0,
           margin: '0 16px 10px',
-          background: 'rgba(20,28,48,0.95)',
-          border: '1px solid rgba(255,255,255,0.1)',
+          background: 'var(--v-chat-surface)',
+          border: '1px solid var(--v-chat-border)',
           borderRadius: '14px',
           overflow: 'hidden',
         }}>
@@ -2186,8 +2186,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               width: '100%',
               background: 'transparent',
               border: 'none',
-              borderTop: '1px solid rgba(255,255,255,0.06)',
-              color: '#e2e8f0',
+              borderTop: '1px solid var(--v-chat-border)',
+              color: 'var(--v-chat-text-2)',
               fontSize: '13.5px',
               fontWeight: 600,
               padding: '12px 16px',
@@ -2205,8 +2205,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               width: '100%',
               background: 'transparent',
               border: 'none',
-              borderTop: '1px solid rgba(255,255,255,0.06)',
-              color: '#e2e8f0',
+              borderTop: '1px solid var(--v-chat-border)',
+              color: 'var(--v-chat-text-2)',
               fontSize: '13.5px',
               fontWeight: 600,
               padding: '12px 16px',
@@ -2224,8 +2224,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               width: '100%',
               background: 'transparent',
               border: 'none',
-              borderTop: '1px solid rgba(255,255,255,0.06)',
-              color: '#e2e8f0',
+              borderTop: '1px solid var(--v-chat-border)',
+              color: 'var(--v-chat-text-2)',
               fontSize: '13.5px',
               fontWeight: 600,
               padding: '12px 16px',
@@ -2266,7 +2266,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           <div style={{ padding: '0 16px', marginBottom: '12px' }}>
             <div style={{
               position: 'relative',
-              background: 'rgba(255,255,255,0.05)',
+              background: 'var(--v-chat-fill)',
               borderRadius: '18px',
               padding: '20px',
               overflow: 'hidden',
@@ -2278,7 +2278,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 inset: 0,
                 borderRadius: '18px',
                 padding: '1px',
-                background: 'linear-gradient(135deg, rgba(34,211,238,0.5), rgba(34,211,238,0.05) 40%, rgba(34,211,238,0.25))',
+                background: 'linear-gradient(135deg, var(--v-chat-accent-soft), var(--v-chat-accent-soft) 40%, var(--v-chat-accent-soft))',
                 WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
                 WebkitMaskComposite: 'xor',
                 maskComposite: 'exclude',
@@ -2292,13 +2292,13 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 left: '-20%',
                 width: '140%',
                 height: '140%',
-                background: 'radial-gradient(circle, rgba(34,211,238,0.10), transparent 60%)',
+                background: 'radial-gradient(circle, var(--v-chat-accent-soft), transparent 60%)',
                 pointerEvents: 'none',
                 zIndex: 0,
               }} />
 
               {/* Opener — serif italic 28px */}
-              <div style={{ position: 'relative', zIndex: 2, fontFamily: "Georgia, 'Playfair Display', serif", fontStyle: 'italic', fontWeight: 400, fontSize: '28px', marginBottom: '4px', color: '#fff' }}>
+              <div style={{ position: 'relative', zIndex: 2, fontFamily: "Georgia, 'Playfair Display', serif", fontStyle: 'italic', fontWeight: 400, fontSize: '28px', marginBottom: '4px', color: 'var(--v-chat-text)' }}>
                 {greetingOpener && greetingOpener.split(new RegExp(`\\b(${userInitial.replace('.', '\\.')})\\b`)).map((part, i) =>
                   part === userInitial ? (
                     <span key={i} style={{ color: ACCENT }}>{userInitial}</span>
@@ -2310,7 +2310,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
 
               {/* Hook */}
               {greetingHook && (
-                <div style={{ position: 'relative', zIndex: 2, fontSize: '14.5px', lineHeight: '1.6', color: 'rgba(255,255,255,0.85)' }}>
+                <div style={{ position: 'relative', zIndex: 2, fontSize: '14.5px', lineHeight: '1.6', color: 'var(--v-chat-text)' }}>
                   {greetingHook}
                 </div>
               )}
@@ -2323,7 +2323,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           <div style={{ padding: '0 16px', marginBottom: '12px' }}>
             <div style={{
               position: 'relative',
-              background: 'rgba(255,255,255,0.05)',
+              background: 'var(--v-chat-fill)',
               borderRadius: '18px',
               padding: '20px',
               overflow: 'hidden',
@@ -2365,17 +2365,17 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           }}>
             <span style={{ fontSize: '14px', flexShrink: 0, lineHeight: 1.5 }}>👁️</span>
             <div style={{ flex: 1 }}>
-              <p style={{ fontSize: '12px', color: '#fbbf24', fontWeight: 600, margin: '0 0 3px 0', lineHeight: '1.4' }}>
+              <p style={{ fontSize: '12px', color: 'var(--v-hero-warn)', fontWeight: 600, margin: '0 0 3px 0', lineHeight: '1.4' }}>
                 View-only account
               </p>
-              <p style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.65)', margin: 0, lineHeight: '1.5' }}>
+              <p style={{ fontSize: '11.5px', color: 'var(--v-chat-text-2)', margin: 0, lineHeight: '1.5' }}>
                 {activeAccount?.broker || 'This broker'} is read-only — you can research and analyze, but can&apos;t place live trades. Trade and DCA buttons will offer alternatives (like downloadable plans) instead.
               </p>
-              <button onClick={() => dismissCapNotice(true)} style={{ background: 'none', border: 'none', padding: 0, marginTop: '6px', fontSize: '10.5px', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}>
+              <button onClick={() => dismissCapNotice(true)} style={{ background: 'none', border: 'none', padding: 0, marginTop: '6px', fontSize: '10.5px', color: 'var(--v-chat-text-4)', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}>
                 Don&apos;t show again
               </button>
             </div>
-            <button onClick={() => dismissCapNotice(false)} aria-label="Dismiss" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '16px', cursor: 'pointer', padding: '0 2px', lineHeight: 1, flexShrink: 0 }}>
+            <button onClick={() => dismissCapNotice(false)} aria-label="Dismiss" style={{ background: 'none', border: 'none', color: 'var(--v-chat-text-4)', fontSize: '16px', cursor: 'pointer', padding: '0 2px', lineHeight: 1, flexShrink: 0 }}>
               ✕
             </button>
           </div>
@@ -2396,14 +2396,14 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 style={{
                   alignSelf: 'flex-end',
                   maxWidth: '85%',
-                  background: 'rgba(34,211,238,0.12)',
-                  border: '1px solid rgba(34,211,238,0.2)',
+                  background: 'var(--v-chat-accent-soft)',
+                  border: '1px solid var(--v-chat-accent-border)',
                   borderRadius: '16px 16px 4px 16px',
                   padding: '12px 15px',
                   fontSize: '14px',
                 }}
               >
-                <span style={{ lineHeight: '1.5', wordBreak: 'break-word', color: '#fff' }}>{msg.content}</span>
+                <span style={{ lineHeight: '1.5', wordBreak: 'break-word', color: 'var(--v-chat-text)' }}>{msg.content}</span>
               </div>
             );
           }
@@ -2428,10 +2428,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               style={{
                 maxWidth: '100%',
                 fontSize: '14px',
-                color: 'rgba(255,255,255,0.85)',
+                color: 'var(--v-chat-text)',
               }}
             >
-              <div style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.38)', marginBottom: '6px', letterSpacing: '0.02em' }}>
+              <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--v-chat-text-4)', marginBottom: '6px', letterSpacing: '0.02em' }}>
                 Rufus
               </div>
               {/* Holdings callout — data panel rendered from live PortfolioContext when
@@ -2453,10 +2453,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                     <button
                       onClick={() => toggleTLDR(i)}
                       style={{
-                        background: 'rgba(34,211,238,0.08)',
-                        border: '1px solid rgba(34,211,238,0.2)',
+                        background: 'var(--v-chat-accent-soft)',
+                        border: '1px solid var(--v-chat-accent-border)',
                         borderRadius: '6px',
-                        color: '#22d3ee',
+                        color: 'var(--v-chat-accent)',
                         fontSize: '11px',
                         fontWeight: 600,
                         padding: '2px 10px',
@@ -2473,7 +2473,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   <>
                     {isCollapsed ? (
                       <>
-                        <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.6', fontStyle: 'italic', borderLeft: '2px solid rgba(34,211,238,0.3)', paddingLeft: '10px' }}>
+                        <div style={{ fontSize: '13px', color: 'var(--v-chat-text-2)', lineHeight: '1.6', fontStyle: 'italic', borderLeft: '2px solid var(--v-chat-accent-border)', paddingLeft: '10px' }}>
                           {tldr}
                         </div>
                         {showTLDR && tldrToggleButton}
@@ -2484,17 +2484,17 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                         remarkPlugins={[remarkGfm]}
                         components={{
                           p: ({ children }) => (<p style={{ margin: '0 0 8px 0', lineHeight: '1.6' }}>{children}</p>),
-                          strong: ({ children }) => (<strong style={{ color: '#ffffff', fontWeight: '700' }}>{children}</strong>),
+                          strong: ({ children }) => (<strong style={{ color: 'var(--v-chat-text)', fontWeight: '700' }}>{children}</strong>),
                           ul: ({ children }) => (<ul style={{ margin: '4px 0 8px 0', paddingLeft: '16px', listStyleType: 'disc' }}>{children}</ul>),
                           li: ({ children }) => (<li style={{ margin: '4px 0', lineHeight: '1.5' }}>{children}</li>),
-                          h2: ({ children }) => (<h2 style={{ fontSize: '14px', fontWeight: '700', color: '#ffffff', margin: '12px 0 8px 0' }}>{children}</h2>),
-                          h3: ({ children }) => (<h3 style={{ fontSize: '13px', fontWeight: '700', color: '#22d3ee', margin: '12px 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</h3>),
-                          code: ({ children }) => (<code style={{ background: '#0f1829', borderRadius: '4px', padding: '1px 6px', fontSize: '12px', color: '#22d3ee' }}>{children}</code>),
-                          table: ({ children }) => (<div style={{ overflowX: 'auto', margin: '8px 0', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>{children}</table></div>),
-                          thead: ({ children }) => (<thead style={{ background: 'rgba(34,211,238,0.1)' }}>{children}</thead>),
-                          th: ({ children }) => (<th style={{ padding: '8px 12px', textAlign: 'left', color: '#22d3ee', fontWeight: '600', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid rgba(255,255,255,0.1)', whiteSpace: 'nowrap' }}>{children}</th>),
-                          td: ({ children }) => (<td style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', color: '#e2e8f0', verticalAlign: 'top' }}>{children}</td>),
-                          hr: () => (<hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '12px 0' }} />),
+                          h2: ({ children }) => (<h2 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--v-chat-text)', margin: '12px 0 8px 0' }}>{children}</h2>),
+                          h3: ({ children }) => (<h3 style={{ fontSize: '13px', fontWeight: '700', color: 'var(--v-chat-accent)', margin: '12px 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</h3>),
+                          code: ({ children }) => (<code style={{ background: 'var(--v-chat-fill-strong)', borderRadius: '4px', padding: '1px 6px', fontSize: '12px', color: 'var(--v-chat-accent)' }}>{children}</code>),
+                          table: ({ children }) => (<div style={{ overflowX: 'auto', margin: '8px 0', borderRadius: '8px', border: '1px solid var(--v-chat-border)' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>{children}</table></div>),
+                          thead: ({ children }) => (<thead style={{ background: 'var(--v-chat-accent-soft)' }}>{children}</thead>),
+                          th: ({ children }) => (<th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--v-chat-accent)', fontWeight: '600', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--v-chat-border)', whiteSpace: 'nowrap' }}>{children}</th>),
+                          td: ({ children }) => (<td style={{ padding: '8px 12px', borderBottom: '1px solid var(--v-chat-border)', color: 'var(--v-chat-text-2)', verticalAlign: 'top' }}>{children}</td>),
+                          hr: () => (<hr style={{ border: 'none', borderTop: '1px solid var(--v-chat-border)', margin: '12px 0' }} />),
                         }}
                       >
                         {stripRecommendationMarkers(msg.content)}
@@ -2527,6 +2527,24 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   </>
                 );
               })()}
+              {/* SAFETY: a specific, actionable trade recommendation (exact share
+                  count or exact dollar amount to trim/buy) is rendered as a
+                  structured card with real Trade/Download controls — never as
+                  prose with no structured action attached. Sits AFTER the
+                  message it belongs to. */}
+              {!loading && (() => {
+                const recs = detectTradeRecommendations(msg.content || '');
+                if (recs.length === 0) return null;
+                return (
+                  <TradeRecCard
+                    recs={recs}
+                    readOnly={isReadOnly}
+                    disabled={loading}
+                    onRebalance={() => sendMessage('rebalance', 'chat')}
+                    onReviewPosition={(ticker) => { setFocusPosition(ticker); setTab('portfolio'); onClose && onClose(); }}
+                  />
+                );
+              })()}
               {/* Rebalance inline action buttons (Execute / Confirm / Cancel) */}
               {showRebalanceButtons && (() => {
                 const kind = rebalanceAction!.kind;
@@ -2541,7 +2559,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
 
                 const solid = (bg: string) => ({
                   background: bg,
-                  color: '#0b1220',
+                  color: 'var(--v-chat-on-accent)',
                   border: 'none',
                   borderRadius: '8px',
                   padding: '8px 16px',
@@ -2553,8 +2571,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 });
                 const ghost = {
                   background: 'transparent',
-                  color: 'rgba(255,255,255,0.7)',
-                  border: '1px solid rgba(255,255,255,0.22)',
+                  color: 'var(--v-chat-text-2)',
+                  border: '1px solid var(--v-chat-border)',
                   borderRadius: '8px',
                   padding: '8px 16px',
                   fontSize: '13px',
@@ -2569,7 +2587,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 if (kind === 'dca_setup') {
                   return (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
-                      <button onClick={() => router.push('/strategies/setup/dca')} disabled={loading} style={solid('#22d3ee')}>
+                      <button onClick={() => router.push('/strategies/setup/dca')} disabled={loading} style={solid('var(--v-chat-accent)')}>
                         📅 Open DCA setup form
                       </button>
                     </div>
@@ -2600,7 +2618,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 if (kind === 'style_changed') {
                   return (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
-                      <button onClick={() => sendMessage('rebalance', 'chat')} disabled={loading} style={solid('#22d3ee')}>
+                      <button onClick={() => sendMessage('rebalance', 'chat')} disabled={loading} style={solid('var(--v-chat-accent)')}>
                         ✓ Yes, rebalance to new style
                       </button>
                       <button onClick={() => setRebalanceAction(null)} disabled={loading} style={ghost}>
@@ -2614,10 +2632,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 if (kind === 'rebalance_budget') {
                   return (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
-                      <button onClick={() => sendMessage('rebalance using available cash only', 'chat')} disabled={loading} style={solid('#22d3ee')}>
+                      <button onClick={() => sendMessage('rebalance using available cash only', 'chat')} disabled={loading} style={solid('var(--v-chat-accent)')}>
                         💵 Available cash only
                       </button>
-                      <button onClick={() => sendMessage('rebalance with my full portfolio', 'chat')} disabled={loading} style={solid('#34d399')}>
+                      <button onClick={() => sendMessage('rebalance with my full portfolio', 'chat')} disabled={loading} style={solid('var(--v-gain)')}>
                         📊 Full portfolio
                       </button>
                       <button
@@ -2652,17 +2670,17 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                         style={{
                           flex: '1 1 160px',
                           minWidth: '140px',
-                          background: 'rgba(255,255,255,0.06)',
-                          border: '1px solid rgba(255,255,255,0.18)',
+                          background: 'var(--v-chat-fill)',
+                          border: '1px solid var(--v-chat-border)',
                           borderRadius: '8px',
                           padding: '8px 12px',
                           fontSize: '13px',
-                          color: '#ffffff',
+                          color: 'var(--v-chat-text)',
                           fontFamily: 'inherit',
                           outline: 'none',
                         }}
                       />
-                      <button onClick={deploy} disabled={loading || !customAmountValue.trim()} style={solid('#34d399')}>
+                      <button onClick={deploy} disabled={loading || !customAmountValue.trim()} style={solid('var(--v-gain)')}>
                         ✓ Deploy
                       </button>
                       <button onClick={() => { setCustomAmountValue(''); setRebalanceAction({ kind: 'rebalance_budget', msgId: msg.id! }); }} disabled={loading} style={ghost}>
@@ -2676,10 +2694,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 if (kind === 'rebalance_asset') {
                   return (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
-                      <button onClick={() => sendMessage('rebalance into ETFs', 'chat')} disabled={loading} style={solid('#22d3ee')}>
+                      <button onClick={() => sendMessage('rebalance into ETFs', 'chat')} disabled={loading} style={solid('var(--v-chat-accent)')}>
                         📊 ETFs
                       </button>
-                      <button onClick={() => sendMessage('rebalance into stocks', 'chat')} disabled={loading} style={solid('#34d399')}>
+                      <button onClick={() => sendMessage('rebalance into stocks', 'chat')} disabled={loading} style={solid('var(--v-gain)')}>
                         💼 Individual stocks
                       </button>
                       <button onClick={() => sendMessage('rebalance into a mix of ETFs and stocks', 'chat')} disabled={loading} style={ghost}>
@@ -2693,7 +2711,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 if (kind === 'rebalance_plan') {
                   return (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
-                      <button onClick={() => sendMessage('execute the rebalance', 'chat')} disabled={loading} style={solid('#22d3ee')}>
+                      <button onClick={() => sendMessage('execute the rebalance', 'chat')} disabled={loading} style={solid('var(--v-chat-accent)')}>
                         ▶ Execute rebalance
                       </button>
                     </div>
@@ -2703,7 +2721,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 // Execution preview → confirm / cancel
                 return (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
-                    <button onClick={() => sendMessage('confirm', 'chat')} disabled={loading} style={solid('#34d399')}>
+                    <button onClick={() => sendMessage('confirm', 'chat')} disabled={loading} style={solid('var(--v-gain)')}>
                       ✓ Confirm
                     </button>
                     <button onClick={() => sendMessage('cancel', 'chat')} disabled={loading} style={ghost}>
@@ -2789,7 +2807,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   <>
                     {isMultiStrategy && hasSelection && (
                       <div style={{
-                        fontSize: '11px', fontWeight: 600, color: '#22d3ee',
+                        fontSize: '11px', fontWeight: 600, color: 'var(--v-chat-accent)',
                         marginBottom: '8px', letterSpacing: '0.05em',
                         textTransform: 'uppercase', paddingTop: '4px',
                       }}>
@@ -2807,7 +2825,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 );
               })()}
                 {loading && i === messages.length - 1 && checklistItems.length === 0 && (
-                  <span style={{ display: 'inline-block', width: '2px', height: '14px', background: '#22d3ee', marginLeft: '2px', verticalAlign: 'middle', animation: 'blink 1s step-end infinite' }} />
+                  <span style={{ display: 'inline-block', width: '2px', height: '14px', background: 'var(--v-chat-accent)', marginLeft: '2px', verticalAlign: 'middle', animation: 'blink 1s step-end infinite' }} />
                 )}
             </div>
             {/* Multi-strategy cards — BELOW the bubble, never inside */}
@@ -2883,10 +2901,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 6,
                       background: 'transparent',
-                      border: '1px solid rgba(34,211,238,0.45)',
+                      border: '1px solid var(--v-chat-accent-border)',
                       borderRadius: '999px',
                       padding: '6px 13px',
-                      color: busy ? 'rgba(255,255,255,0.45)' : ACCENT,
+                      color: busy ? 'var(--v-chat-text-3)' : ACCENT,
                       fontSize: '12px',
                       fontWeight: 700,
                       cursor: busy || loading ? 'default' : 'pointer',
@@ -2901,7 +2919,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                       data-testid="deep-badge"
                       style={{
                         marginLeft: '8px', fontSize: '10px', fontWeight: 800,
-                        letterSpacing: '0.08em', color: '#c084fc',
+                        letterSpacing: '0.08em', color: 'var(--v-tag-earnings)',
                         border: '1px solid rgba(192,132,252,0.35)',
                         borderRadius: '999px', padding: '3px 8px',
                         background: 'rgba(192,132,252,0.10)',
@@ -2920,11 +2938,11 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         {/* ── Switch acknowledgment divider ── */}
         {switchNotice && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 4px' }}>
-            <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
-            <span style={{ fontSize: '10.5px', fontWeight: 600, letterSpacing: '0.03em', color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap' }}>
+            <div style={{ flex: 1, height: '1px', background: 'var(--v-chat-fill-strong)' }} />
+            <span style={{ fontSize: '10.5px', fontWeight: 600, letterSpacing: '0.03em', color: 'var(--v-chat-text-4)', whiteSpace: 'nowrap' }}>
               now viewing {switchNotice.account} · {switchNotice.style}
             </span>
-            <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+            <div style={{ flex: 1, height: '1px', background: 'var(--v-chat-fill-strong)' }} />
           </div>
         )}
 
@@ -2937,7 +2955,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             <style>{`
               .vantage-typing-dot {
                 width: 6px; height: 6px; border-radius: 50%;
-                background: #22d3ee;
+                background: var(--v-chat-accent);
                 animation: vantageTypingBounce 1.4s ease-in-out infinite;
               }
               @keyframes vantageTypingBounce {
@@ -2953,7 +2971,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         {/* Scroll-to-bottom button */}
         {showScrollButton && (
           <button onClick={() => { scrollToBottom(true); wasAtBottomRef.current = true; setShowScrollButton(false); }}
-            style={{ position: 'absolute', bottom: '16px', right: '16px', width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(26,34,53,0.95)', border: '1px solid rgba(34,211,238,0.3)', color: '#22d3ee', fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, boxShadow: '0 2px 12px rgba(0,0,0,0.4)' }}>
+            style={{ position: 'absolute', bottom: '16px', right: '16px', width: '36px', height: '36px', borderRadius: '50%', background: 'var(--v-chat-surface)', border: '1px solid var(--v-chat-accent-border)', color: 'var(--v-chat-accent)', fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, boxShadow: '0 2px 12px var(--v-chat-scrim)' }}>
             ↓
           </button>
         )}
@@ -2975,7 +2993,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           <div style={{ flex: 1 }}>
             <p style={{
               fontSize: '12px',
-              color: '#fca5a5',
+              color: 'var(--v-loss)',
               fontWeight: 600,
               margin: '0 0 4px 0',
               lineHeight: '1.4',
@@ -2984,7 +3002,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             </p>
             <p style={{
               fontSize: '11px',
-              color: 'rgba(255,255,255,0.7)',
+              color: 'var(--v-chat-text-2)',
               margin: 0,
               lineHeight: '1.5',
             }}>
@@ -2996,7 +3014,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             style={{
               background: 'none',
               border: 'none',
-              color: 'rgba(255,255,255,0.4)',
+              color: 'var(--v-chat-text-4)',
               fontSize: '16px',
               cursor: 'pointer',
               padding: '0 4px',
@@ -3013,7 +3031,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
       </div>
 
       {/* ======== 3. INPUT ZONE — fixed at bottom with separator ======== */}
-      <div style={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.015)', padding: '18px 16px 20px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))', position: 'relative', zIndex: 10 }}>
+      <div style={{ flexShrink: 0, borderTop: '1px solid var(--v-chat-border)', background: 'var(--v-chat-fill)', padding: '18px 16px 20px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))', position: 'relative', zIndex: 10 }}>
 
         {/* Low-limit warning — hidden by default.
             The persistent "N left" counter was removed on purpose: limits are
@@ -3042,11 +3060,11 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             display: 'flex',
             alignItems: inputHeight > 45 ? 'flex-end' : 'center',
             gap: '10px',
-            background: 'rgba(20,28,48,0.9)',
-            border: '1.5px solid rgba(34,211,238,0.45)',
+            background: 'var(--v-chat-input-bg)',
+            border: '1.5px solid var(--v-chat-accent-border)',
             borderRadius: inputHeight > 45 ? '18px' : '999px',
             padding: inputHeight > 45 ? '8px 8px 8px 14px' : '8px 8px 8px 8px',
-            boxShadow: '0 0 20px rgba(34,211,238,0.12)',
+            boxShadow: '0 0 20px var(--v-chat-accent-soft)',
             transition: 'border-radius 0.15s ease, padding 0.15s ease',
           }}>
             {/* Explore button — text-first, falls back to icon-only on narrow screens */}
@@ -3056,8 +3074,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 display: 'flex',
                 alignItems: 'center',
                 gap: exploreCompact ? '0px' : '6px',
-                background: showExplore ? '#ffffff' : exploreCompact ? 'rgba(34,211,238,0.18)' : 'rgba(255,255,255,0.08)',
-                border: showExplore ? '1px solid rgba(0,0,0,0.1)' : exploreCompact ? '1px solid rgba(34,211,238,0.4)' : 'none',
+                background: showExplore ? 'var(--v-chat-accent)' : exploreCompact ? 'var(--v-chat-accent-soft)' : 'var(--v-chat-fill)',
+                border: showExplore ? '1px solid rgba(0,0,0,0.1)' : exploreCompact ? '1px solid var(--v-chat-accent-border)' : 'none',
                 borderRadius: '999px',
                 padding: exploreCompact ? '0px' : '8px 14px',
                 width: exploreCompact ? '38px' : 'auto',
@@ -3065,7 +3083,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 justifyContent: 'center',
                 fontSize: '13px',
                 fontWeight: 700,
-                color: showExplore ? '#0f172a' : '#fff',
+                color: showExplore ? 'var(--v-chat-on-accent)' : 'var(--v-chat-text)',
                 flexShrink: 0,
                 position: 'relative',
                 whiteSpace: 'nowrap',
@@ -3083,7 +3101,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   width: '9px',
                   height: '9px',
                   background: WARNING,
-                  border: '2px solid #0a0f1e',
+                  border: '2px solid var(--v-chat-surface)',
                   borderRadius: '50%',
                 }} />
               )}
@@ -3109,7 +3127,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 flex: 1,
                 background: 'transparent',
                 border: 'none',
-                color: '#ffffff',
+                color: 'var(--v-chat-text)',
                 fontSize: '14px',
                 lineHeight: '1.5',
                 outline: 'none',
@@ -3134,10 +3152,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 justifyContent: 'center',
                 background: input.trim() && chatRemaining !== 0
                   ? ACCENT
-                  : 'rgba(255,255,255,0.12)',
+                  : 'var(--v-chat-fill-strong)',
                 borderRadius: '50%',
                 fontSize: '15px',
-                color: input.trim() && chatRemaining !== 0 ? '#05202a' : 'rgba(255,255,255,0.3)',
+                color: input.trim() && chatRemaining !== 0 ? 'var(--v-chat-on-accent)' : 'var(--v-chat-text-5)',
                 flexShrink: 0,
                 cursor: input.trim() && chatRemaining !== 0 ? 'pointer' : 'default',
                 fontWeight: 700,
@@ -3164,8 +3182,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               left: 0,
               right: 0,
               zIndex: 99991,
-              background: '#10162a',
-              borderTop: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--v-chat-surface)',
+              borderTop: '1px solid var(--v-chat-border)',
               borderRadius: '20px 20px 0 0',
               padding: '20px 20px 28px',
               paddingBottom: 'calc(28px + env(safe-area-inset-bottom))',
@@ -3175,71 +3193,71 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           >
             <div style={{
               width: '36px', height: '4px',
-              background: 'rgba(255,255,255,0.2)',
+              background: 'var(--v-chat-fill-strong)',
               borderRadius: '999px',
               margin: '0 auto 20px',
             }} />
-            <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', marginBottom: '16px' }}>
+            <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'var(--v-chat-text-4)', textTransform: 'uppercase', marginBottom: '16px' }}>
               AI Settings
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {/* Usage section — full breakdown */}
               <div style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'var(--v-chat-fill)',
+                border: '1px solid var(--v-chat-border)',
                 borderRadius: '12px',
                 padding: '14px 16px',
               }}>
-                <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', marginBottom: '12px' }}>
+                <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'var(--v-chat-text-4)', textTransform: 'uppercase', marginBottom: '12px' }}>
                   Usage
                 </div>
                 {usageStats ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12px' }}>
                     {/* Chat messages */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'rgba(255,255,255,0.65)' }}>Today&apos;s chat messages</span>
-                      <span style={{ color: usageStats.chat.daily.used >= usageStats.chat.daily.limit ? WARNING : '#e2e8f0', fontWeight: 600 }}>
+                      <span style={{ color: 'var(--v-chat-text-2)' }}>Today&apos;s chat messages</span>
+                      <span style={{ color: usageStats.chat.daily.used >= usageStats.chat.daily.limit ? WARNING : 'var(--v-chat-text-2)', fontWeight: 600 }}>
                         {usageStats.chat.daily.used} / {usageStats.chat.daily.limit}
                       </span>
                     </div>
                     {/* Monthly chat (Silver/Gold) */}
                     {usageStats.chat.monthly && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: 'rgba(255,255,255,0.5)' }}>This month&apos;s chat</span>
-                        <span style={{ color: usageStats.chat.monthly.used >= usageStats.chat.monthly.limit ? WARNING : 'rgba(255,255,255,0.6)', fontWeight: 500 }}>
+                        <span style={{ color: 'var(--v-chat-text-3)' }}>This month&apos;s chat</span>
+                        <span style={{ color: usageStats.chat.monthly.used >= usageStats.chat.monthly.limit ? WARNING: 'var(--v-chat-text-3)', fontWeight: 500 }}>
                           {usageStats.chat.monthly.used} / {usageStats.chat.monthly.limit}
                         </span>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)' }}>Loading usage data…</div>
+                  <div style={{ fontSize: '12px', color: 'var(--v-chat-text-4)' }}>Loading usage data…</div>
                 )}
               </div>
 
               <div style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'var(--v-chat-fill)',
+                border: '1px solid var(--v-chat-border)',
                 borderRadius: '12px',
                 padding: '14px 16px',
               }}>
-                <div style={{ fontSize: '13px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--v-chat-text-2)', marginBottom: '4px' }}>
                   Investor Style Lens
                 </div>
-                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', lineHeight: '1.5' }}>
+                <div style={{ fontSize: '12px', color: 'var(--v-chat-text-3)', lineHeight: '1.5' }}>
                   Your AI responses are tailored to your investor profile. Update your style in Preferences → Investor Style.
                 </div>
               </div>
               <div style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'var(--v-chat-fill)',
+                border: '1px solid var(--v-chat-border)',
                 borderRadius: '12px',
                 padding: '14px 16px',
               }}>
-                <div style={{ fontSize: '13px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--v-chat-text-2)', marginBottom: '4px' }}>
                   Response Detail
                 </div>
-                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', lineHeight: '1.5' }}>
+                <div style={{ fontSize: '12px', color: 'var(--v-chat-text-3)', lineHeight: '1.5' }}>
                   Default response depth and length preferences. More controls coming soon.
                 </div>
               </div>
@@ -3255,7 +3273,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             position: 'absolute',
             inset: 0,
             bottom: '80px',
-            background: 'rgba(0,0,0,0.4)',
+            background: 'var(--v-chat-scrim)',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'flex-end',
@@ -3268,8 +3286,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             onClick={(e) => e.stopPropagation()}
             style={{
               width: '100%',
-              background: '#10162a',
-              borderTop: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--v-chat-surface)',
+              borderTop: '1px solid var(--v-chat-border)',
               borderRadius: '20px 20px 0 0',
               padding: '10px 16px 32px',
               overflowY: 'auto',
@@ -3287,7 +3305,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               <div style={{
                 width: '36px',
                 height: '4px',
-                background: 'rgba(255,255,255,0.2)',
+                background: 'var(--v-chat-fill-strong)',
                 borderRadius: '999px',
               }} />
               <button
@@ -3297,15 +3315,15 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   right: 0,
                   top: '50%',
                   transform: 'translateY(-50%)',
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.12)',
+                  background: 'var(--v-chat-fill)',
+                  border: '1px solid var(--v-chat-border)',
                   borderRadius: '50%',
                   width: '28px',
                   height: '28px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: 'rgba(255,255,255,0.6)',
+                  color: 'var(--v-chat-text-3)',
                   fontSize: '14px',
                   cursor: 'pointer',
                   padding: 0,
@@ -3320,17 +3338,21 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             {/* ── AI Noticed items (if any) ── */}
             {noticedItems.length > 0 && (
               <>
-                <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
+                <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'var(--v-chat-text-4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
                   Suggested for you
                 </div>
                 {noticedItems.map((item) => {
                   const borderColor = item.variant === 'warn' ? WARNING : item.variant === 'gain' ? GAIN : ACCENT;
+                  // Never render the raw deterministic context. The engine now writes
+                  // human copy at generation time; this is the last-resort guard for
+                  // rows written before that fix (and for any future regression).
+                  const body = humanizeNoticedItem(item);
                   return (
                     <div key={item.id} style={{ position: 'relative' }}>
                       <div
                         onClick={() => {
                           setShowExplore(false);
-                          sendToChat(item.followUp || `Tell me about ${item.title}`);
+                          sendToChat(item.followUp || `Tell me about ${body}`);
                         }}
                         style={{
                           display: 'flex',
@@ -3347,7 +3369,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                         }}
                       >
                         <span style={{ fontSize: '14px', marginTop: '1px' }}>{item.icon}</span>
-                        <span style={{ flex: 1 }}>{item.body}</span>
+                        <span style={{ flex: 1 }} data-testid={`noticed-body-${item.id}`}>{body}</span>
                         <span
                           onClick={(e) => {
                             e.stopPropagation();
@@ -3380,8 +3402,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                             right: '8px',
                             top: '36px',
                             zIndex: 9999,
-                            background: '#1a2235',
-                            border: '1px solid rgba(255,255,255,0.15)',
+                            background: 'var(--v-chat-surface)',
+                            border: '1px solid var(--v-chat-border)',
                             borderRadius: '10px',
                             padding: '6px',
                             display: 'flex',
@@ -3403,7 +3425,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                                 style={{
                                   background: 'transparent',
                                   border: 'none',
-                                  color: '#cbd5e1',
+                                  color: 'var(--v-chat-text-3)',
                                   fontSize: '12px',
                                   padding: '8px 12px',
                                   borderRadius: '6px',
@@ -3411,7 +3433,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                                   textAlign: 'left',
                                   fontFamily: 'inherit',
                                 }}
-                                onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
+                                onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--v-chat-fill-strong)'; }}
                                 onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
                               >
                                 {opt.label}
@@ -3427,7 +3449,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             )}
 
             {/* ── Quick Tools ── */}
-            <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: '#22d3ee', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: 'var(--v-chat-accent)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
               Quick Tools
             </div>
 
@@ -3444,8 +3466,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   key={action.label}
                   onClick={action.onClick}
                   style={{
-                    background: '#1a2235',
-                    border: '1px solid #2a3448',
+                    background: 'var(--v-chat-surface)',
+                    border: '1px solid var(--v-chat-border)',
                     borderRadius: '12px',
                     padding: '13px 10px',
                     display: 'flex',
@@ -3457,13 +3479,13 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   }}
                 >
                   <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#fff' }}>{action.label}</span>
+                    <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--v-chat-text)' }}>{action.label}</span>
                     {action.live && (
                       <span style={{
                         fontSize: '8.5px',
                         fontWeight: 700,
                         color: ACCENT,
-                        background: 'rgba(34,211,238,0.12)',
+                        background: 'var(--v-chat-accent-soft)',
                         padding: '1px 5px',
                         borderRadius: '999px',
                         letterSpacing: '0.05em',
@@ -3501,12 +3523,12 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
       {/* ─── Clear Confirm Modal ─── */}
       {showClearConfirm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: '#1a2235', border: '1px solid #2a3448', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '320px', textAlign: 'center' }}>
+          <div style={{ background: 'var(--v-chat-surface)', border: '1px solid var(--v-chat-border)', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '320px', textAlign: 'center' }}>
             <div style={{ fontSize: '32px', marginBottom: '12px' }}>🗑️</div>
-            <p style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff', marginBottom: '8px' }}>Clear Conversation</p>
-            <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '24px', lineHeight: '1.5' }}>This will remove all messages from your current session. This cannot be undone.</p>
+            <p style={{ fontSize: '16px', fontWeight: '700', color: 'var(--v-chat-text)', marginBottom: '8px' }}>Clear Conversation</p>
+            <p style={{ fontSize: '13px', color: 'var(--v-chat-text-3)', marginBottom: '24px', lineHeight: '1.5' }}>This will remove all messages from your current session. This cannot be undone.</p>
             <div style={{ display: 'flex', gap: '12px' }}>
-              <button onClick={() => setShowClearConfirm(false)} style={{ flex: 1, padding: '12px', background: 'transparent', border: '1px solid #374151', borderRadius: '10px', color: '#94a3b8', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={() => setShowClearConfirm(false)} style={{ flex: 1, padding: '12px', background: 'transparent', border: '1px solid var(--v-chat-border)', borderRadius: '10px', color: 'var(--v-chat-text-4)', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
               <button onClick={async () => {
                 // ── Clear everything: in-memory state, DB, localStorage ──
                 const sessionToDelete = currentSessionId;
@@ -3529,7 +3551,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   if (sessionToDelete) mod.deleteSession(sessionToDelete, accountId);
                   mod.saveSessions([], accountId);
                 } catch {}
-              }} style={{ flex: 1, padding: '12px', background: '#ef4444', border: 'none', borderRadius: '10px', color: '#ffffff', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Clear</button>
+              }} style={{ flex: 1, padding: '12px', background: 'var(--v-loss)', border: 'none', borderRadius: '10px', color: 'var(--v-chat-text)', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Clear</button>
             </div>
           </div>
         </div>

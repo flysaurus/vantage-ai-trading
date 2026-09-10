@@ -319,13 +319,11 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
             data-testid="concentration-top-row"
             style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, minWidth: 0 }}
           >
-            <div data-testid="card-left-col" style={{ flex: '1 1 auto', minWidth: 0 }}>
-              {categoryEl}
-              {statEl(28)}
-            </div>
-            <div data-testid="card-right-col" style={{ flex: '0 0 auto', minWidth: 0 }}>
-              {showDonut && <HoldingsDonutColumn positions={positions} />}
-            </div>
+            {/* No donut/legend on the concentration card — the stat carries it.
+                The row is gone entirely rather than left as an empty slot, so the
+                freed vertical space is reclaimed (card is shorter, no dead gap). */}
+            {categoryEl}
+            {statEl(28)}
           </div>
           {sentenceEl}
           {captionEl}
