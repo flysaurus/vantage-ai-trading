@@ -686,3 +686,82 @@ vitest (`trade-recs` + `noticed-copy` + `insights-deck` + `insights-health-score
 * **"More from Rufus" position**: your wording said "above Your Portfolio"; the
   established order has the balance block *above* the deck, so the section went
   below the deck dots / above Portfolio Health. Say the word and it moves.
+
+---
+
+# ROUND 5 — the "YOUR HOLDINGS" chat card was invisible in Light
+
+## The bug
+`components/ai/HoldingsCallout.tsx` (the data panel the chat renders when the
+server tags a reply with `dataCallout: { scope: 'holdings' }`) had **every color
+hardcoded to a dark-theme literal**: the dollar value was `#e2e8f0`, the ticker
+`#ffffff`, the name/subtitle `rgba(255,255,255,0.5)` / `0.4`, dividers
+`rgba(255,255,255,0.06)`, and the card fill `rgba(255,255,255,0.03)`.
+
+On the Light chat panel the measured effective background behind the card is
+`rgb(226, 228, 227)`, so:
+
+| element | old color | contrast on Light |
+|---|---|---|
+| dollar value | `#e2e8f0` | **1.04:1** — invisible |
+| ticker symbol | `#ffffff` | 1.08:1 |
+| name / subtitle | `rgba(255,255,255,0.5)` / `0.4` | ~1.3:1 |
+
+Same class of bug as the PART-B chat theming miss: a component that only ever
+worked on the dark surface, because it never used a theme token.
+
+## The fix
+Every text/fill/border in the card is now an explicit token — no literal white,
+no inherited color:
+
+| element | token |
+|---|---|
+| card fill | `--v-chat-fill` |
+| card border | `--v-chat-accent-border` |
+| header label + count pill | `--v-chat-accent` / `--v-chat-accent-soft` |
+| ticker | `--v-chat-text` |
+| name / subtitle | `--v-chat-text-3` |
+| **dollar value** | **`--v-chat-text`** |
+| dividers | `--v-chat-border` |
+| gain / loss / flat pct | `--v-chat-gain` / `--v-chat-loss` / `--v-chat-text-3` |
+
+**New tokens** `--v-chat-gain` / `--v-chat-loss` (light `#0d6e3c` / `#a82a22`,
+dark `#3ddc84` / `#f0716b`). The app-wide `--v-gain` / `--v-loss` **light**
+values (`#1e9e5a` / `#d64545`) only reach **2.70:1 / 3.43:1** on the light chat
+surface — they fail WCAG AA for 11px text, so the card uses AA-safe chat-scoped
+variants. (The global values are untouched — flagged to Em.)
+
+Added testids: `holdings-callout`, `holdings-row-${symbol}`,
+`holdings-value-${symbol}`, `holdings-pct-${symbol}`.
+
+## Verification — measured, not eyeballed
+`qa-agent/verify-holdings-contrast.cjs` renders the real card (real Supabase
+session, mocked positions, mocked SSE turn carrying `dataCallout`), then
+composites the ancestor background chain (translucent fills included) and
+computes WCAG 2.x ratios.
+
+| theme | effective card bg | dollar value | ticker | percentage |
+|---|---|---|---|---|
+| Light | `rgb(226,228,227)` | **13.86:1** | 13.86:1 | 4.97:1 (gain) / 5.45:1 (loss) |
+| Dark | `rgb(30,37,47)` | **11.52:1** | 11.52:1 | 8.67:1 / 5.36:1 |
+
+Control (the reported bug, measured): old `#e2e8f0` on the light card = **1.04:1**.
+
+**16/16 checks passed** — including "value is as legible as the ticker on the
+same row", "the color is theme-DRIVEN (light ≠ dark)", "light value is NOT the
+old dark-only literal", and "no regression in dark".
+
+Screenshots: `/tmp/vantage-shots/holdings-contrast/HC-{light,dark}-{full,card,row}.png`.
+
+## Harness gotchas (new)
+* **Do not treat a translucent gradient stop as an opaque base** — the light
+  chat panel paints a translucent fill gradient; taking its first stop as the
+  base produced a bogus "1:1" reading. Walk up until a genuinely opaque
+  background, collecting translucent layers, then composite bottom-up.
+* **Position fixtures must be camelCase** (`units` / `marketValue` / `costBasis`
+  / `dayChangePct` / `openPnl`) to match what `mapPositions()` consumes. Feeding
+  `market_value` / `qty` silently renders `$0.00` rows — still "legible", so a
+  contrast-only assertion would happily pass on an empty card.
+* **Re-mint the Supabase session before any live harness** — an expired token
+  renders the onboarding splash (no `.app-shell`, no `ask-rufus-bar`) and the
+  harness just times out waiting for a selector.
