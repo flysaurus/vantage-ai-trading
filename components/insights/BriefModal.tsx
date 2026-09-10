@@ -21,6 +21,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { apiGet } from '@/lib/api-client';
 import { parseDailyBrief, weeklySummaryLine, type BriefLine } from '@/lib/insights/brief';
+import { usePageScrollLock, SCROLL_SCOPE_ATTR } from '@/lib/ui/scroll-lock';
 
 export type BriefKind = 'daily' | 'weekly';
 
@@ -104,18 +105,17 @@ export function BriefModal({ kind, accountId, onClose, onAskRufus }: BriefModalP
     return () => { cancelled = true; };
   }, [kind, accountId]);
 
-  // Escape closes; body scroll is locked while the sheet is open.
+  // Escape closes; the page behind is scroll-locked for as long as the sheet is
+  // open (see lib/ui/scroll-lock.ts — locking <body> alone does nothing here,
+  // the real scroller is the inner `.content-area`).
   useEffect(() => {
     if (!kind) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevOverflow;
-    };
+    return () => { document.removeEventListener('keydown', onKey); };
   }, [kind, onClose]);
+
+  usePageScrollLock(!!kind);
 
   useEffect(() => {
     if (kind) setTimeout(() => closeRef.current?.focus(), 60);
@@ -205,10 +205,15 @@ export function BriefModal({ kind, accountId, onClose, onAskRufus }: BriefModalP
           </button>
         </div>
 
-        {/* body */}
+        {/* body — the ONLY scrollable area while the sheet is open.
+            `data-scroll-scope` lets the scroll lock (lib/ui/scroll-lock.ts) know
+            this subtree is allowed to scroll while everything behind it is
+            frozen. `overscroll-behavior: contain` stops momentum at either end
+            from chaining out to the Insights scroller. */}
         <div
           data-testid="brief-modal-body"
-          style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 16px 4px', WebkitOverflowScrolling: 'touch' }}
+          {...{ [SCROLL_SCOPE_ATTR]: 'sheet' }}
+          style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', touchAction: 'pan-y', padding: '14px 16px 4px', WebkitOverflowScrolling: 'touch' }}
         >
           {loading && (
             <div data-testid="brief-modal-loading" style={{ fontSize: 13.5, color: 'var(--v-text-muted)', padding: '18px 0' }}>

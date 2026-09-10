@@ -765,3 +765,88 @@ Screenshots: `/tmp/vantage-shots/holdings-contrast/HC-{light,dark}-{full,card,ro
 * **Re-mint the Supabase session before any live harness** — an expired token
   renders the onboarding splash (no `.app-shell`, no `ask-rufus-bar`) and the
   harness just times out waiting for a selector.
+
+# ROUND 6 — Brief sheet scroll: background lock + independent content scroll
+
+**Reported:** opening the Daily Brief (or Weekly Snapshot) sheet, scroll gestures
+pass through to the Insights screen underneath — the page visibly scrolls behind
+the dim while the sheet stays still.
+
+## Root cause (two layers)
+
+1. **The lock was on the wrong element.** The sheet did
+   `document.body.style.overflow = 'hidden'`, but this app never scrolls
+   `<body>` — the Insights screen scrolls inside the inner `.content-area` flex
+   scroller (`app/globals.css`: `flex: 1; overflow-y: auto; min-height: 0`).
+   Locking `<body>` locked nothing.
+2. **Nothing stopped scroll chaining.** The sheet renders *inside*
+   `InsightsTab`, i.e. inside `.content-area`. Any drag that does not start on
+   the sheet, or momentum that runs past the end of the sheet's own scroll area,
+   chains straight into `.content-area` and drags the page behind the overlay.
+   (Chromium does not chain from a fixed overlay — which is why this only ever
+   reproduced on touch devices. iOS/Android are the real-world reporters.)
+
+## Fix
+
+**New `lib/ui/scroll-lock.ts`** — `lockPageScroll()` + `usePageScrollLock(active)`:
+
+* Finds every container that can *actually* scroll right now — `documentElement`,
+  `body`, the known `.content-area` / `[data-page-scroller]` scrollers, plus a
+  bounded (400 node) sweep for anything else whose computed `overflow-y` is
+  auto/scroll/overlay with overflowing content — and pins `overflow: hidden`
+  **and** `overscroll-behavior: contain` on each.
+* Adds a document-level, non-passive `touchmove` listener that cancels any touch
+  that does **not** originate inside an element marked
+  `data-scroll-scope`. This is the iOS guarantee — where `overflow: hidden` on a
+  scroll container is not reliably honoured for touch.
+* **Reference counted** (`depth`): nested overlays release only the last one, and
+  the previous inline styles are restored exactly (never a blanket reset).
+* **Restores the reading position**: `overflow: hidden` clamps `scrollTop` if the
+  content transiently shrinks while the sheet is open (the Insights screen
+  re-renders during an account refresh). The lock remembers `scrollTop` on open
+  and puts it back on release. (This is what made an early harness run flake
+  `260 → 0`.)
+
+**`components/insights/BriefModal.tsx`:** the Escape effect no longer touches
+`body` overflow; it calls `usePageScrollLock(!!kind)` instead. The sheet body
+(`brief-modal-body`) is marked `data-scroll-scope="sheet"` and gets
+`overscroll-behavior: contain` + `touch-action: pan-y`. One component serves both
+kinds, so Daily Brief and Weekly Snapshot are fixed by the same change.
+
+## Verification — `qa-agent/verify-brief-scroll-lock.cjs` **33/33**
+
+Long mocked brief (real endpoint shape, ×4 sections) so the sheet genuinely
+scrolls; Playwright with CDP-dispatched touch events; real Supabase session.
+
+| What | Evidence |
+| --- | --- |
+| Background scroller locked | `.content-area` inline `overflow="hidden"` + `overscroll="contain"`; `body` + `html` too |
+| Sheet content independently scrollable | range **2604px** (daily) / **524px** (weekly); wheel `0 → 400`, touch swipe `0 → 285` |
+| Background frozen during a sheet scroll | `scrollTop 260 → 260` |
+| **Background pixel-identical** | band above the sheet: **0 / 52 460 pixels differ** while the sheet scrolled (control: the sheet region *did* change) |
+| Gesture over the dim does nothing | wheel `260 → 260`; touch swipe `260 → 260` |
+| Touch inside the sheet scrolls only the sheet | sheet `0 → 285`, bg `260 → 260` |
+| X close | lock released (inline `""`/`""`), reading position restored (`260`, not clamped to 0), page scrolls again `260 → 379` |
+| Escape close | lock released |
+| Backdrop mousedown close | lock released |
+| Open→close ×2 | no stuck lock; page still scrolls |
+| Weekly Snapshot | locks, scrolls (`0 → 500`), bg frozen, releases, page scrolls `260 → 379` |
+| Dark theme | locks, sheet `0 → 450`, bg frozen, releases |
+
+Screenshots: `/tmp/vantage-shots/brief-scroll/D{1..6}*.png` — `D6-background-static-proof.png`
+is a side-by-side of "sheet at top" vs "sheet scrolled": the dimmed background is
+identical in both panels, the sheet content has moved.
+
+No regressions: `verify-brief-chat.cjs` 41/41, `verify-insights.cjs` 65/65,
+`npx vitest run` 769 passed (the 8 failing test files are pre-existing — confirmed
+identical with this change stashed), `npx tsc --noEmit` still exactly the 1
+pre-existing `tests/etf-sectors.test.ts:124` error.
+
+## Same class of bug elsewhere (flagged, NOT changed — out of scope)
+
+Eight other overlays lock `<body>` only, so they have the identical defect on
+touch devices: `portfolio/SellModal.tsx`, `portfolio/TradeTicket.tsx`,
+`StrategySheet.tsx`, `BuildBasketModal.tsx`, `trade/BasketSellTicket.tsx`,
+`trade/BasketBuyMoreTicket.tsx`, `disclosure/FIFOExplainer.tsx`. Each is a
+two-line swap to `usePageScrollLock` + `data-scroll-scope` on its own scroller —
+Em's call whether to sweep them.
