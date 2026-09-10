@@ -3,13 +3,18 @@
 //   1. Masthead — orb + serif-italic "Vantage", account name right,
 //      ONE 2px accent rule beneath (#0E8C99 light / #5FD8DE dark).
 //   2. Header row — connection dot + investor-style text link (left),
-//      VIEW ONLY tag (right). Single row.
-//   3. Hero deck — swipeable, BROWSE-ONLY (see components/insights/HeroDeck).
+//      broker-aware VIEW ONLY badge (right). Single row.
+//   3. Balance section (no chart) + "See Holdings →" — "YOUR PORTFOLIO".
+//      Sits directly under the header, BEFORE the deck.
+//   4. Hero deck — swipeable, BROWSE-ONLY (see components/insights/HeroDeck).
 //      Falls back to a single "no action needed" card (no deck, no dots).
-//   4. Portfolio Health — deterministic score + 3 sub-scores.
-//   5. Quick-links 2×2.
-//   6. Balance section (no chart) + "See Holdings →".
+//   5. Portfolio Health — deterministic score + 3 sub-scores.
+//   6. Quick-links 2×2.
 //   (+ the Ask Rufus bar, rendered globally in MainApp on every tab)
+//
+// Serif italic is used in exactly TWO places on this screen: the "Vantage"
+// masthead wordmark and the portfolio balance number. Nothing inside a hero
+// deck card uses it.
 //
 // ⚠️ Trigger LOGIC is untouched. Every number here either comes from the
 // noticed pipeline's own output or is computed deterministically in
@@ -62,6 +67,14 @@ export function InsightsTab() {
   const positions: Position[] = displayAccount?.positions || [];
 
   const accountName = isShowingDemo ? 'Demo' : brokerMeta?.name || activeAccount?.name || 'Broker';
+
+  // Broker NAME for the VIEW ONLY badge (the account label above is often the
+  // account nickname, not the broker). Falls back harmlessly when unknown.
+  const brokerLabel = (
+    isShowingDemo
+      ? 'Demo'
+      : brokerMeta?.broker || brokerMeta?.name || activeAccount?.name || 'Broker'
+  ).toUpperCase();
 
   // Connection dot: demo = amber, live+connected = green, live+disconnected = faint.
   const dotColor = isShowingDemo ? 'var(--v-admin-label)' : isConnected ? 'var(--v-gain)' : 'var(--v-text-faint)';
@@ -221,83 +234,46 @@ export function InsightsTab() {
           </button>
         </div>
         {isReadOnly && (
+          // Two-weight badge: broker NAME in bold primary text, "view only" in
+          // smaller muted text — same badge, one tint, no reflow.
           <span
             data-testid="view-only-tag"
+            data-broker={brokerLabel}
             style={{
-              fontSize: 9, fontWeight: 800, letterSpacing: '0.08em',
-              color: 'var(--v-view-only-text)', background: 'var(--v-view-only-bg)',
-              borderRadius: 5, padding: '3px 7px', whiteSpace: 'nowrap', flexShrink: 0,
+              background: 'var(--v-view-only-bg)',
+              borderRadius: 6,
+              padding: '4px 8px 4px 8px',
+              flexShrink: 0,
+              display: 'inline-flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: 1,
+              lineHeight: 1.1,
             }}
           >
-            VIEW ONLY
+            <span
+              data-testid="view-only-broker"
+              style={{
+                fontSize: 10.5, fontWeight: 800, letterSpacing: '0.04em',
+                color: 'var(--v-text-primary)', whiteSpace: 'nowrap',
+              }}
+            >
+              {brokerLabel}
+            </span>
+            <span
+              style={{
+                fontSize: 8.5, fontWeight: 700, letterSpacing: '0.1em',
+                color: 'var(--v-view-only-text)', whiteSpace: 'nowrap',
+              }}
+            >
+              VIEW ONLY
+            </span>
           </span>
         )}
       </div>
 
-      {/* ── 3. Hero deck (or single fallback card) ──
-          The fallback is reserved for the GENUINELY-EMPTY case only (no eligible
-          trigger AND no brief teaser). A teaser alone is a real, browsable deck. */}
-      <div style={{ marginTop: 18 }}>
-        {deck.length > 0 ? (
-          <HeroDeck
-            cards={deck}
-            positions={positions}
-            isReadOnly={isReadOnly}
-            onDismiss={handleDismiss}
-            onOpenTeaser={openTeaser}
-          />
-        ) : (
-          <div style={{ padding: '0 20px' }} data-testid="deck-fallback">
-            <article
-              data-testid="fallback-card"
-              style={{
-                background: 'var(--v-hero-card)',
-                border: '0.5px solid var(--v-hero-card-border)',
-                borderRadius: 20,
-                padding: '18px 18px 16px',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--v-orb)' }} />
-                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', color: 'var(--v-hero-text-3)' }}>
-                  RUFUS NOTICED
-                </span>
-              </div>
-              <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.08em', color: 'var(--v-hero-accent)', marginTop: 12 }}>
-                ALL CLEAR
-              </div>
-              <div
-                style={{
-                  fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 26, lineHeight: 1.2,
-                  color: 'var(--v-hero-text)', marginTop: 6,
-                }}
-                data-testid="fallback-headline"
-              >
-                No action needed
-              </div>
-              <p style={{ fontSize: 13.5, lineHeight: 1.55, color: 'var(--v-hero-text-2)', marginTop: 10 }}>
-                {loading
-                  ? 'Checking your accounts…'
-                  : 'Nothing needs your attention right now. I’ll surface anything that does.'}
-              </p>
-            </article>
-          </div>
-        )}
-      </div>
-
-      {/* ── 4. Portfolio Health ── */}
-      <PortfolioHealthCard
-        positions={positions}
-        cash={accountData.cash || 0}
-        totalPnlPercent={accountData.totalPnlPercent || 0}
-        riskTolerance={riskTolerance}
-      />
-
-      {/* ── 5. Quick-links 2×2 ── */}
-      <QuickLinks items={noticedItems} />
-
-      {/* ── 6. Balance section (no chart) ── */}
-      <div style={{ margin: '24px 20px 0' }}>
+      {/* ── 3. Balance section (no chart) — directly under the header ── */}
+      <div style={{ margin: '20px 20px 0' }} data-testid="balance-block">
         <div style={{ borderTop: '0.5px solid var(--v-rule)', paddingTop: 18 }}>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--v-text-muted)' }}>
             YOUR PORTFOLIO
@@ -344,6 +320,68 @@ export function InsightsTab() {
           </div>
         </div>
       </div>
+
+      {/* ── 4. Hero deck (or single fallback card) ──
+          The fallback is reserved for the GENUINELY-EMPTY case only (no eligible
+          trigger AND no brief teaser). A teaser alone is a real, browsable deck. */}
+      <div style={{ marginTop: 18 }}>
+        {deck.length > 0 ? (
+          <HeroDeck
+            cards={deck}
+            positions={positions}
+            isReadOnly={isReadOnly}
+            onDismiss={handleDismiss}
+            onOpenTeaser={openTeaser}
+          />
+        ) : (
+          <div style={{ padding: '0 20px' }} data-testid="deck-fallback">
+            <article
+              data-testid="fallback-card"
+              style={{
+                background: 'var(--v-hero-card)',
+                border: '0.5px solid var(--v-hero-card-border)',
+                borderRadius: 20,
+                padding: '18px 18px 16px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--v-orb)' }} />
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', color: 'var(--v-hero-text-3)' }}>
+                  RUFUS NOTICED
+                </span>
+              </div>
+              <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.08em', color: 'var(--v-hero-accent)', marginTop: 12 }}>
+                ALL CLEAR
+              </div>
+              <div
+                style={{
+                  fontSize: 25, fontWeight: 700, lineHeight: 1.2,
+                  color: 'var(--v-hero-text)', marginTop: 6,
+                }}
+                data-testid="fallback-headline"
+              >
+                No action needed
+              </div>
+              <p style={{ fontSize: 13.5, lineHeight: 1.55, color: 'var(--v-hero-text-2)', marginTop: 10 }}>
+                {loading
+                  ? 'Checking your accounts…'
+                  : 'Nothing needs your attention right now. I’ll surface anything that does.'}
+              </p>
+            </article>
+          </div>
+        )}
+      </div>
+
+      {/* ── 5. Portfolio Health ── */}
+      <PortfolioHealthCard
+        positions={positions}
+        cash={accountData.cash || 0}
+        totalPnlPercent={accountData.totalPnlPercent || 0}
+        riskTolerance={riskTolerance}
+      />
+
+      {/* ── 6. Quick-links 2×2 ── */}
+      <QuickLinks items={noticedItems} />
     </div>
   );
 }

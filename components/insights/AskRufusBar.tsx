@@ -6,9 +6,11 @@
 //
 // Geometry/theme per the Theming spec (design-tokens-context.md):
 //   14px side margins (NOT edge-to-edge), 24px radius, orb on the
-//   right, placeholder "Ask Rufus anything...".
+//   right, placeholder "Ask about your portfolio...".
 //   Light: white fill + `0 6px 18px rgba(16,24,43,0.15)`.
 //   Dark:  #0F1626 fill + lower-opacity shadow.
+//   Prominence: 54px tall, 1px ACCENT border (teal light / cyan dark —
+//   flat, no glow, no gradient). Same position/shadow as before.
 
 'use client';
 
@@ -23,10 +25,10 @@ export function AskRufusBar() {
         type="button"
         className="ask-rufus-bar"
         onClick={() => setChatOpen(true)}
-        aria-label="Ask Rufus anything"
+        aria-label="Ask about your portfolio"
         data-testid="ask-rufus-bar"
       >
-        <span className="ask-rufus-placeholder">Ask Rufus anything...</span>
+        <span className="ask-rufus-placeholder">Ask about your portfolio...</span>
         <span className="ask-rufus-orb" aria-hidden="true" />
       </button>
       <style>{`
@@ -36,29 +38,30 @@ export function AskRufusBar() {
           right: 14px;
           bottom: 78px; /* clears 64px BottomNav + 14px gap */
           z-index: 45;
-          height: 48px;
-          border-radius: 24px;
+          height: 54px;
+          border-radius: 27px;
           background: var(--v-ask-bg);
-          border: 0.5px solid var(--v-ask-border);
+          border: 1px solid var(--v-accent);
           box-shadow: var(--v-ask-shadow);
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 0 10px 0 18px;
+          padding: 0 12px 0 20px;
           cursor: pointer;
           font-family: inherit;
           transition: border-color 0.15s ease, box-shadow 0.15s ease;
         }
-        .ask-rufus-bar:hover { border-color: var(--v-ask-hover); }
+        .ask-rufus-bar:hover { border-color: var(--v-accent); box-shadow: var(--v-ask-shadow), 0 0 0 3px var(--v-ask-hover-ring); }
         .ask-rufus-placeholder {
-          font-size: 14px;
+          font-size: 14.5px;
+          font-weight: 500;
           color: var(--v-ask-placeholder);
           letter-spacing: 0.1px;
           font-family: var(--font-sans, 'Inter', sans-serif);
         }
         .ask-rufus-orb {
-          width: 28px;
-          height: 28px;
+          width: 30px;
+          height: 30px;
           border-radius: 50%;
           flex-shrink: 0;
           background: var(--v-orb);

@@ -11,6 +11,9 @@
 //   3. Defense in depth: if a pointer drag moved more than 6px, the next
 //      click is swallowed at the capture phase (`onClickCapture`), so a
 //      drag that ends on top of a button cannot fire that button.
+//   4. Axis contract: `touch-action: pan-x pan-y` — a HORIZONTAL swipe
+//      navigates the deck, a VERTICAL swipe scrolls the page normally
+//      (vertical drags are never captured or intercepted here).
 //   (Verified by qa-agent/verify-insights.cjs scenario E — see qa-agent/VERIFICATION.md.)
 
 'use client';
@@ -199,7 +202,11 @@ export function HeroDeck({ cards, positions, isReadOnly, onDismiss, onOpenTeaser
           scroll-snap-type: x mandatory;
           scrollbar-width: none;
           -webkit-overflow-scrolling: touch;
-          touch-action: pan-x;
+          /* HORIZONTAL swipes navigate cards; a VERTICAL swipe that starts on
+             a card must fall through to normal page scroll. "pan-x" alone
+             swallowed vertical drags — so allow BOTH axes and let the browser
+             pick the dominant one (vertical chains up to the page scroller). */
+          touch-action: pan-x pan-y;
           padding: 4px 20px 2px;
           margin: 0 -20px;
         }

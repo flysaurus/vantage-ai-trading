@@ -6,6 +6,11 @@
 // the deck cards use). When nothing is active they fall back to an Ask
 // Rufus prompt. The other two are Ask-Rufus-only, and say so plainly —
 // no copy implying a feature that doesn't exist.
+//
+// EVERY tile shows the same "Ask Rufus →" link line (accent colour,
+// trailing arrow, no underline) so the four tiles read identically. The
+// extra `sub` line only appears when a tile really does deep-link into a
+// live alert — additive honesty, never a replacement for the link.
 // `data-branch` exposes which path was taken (trigger | ask) so it is
 // verifiable in screenshots/tests.
 
@@ -35,7 +40,7 @@ export function QuickLinks({ items }: Props) {
     {
       id: 'rebalance',
       title: 'Rebalance plan',
-      sub: drift ? 'Uses your active drift alert' : 'Ask Rufus',
+      sub: drift ? 'Uses your active drift alert' : '',
       branch: drift ? 'trigger' : 'ask',
       onClick: () => {
         if (drift) ask('rebalance');
@@ -45,7 +50,7 @@ export function QuickLinks({ items }: Props) {
     {
       id: 'risk',
       title: 'Risk reduction',
-      sub: concentration ? 'Uses your active concentration alert' : 'Ask Rufus',
+      sub: concentration ? 'Uses your active concentration alert' : '',
       branch: concentration ? 'trigger' : 'ask',
       onClick: () => {
         if (concentration) {
@@ -102,7 +107,16 @@ export function QuickLinks({ items }: Props) {
             }}
           >
             <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--v-text-primary)' }}>{l.title}</span>
-            <span style={{ fontSize: 11, color: 'var(--v-text-muted)' }}>{l.sub}</span>
+            {l.sub && <span style={{ fontSize: 11, color: 'var(--v-text-muted)' }}>{l.sub}</span>}
+            {/* Same "Ask Rufus" link treatment as the hero cards and the
+                Health card: accent colour, trailing arrow, no underline.
+                EVERY tile carries this line — including Risk reduction. */}
+            <span
+              data-testid={`quick-link-${l.id}-ask`}
+              style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--v-accent)', marginTop: 'auto' }}
+            >
+              Ask Rufus →
+            </span>
           </button>
         ))}
       </div>

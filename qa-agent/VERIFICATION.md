@@ -66,3 +66,54 @@ All network calls are route-mocked (canned accounts / broker / noticed / briefs)
   the app.
 - Mock portfolio has `dayChange=0` / `totalPnl=0`, so the balance section reads
   `Today $0.00 (+0.0%)` in the screenshots — mock data, not a rendering bug.
+
+---
+
+# PART 2b addendum — polish fixes (nine additive changes)
+
+Harness: `qa-agent/verify-insights-polish.cjs` (same route-mock mechanism as
+`verify-insights.cjs`; nothing touches production). Screenshots land in
+`/tmp/vantage-shots/insights-polish/`. **46/46 checks pass.** The original
+A–J suite still passes **65/65** unchanged, i.e. the polish work introduced no
+regressions.
+
+| Fix | Check | What is asserted |
+| --- | --- | --- |
+| 1 | P1a–P1h | Read-only Fidelity account: one badge, broker name `FIDELITY` (10.5px/800, primary text colour) stacked over `view only` (8.5px, muted), single amber tint behind both — light **and** dark |
+| 2 | P2a–P2e | DOM order masthead → balance → hero deck → Portfolio Health → quick-links; balance number still serif-italic |
+| 3 | P3a–P3f | `hero-stat` = Inter 800 / normal (not serif, not italic); `card-sentence`, `card-caption` sans; wordmark still Playfair italic |
+| 4 | P4a–P4c | Real CDP touch events: vertical swipe **on a card** scrolls the page (scrollTop 261 → 537) and does **not** change the active card; horizontal swipe still navigates (scrollLeft 0 → 247, index 0 → 1) |
+| 5 | P5a–P5c | All six "Ask Rufus" links: `text-decoration: none`, accent colour, trailing `→`. Deck cards use `--v-hero-accent` (#5FD8DE, dark-navy island), Health + quick-links use `--v-accent` (#0E8C99 light / #5FD8DE dark) |
+| 6 | P6a–P6b | `quick-link-risk-ask` renders `Ask Rufus →` **and** the tile still deep-links (`data-branch="trigger"`) |
+| 7 | P7a–P7f | Bar is 54px tall, `1px solid` accent border, shadow kept, placeholder `Ask about your portfolio...`, placeholder colour darkened (`#56606f` light / `#9aa6bc` dark) |
+| 8 | P7d | Placeholder copy appears on the bar; the expanded chat input's `PLACEHOLDERS` pool already led with the same string |
+
+## Fix-4 root cause (the gesture bug)
+
+`HeroDeck`'s `<style>` block declared `touch-action: pan-x` on `.hero-deck`.
+That does **not** mean "horizontal swipes are mine, everything else is yours" —
+it *forbids the browser from panning vertically at all* for any touch that
+starts inside the deck, so a vertical drag on a card was simply swallowed and
+the page never scrolled. Changed to `touch-action: pan-x pan-y`: the browser
+picks the dominant axis, and a vertical gesture chains out of the deck
+(`overflow-y: hidden`) to the nearest scrollable ancestor.
+
+## Fix-6 root cause (the missing link)
+
+Each quick-link tile rendered a single `sub` line whose value became
+`Uses your active concentration alert` on the trigger branch — so the
+"Ask Rufus" text never rendered for that tile. Every tile now always renders
+its own `quick-link-<id>-ask` line; the "uses your active alert" copy is
+additive honesty on the deep-link branch, never a replacement.
+
+## Interpretation notes
+
+- Two things the vision pass flagged are **expected, not defects**: the floating
+  Ask Rufus bar overlaps whatever content scrolled beneath it (it is a
+  `position: fixed` overlay), and the gap between the last card and the bottom
+  nav is `.content-area`'s 156px bottom padding, reserved so the floating bar
+  never covers tappable content.
+- The deck's "Ask Rufus" link is deliberately `--v-hero-accent` (#5FD8DE) rather
+  than `--v-accent`: hero cards are dark-navy islands in **both** themes, so the
+  light-theme teal would be unreadable there. Same treatment (accent + `→` + no
+  underline), surface-appropriate token.

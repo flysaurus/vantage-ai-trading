@@ -62,10 +62,10 @@ export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTole
         <span
           data-testid="health-score"
           style={{
-            fontFamily: 'var(--font-serif)',
-            fontStyle: 'italic',
             fontSize: 40,
+            fontWeight: 800,
             lineHeight: 1,
+            letterSpacing: '-0.02em',
             color: 'var(--v-text-primary)',
           }}
         >
@@ -155,11 +155,10 @@ export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTole
           fontWeight: 600,
           cursor: 'pointer',
           fontFamily: 'inherit',
-          textDecoration: 'underline',
-          textUnderlineOffset: 3,
+          textDecoration: 'none',
         }}
       >
-        Ask Rufus to explain
+        Ask Rufus to explain →
       </button>
     </section>
   );

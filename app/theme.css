@@ -64,9 +64,11 @@
   /* ask-rufus bar */
   --v-ask-bg: #ffffff;
   --v-ask-border: #e7eae4;
-  --v-ask-placeholder: #7c8aa0;
+  --v-ask-placeholder: #56606f;
   --v-ask-shadow: 0 6px 18px rgba(16, 24, 43, 0.15);
   --v-ask-hover: #e7eae4;
+  /* soft accent-tinted hover ring (no glow/gradient) */
+  --v-ask-hover-ring: rgba(14, 140, 153, 0.12);
 
   /* bottom nav */
   --v-nav-bg: #ffffff;
@@ -115,9 +117,10 @@
 
   --v-ask-bg: #0f1626;
   --v-ask-border: #141c2e;
-  --v-ask-placeholder: #5c6478;
+  --v-ask-placeholder: #9aa6bc;
   --v-ask-shadow: 0 10px 32px rgba(0, 0, 0, 0.38);
   --v-ask-hover: #2a3648;
+  --v-ask-hover-ring: rgba(95, 216, 222, 0.14);
 
   --v-nav-bg: #0a0f1e;
   --v-nav-border: #141c2e;

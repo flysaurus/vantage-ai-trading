@@ -209,10 +209,11 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
           data-testid="hero-stat"
           style={{
             position: 'relative',
-            fontFamily: 'var(--font-serif)',
-            fontStyle: 'italic',
-            fontSize: 38,
-            lineHeight: 1.05,
+            fontFamily: 'var(--font-sans, Inter, sans-serif)',
+            fontWeight: 800,
+            fontSize: 34,
+            lineHeight: 1.1,
+            letterSpacing: '-0.01em',
             color: 'var(--v-hero-text)',
           }}
         >
@@ -251,9 +252,9 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
             type="button"
             data-testid="card-secondary-link"
             onClick={(e) => { e.stopPropagation(); secondary.onClick(); }}
-            style={secondaryLinkStyle}
+            style={rufusLinkStyle}
           >
-            {secondary.label}
+            {secondary.label} →
           </button>
         )}
         <button
@@ -292,10 +293,10 @@ function TeaserBody({ teaser }: { teaser: { label: string; headline: string; bod
       <div
         data-testid="hero-stat"
         style={{
-          fontFamily: 'var(--font-serif)',
-          fontStyle: 'italic',
-          fontSize: 26,
-          lineHeight: 1.2,
+          fontFamily: 'var(--font-sans, Inter, sans-serif)',
+          fontWeight: 800,
+          fontSize: 19,
+          lineHeight: 1.3,
           color: 'var(--v-hero-text)',
           marginTop: 6,
           position: 'relative',
@@ -344,7 +345,11 @@ const primaryBtnStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-const secondaryLinkStyle: React.CSSProperties = {
+// Shared "Ask Rufus" link treatment (Insights screen): accent-coloured,
+// trailing arrow, NO underline. On a hero card the accent is the hero-island
+// token (dark navy island in BOTH themes → never theme-flip); the canvas
+// surfaces (health card, quick-links) use --v-accent.
+const rufusLinkStyle: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
   color: 'var(--v-hero-accent)',
@@ -353,8 +358,7 @@ const secondaryLinkStyle: React.CSSProperties = {
   fontWeight: 600,
   cursor: 'pointer',
   fontFamily: 'inherit',
-  textDecoration: 'underline',
-  textUnderlineOffset: 3,
+  textDecoration: 'none',
   whiteSpace: 'nowrap',
 };
 
