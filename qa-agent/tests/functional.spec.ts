@@ -486,7 +486,7 @@ test.describe('AI Tab — Functional', () => {
     expect(isGeneric).toBe(false);
   });
 
-  test('message counter shows AI analyses', async ({ page }) => {
+  test('no persistent message counter — limits surface only near the cap', async ({ page }) => {
     test.slow();
     // The chat overlay header is no longer labelled "Ask Vantage AI"; wait on
     // the composer, which is present exactly when the overlay is mounted.
@@ -500,10 +500,51 @@ test.describe('AI Tab — Functional', () => {
 
     const bodyText = await page.evaluate(() => document.body.innerText);
 
-    const hasCounter = bodyText.includes('analyses') || bodyText.includes('remaining') || bodyText.includes('messages');
+    // Contract (chat overhaul): the old always-on "N messages left" counter was
+    // removed on purpose. Limits are still tracked server-side and are surfaced
+    // ONLY when the account is genuinely close to its daily cap — the last 5
+    // messages, or 10% of the daily limit, whichever is smaller.
+    const counterText = /\d+\s*(analyses|messages)\s*(left|remaining)/i.test(bodyText);
+    const warned = (await page.locator('[data-testid="chat-low-limit-warning"]').count()) > 0;
 
-    console.log('Message counter visible:', hasCounter);
-    expect(hasCounter).toBe(true);
+    console.log('Low-limit warning shown:', warned, '| stray counter text:', counterText);
+
+    // Whatever the quota, a bare persistent counter must never render.
+    expect(counterText && !warned).toBe(false);
+
+    // Sanity-check the warning logic against the account's real remaining quota.
+    // "Close to the cap" = last 5 messages OR 10% of the daily limit, whichever
+    // is smaller. Fetch both numbers and derive the expectation exactly.
+    const usage = await page.evaluate(async () => {
+      const d = new Date();
+      const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const grab = async (p: string) => {
+        try {
+          const r = await fetch(`${p}?localDate=${encodeURIComponent(localDate)}`);
+          return r.ok ? await r.json() : null;
+        } catch {
+          return null;
+        }
+      };
+      const remaining = await grab('/api/usage/remaining');
+      const stats = await grab('/api/usage/stats');
+      return {
+        chatRemaining: remaining && typeof remaining.chatRemaining === 'number' ? remaining.chatRemaining : null,
+        dailyLimit: stats?.chat?.daily?.limit ?? null,
+      };
+    });
+
+    console.log('Usage:', usage, '| warning shown:', warned);
+
+    if (usage.chatRemaining === null || usage.dailyLimit === null) {
+      // Unauthenticated in this environment — cannot assert the threshold.
+      console.log('⚠️ usage endpoints unavailable; asserting only the counter removal');
+    } else {
+      const threshold = Math.min(5, usage.dailyLimit * 0.1);
+      const shouldWarn = usage.chatRemaining > 0 && usage.chatRemaining <= threshold;
+      console.log(`Remaining ${usage.chatRemaining}/${usage.dailyLimit} → threshold ${threshold}, expect warning: ${shouldWarn}`);
+      expect(warned).toBe(shouldWarn);
+    }
   });
 });
 

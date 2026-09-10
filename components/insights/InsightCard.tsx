@@ -32,61 +32,106 @@ function heroSemantic(variant: string): string {
 
 /* ── Real-holdings donut (same computation as the concentration
       trigger: position market values as portfolio weights). ── */
-export function HoldingsDonut({ positions }: { positions: Position[] }) {
-  const data = useMemo(() => {
-    const total = positions.reduce((s, p) => s + (p.marketValue || 0), 0);
-    if (total <= 0) return [];
-    return [...positions]
-      .sort((a, b) => (b.marketValue || 0) - (a.marketValue || 0))
-      .map((p) => ({
-        symbol: p.symbol,
-        pct: ((p.marketValue || 0) / total) * 100,
-      }));
-  }, [positions]);
 
-  if (data.length === 0) return null;
+interface DonutSlice { symbol: string; pct: number; color: string }
 
-  const top = data.slice(0, 3);
+const DONUT_COLORS = ['var(--v-hero-warn)', 'var(--v-hero-accent)', '#8fa0c4'];
+const DONUT_OTHER_COLOR = 'rgba(255,255,255,0.28)';
+
+/** Rank real positions by market value and bucket everything past `topN`
+ *  into a single "Other" slice. Unchanged weighting math — the same
+ *  marketValue / total the concentration trigger itself uses. */
+function donutSlices(positions: Position[], topN = 3): DonutSlice[] {
+  const total = positions.reduce((s, p) => s + (p.marketValue || 0), 0);
+  if (total <= 0) return [];
+  const ranked = [...positions]
+    .sort((a, b) => (b.marketValue || 0) - (a.marketValue || 0))
+    .map((p) => ({ symbol: p.symbol, pct: ((p.marketValue || 0) / total) * 100 }));
+  const top = ranked.slice(0, Math.max(1, topN));
   const restPct = Math.max(0, 100 - top.reduce((s, d) => s + d.pct, 0));
-  const slices = [
-    ...top.map((d, i) => ({ ...d, color: ['var(--v-hero-warn)', 'var(--v-hero-accent)', '#8fa0c4'][i] })),
-    ...(restPct > 0.5 ? [{ symbol: 'Other', pct: restPct, color: 'rgba(255,255,255,0.28)' }] : []),
-  ];
+  const slices: DonutSlice[] = top.map((d, i) => ({ ...d, color: DONUT_COLORS[i % DONUT_COLORS.length] }));
+  if (restPct > 0.5) slices.push({ symbol: 'Other', pct: restPct, color: DONUT_OTHER_COLOR });
+  return slices;
+}
 
-  const R = 32;
+/** The ring itself — identical geometry in every donut variant. */
+function DonutRing({ slices, size, stroke }: { slices: DonutSlice[]; size: number; stroke: number }) {
+  const box = 80;
+  const R = (box - stroke) / 2 - 1;
   const C = 2 * Math.PI * R;
   let offset = 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${box} ${box}`} style={{ flexShrink: 0 }} aria-hidden="true">
+      <g transform={`rotate(-90 ${box / 2} ${box / 2})`}>
+        {slices.map((s) => {
+          const len = (s.pct / 100) * C;
+          const el = (
+            <circle
+              key={s.symbol}
+              cx={box / 2}
+              cy={box / 2}
+              r={R}
+              fill="none"
+              stroke={s.color}
+              strokeWidth={stroke}
+              strokeDasharray={`${len} ${C - len}`}
+              strokeDashoffset={-offset}
+            />
+          );
+          offset += len;
+          return el;
+        })}
+      </g>
+    </svg>
+  );
+}
 
+/** Wide variant: ring on the left, full legend beside it.
+ *  Used by non-concentration cards that show a donut. */
+export function HoldingsDonut({ positions }: { positions: Position[] }) {
+  const slices = useMemo(() => donutSlices(positions, 3), [positions]);
+  if (slices.length === 0) return null;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14 }}>
-      <svg width="80" height="80" viewBox="0 0 80 80" style={{ flexShrink: 0 }} aria-hidden="true">
-        <g transform="rotate(-90 40 40)">
-          {slices.map((s) => {
-            const len = (s.pct / 100) * C;
-            const el = (
-              <circle
-                key={s.symbol}
-                cx="40"
-                cy="40"
-                r={R}
-                fill="none"
-                stroke={s.color}
-                strokeWidth="10"
-                strokeDasharray={`${len} ${C - len}`}
-                strokeDashoffset={-offset}
-              />
-            );
-            offset += len;
-            return el;
-          })}
-        </g>
-      </svg>
+      <DonutRing slices={slices} size={80} stroke={10} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
         {slices.slice(0, 4).map((d) => (
           <div key={d.symbol} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--v-hero-text-2)' }}>
             <span style={{ width: 8, height: 8, borderRadius: 2, background: d.color, flexShrink: 0 }} />
             <span style={{ fontWeight: 700, color: 'var(--v-hero-text)', whiteSpace: 'nowrap' }}>{d.symbol}</span>
             <span style={{ color: 'var(--v-hero-text-3)' }}>{d.pct.toFixed(0)}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Narrow variant for the two-column concentration card: compact ring with a
+ *  2–3 line legend stacked DIRECTLY BENEATH it (top holdings + "Other").
+ *  Never lists every position. */
+export function HoldingsDonutColumn({ positions }: { positions: Position[] }) {
+  const slices = useMemo(() => donutSlices(positions, 2), [positions]);
+  if (slices.length === 0) return null;
+  return (
+    <div data-testid="donut-column" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <DonutRing slices={slices} size={72} stroke={11} />
+      </div>
+      <div data-testid="donut-legend" style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {slices.slice(0, 3).map((d) => (
+          <div
+            key={d.symbol}
+            data-testid="donut-legend-row"
+            style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, lineHeight: 1.2 }}
+          >
+            <span style={{ width: 7, height: 7, borderRadius: 2, background: d.color, flexShrink: 0 }} />
+            <span
+              style={{ fontWeight: 700, color: 'var(--v-hero-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              {d.symbol}
+            </span>
+            <span style={{ color: 'var(--v-hero-text-3)', marginLeft: 'auto' }}>{d.pct.toFixed(0)}%</span>
           </div>
         ))}
       </div>
@@ -173,8 +218,70 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
     item.triggerType === 'concentration_single' ||
     item.triggerType === 'concentration_top3';
 
+  /* ── Two-column treatment applies to the CONCENTRATION-RISK card ONLY.
+        Other hero card types (event-impact, bounce-back, idle-cash) keep
+        their existing single-column layouts. ── */
+  const isConcentration =
+    item.triggerType === 'concentration_single' || item.triggerType === 'concentration_top3';
+
   const primary = buildPrimaryAction({ action, item, isReadOnly, setPendingPrompt, setChatOpen, setFocusPosition, setTab, positions });
   const secondary = buildSecondaryAction({ item, setPendingPrompt, setChatOpen });
+
+  /* Shared pieces — identical in both layouts, so the concentration split
+     never duplicates (or diverges from) the standard card's content. */
+  const categoryEl = (
+    <div style={{ ...categoryStyle, color: heroSemantic(item.variant) }}>
+      {humanizeTrigger(item.triggerType)}
+    </div>
+  );
+
+  const statEl = (fontSize: number) => (
+    <div style={{ position: 'relative', marginTop: 6 }}>
+      <div
+        aria-hidden="true"
+        data-testid="hero-stat-glow"
+        style={{
+          position: 'absolute',
+          left: -18, top: -20, right: -10, bottom: -16,
+          background: 'radial-gradient(ellipse 55% 50% at 24% 42%, var(--v-glow) 0%, transparent 72%)',
+          filter: 'blur(8px)',
+          pointerEvents: 'none',
+        }}
+      />
+      <div
+        data-testid="hero-stat"
+        style={{
+          position: 'relative',
+          fontFamily: 'var(--font-sans, Inter, sans-serif)',
+          fontWeight: 800,
+          fontSize,
+          lineHeight: 1.1,
+          letterSpacing: '-0.01em',
+          color: 'var(--v-hero-text)',
+        }}
+      >
+        {hero}
+      </div>
+    </div>
+  );
+
+  const sentenceEl = sentence ? (
+    <p
+      data-testid="card-sentence"
+      style={{ fontSize: 13.5, lineHeight: 1.55, color: 'var(--v-hero-text-2)', marginTop: 10, overflowWrap: 'anywhere' }}
+    >
+      {sentence}
+    </p>
+  ) : null;
+
+  const captionEl = caption ? (
+    <div
+      data-testid="card-caption"
+      style={{ fontSize: 11, lineHeight: 1.45, color: 'var(--v-hero-text-3)', marginTop: 8, overflowWrap: 'anywhere' }}
+    >
+      {caption}
+    </div>
+  ) : null;
 
   return (
     <article
@@ -187,53 +294,40 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
     >
       <CardHeader />
 
-      {/* category label */}
-      <div style={{ ...categoryStyle, color: heroSemantic(item.variant) }}>
-        {humanizeTrigger(item.triggerType)}
-      </div>
-
-      {/* hero stat + the one approved glow exception */}
-      <div style={{ position: 'relative', marginTop: 6 }}>
+      {isConcentration ? (
+        /* ── CONCENTRATION CARD — two columns ──
+           RUFUS NOTICED + orb stay full-width above (CardHeader); the action
+           row stays full-width below. Left: label → stat → sentence → sub-line.
+           Right (fixed ~108px): donut + compact 2–3 line legend beneath it. */
         <div
-          aria-hidden="true"
-          data-testid="hero-stat-glow"
-          style={{
-            position: 'absolute',
-            left: -18, top: -20, right: -10, bottom: -16,
-            background: 'radial-gradient(ellipse 55% 50% at 24% 42%, var(--v-glow) 0%, transparent 72%)',
-            filter: 'blur(8px)',
-            pointerEvents: 'none',
-          }}
-        />
-        <div
-          data-testid="hero-stat"
-          style={{
-            position: 'relative',
-            fontFamily: 'var(--font-sans, Inter, sans-serif)',
-            fontWeight: 800,
-            fontSize: 34,
-            lineHeight: 1.1,
-            letterSpacing: '-0.01em',
-            color: 'var(--v-hero-text)',
-          }}
+          data-testid="concentration-two-col"
+          style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginTop: 12, minWidth: 0 }}
         >
-          {hero}
+          <div data-testid="card-left-col" style={{ flex: '1.2 1 0', minWidth: 0 }}>
+            {categoryEl}
+            {statEl(30)}
+            {sentenceEl}
+            {captionEl}
+          </div>
+          <div data-testid="card-right-col" style={{ flex: '0 0 108px', width: 108, minWidth: 0 }}>
+            {showDonut && <HoldingsDonutColumn positions={positions} />}
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          {/* category label */}
+          {categoryEl}
 
-      {sentence && (
-        <p data-testid="card-sentence" style={{ fontSize: 13.5, lineHeight: 1.55, color: 'var(--v-hero-text-2)', marginTop: 10 }}>
-          {sentence}
-        </p>
-      )}
-      {caption && (
-        <div data-testid="card-caption" style={{ fontSize: 11, color: 'var(--v-hero-text-3)', marginTop: 8 }}>
-          {caption}
-        </div>
-      )}
+          {/* hero stat + the one approved glow exception */}
+          {statEl(34)}
 
-      {showDonut && <HoldingsDonut positions={positions} />}
-      {item.triggerType === 'bounce_back' && <BounceChart item={item} />}
+          {sentenceEl}
+          {captionEl}
+
+          {showDonut && <HoldingsDonut positions={positions} />}
+          {item.triggerType === 'bounce_back' && <BounceChart item={item} />}
+        </>
+      )}
 
       {/* action row — explicit taps only; swipe never reaches these */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16, flexWrap: 'wrap' }}>

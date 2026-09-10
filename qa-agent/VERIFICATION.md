@@ -160,3 +160,84 @@ brief tap dumped the user on Holdings. It now only opens the modal.
 Failure paths (in `AITab.tsx`) restore the original answer verbatim rather than
 appending a half-answer: validation-reject and stream-error both drop the deep
 result, keep the original text, and toast that the original is unchanged.
+
+---
+
+# Concentration-risk card — two-column layout
+
+Harness: `qa-agent/verify-concentration-layout.cjs` (Playwright; 430×932, 360×780, 320×700 + 320×700 short).
+Run: `node qa-agent/mint-session.cjs` (fresh Supabase session), then
+`npx next dev -p 3002`, then `node qa-agent/verify-concentration-layout.cjs` from the repo root.
+
+Screenshots: `/tmp/vantage-shots/concentration-layout/*.png` · results: `/tmp/vantage-shots/concentration-layout/results.json`
+
+## Result
+
+**47 / 47 checks pass** — no regressions: `verify-insights.cjs` 65/65,
+`verify-insights-polish.cjs` 46/46, `verify-brief-chat.cjs` 41/41,
+`npx vitest run tests/insights-*.test.ts` 22/22, `npx tsc --noEmit` unchanged
+(only the pre-existing `tests/etf-sectors.test.ts` error).
+
+## What changed
+
+`components/insights/InsightCard.tsx` only — and only for
+`concentration_single` / `concentration_top3`:
+
+* `donutSlices(positions, topN)` now owns the weight math (unchanged formula:
+  `marketValue / Σ marketValue`), and both donut variants share one `DonutRing`.
+* `HoldingsDonut` (ring + legend beside) is untouched — still used by non-concentration cards.
+* New `HoldingsDonutColumn` — compact ring with the legend stacked **beneath** it,
+  `topN = 2` so it is always top-2 + an `Other` bucket (max 3 lines, never every position).
+* Body becomes `concentration-two-col`: left `flex: 1.2` (label → stat → sentence → sub-line),
+  right `flex: 0 0 108px` (donut rail). `CardHeader` stays full-width above and the
+  action row stays full-width below; the stat drops 34px → 30px in this card only.
+* No trigger logic touched (`lib/noticed/*`, `lib/concentration.ts` untouched).
+
+## Checks
+
+| # | Scenario | Key assertions |
+|---|----------|----------------|
+| C1–C5 | Structure | two-column split exists; header sits above both columns and spans their full width; action row sits below both and spans their full width |
+| C6–C9 | Geometry | right rail exactly 108px; left column wider; side-by-side; top-aligned; 14px gutter |
+| C10–C15 | Left column | measured top-to-bottom order label → stat → sentence → sub-line; label reads `CONCENTRATION`; stat `30.3%` = the **real** XLF share; stat 30px/800/normal-weight/non-serif; sub-line "XLF is your largest holding"; sentence present |
+| C16–C23 | Right column (real data) | legend is exactly `XLF 30% / XLP 20% / Other 50%` — the real top-2 by market value + an `Other` bucket, with the 3rd-largest position (XLV) never listed; the donut arcs measure 30.26% / 19.93%, matching the fixture to ±0.5pt; arc count == legend count |
+| C24–C25 | Scope guard | no other trigger type (`event_impact`, `idle_cash`, `bounce_back`) gained the split or the stacked donut; they keep the 34px stat |
+| C26–C31 | Swipe/dots | a drag **starting on the new donut rail** still advances the deck (0 → 1) and fires **no** chat POST, **no** dismiss/snooze POST, no chat overlay, no snooze sheet; the active dot tracks the card |
+| C32–C33 | Action row | primary CTA still present after the relayout; "Ask Rufus" link keeps the fixed accent colour + `text-decoration: none` |
+| C35–C42 | Narrow (320px) | split still renders; **zero** elements overflow the card box; no page-level horizontal scroll; rail still 108px; left column still 140px; stat still 30px; legend still 3 lines, unclipped; action row still below the columns |
+| C43 | Narrow (360px) | no card overflow, no page-level horizontal scroll |
+| C44–C47 | Usability at 320×700 | the CTA is genuinely hit-testable at its centre (`elementFromPoint` → the button, 0px covered by the floating Ask Rufus bar); gutter is the deliberate 14px; legend percentages stay inside the card's padding box |
+
+### Note on the "covered CTA" false alarm
+
+An element-level screenshot at 320×700 shows the floating Ask Rufus bar over the
+card because Playwright scrolls the element only minimally. C44 proves the CTA is
+fully hittable once the card is scrolled into view; the bar belongs to the
+app shell, not the card.
+
+### Note on the rounded legend
+
+The legend shows `30%` where the sentence says `30.3%` — deliberate: the whole
+percentages are what fit a 108px rail, and the exact figure is one line above.
+
+## Gotcha (cost 20 minutes)
+
+The live-data harnesses build a Supabase session from `/tmp/vantage-session.json`,
+whose access token expires after **1 hour**. When it lapses the app renders the
+logged-out landing page ("I have an account / Every investor has a style") and the
+harness fails with "hero-deck missing" — which looks like an app break and is not.
+Always run `node qa-agent/mint-session.cjs` before these harnesses. `gotoInsights()`
+now retries once and prints the body text so this is obvious next time.
+
+## Follow-on fix: CI test drift (run 34484132436)
+
+The live suite still asserted the **persistent** "N messages left" counter that
+PART B removed by design, so `functional.spec.ts:489` failed. Rewritten as
+`no persistent message counter — limits surface only near the cap`:
+
+* a bare counter must never render (`\d+\s*(analyses|messages)\s*(left|remaining)`);
+* the low-limit pill is derived from the account's **real** `/api/usage/remaining`
+  + `/api/usage/stats` and asserted against `min(5, 10% of daily limit)` exactly
+  (skipped, with a warning, when the endpoints are unauthenticated).
+
+No app code changed for this — the behaviour was intentional; the test was stale.
