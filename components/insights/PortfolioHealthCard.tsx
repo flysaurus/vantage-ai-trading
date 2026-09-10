@@ -15,6 +15,10 @@ interface Props {
   cash: number;
   totalPnlPercent: number;
   riskTolerance?: string | null;
+  /** Account data has not resolved yet — render a skeleton rather than a
+   *  score computed from an EMPTY portfolio (which would read as a real
+   *  "0 / Needs attention" verdict). */
+  pending?: boolean;
 }
 
 const SUB_LABELS: { key: 'diversification' | 'riskBalance' | 'returns'; label: string }[] = [
@@ -23,7 +27,7 @@ const SUB_LABELS: { key: 'diversification' | 'riskBalance' | 'returns'; label: s
   { key: 'returns', label: 'Returns' },
 ];
 
-export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTolerance }: Props) {
+export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTolerance, pending = false }: Props) {
   const { setChatOpen, setPendingPrompt } = useTabStore();
 
   const health = useMemo(
@@ -44,7 +48,8 @@ export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTole
   return (
     <section
       data-testid="portfolio-health-card"
-      data-health-score={health.score}
+      data-health-score={pending ? undefined : health.score}
+      data-pending={pending ? 'true' : undefined}
       style={{
         margin: '24px 20px 0',
         background: 'var(--v-card)',
@@ -57,8 +62,39 @@ export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTole
         PORTFOLIO HEALTH
       </div>
 
-      {/* deterministic score */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 10 }}>
+      {pending ? (
+        // Nothing to score yet — shimmer, never a number.
+        <>
+          <span
+            data-testid="health-skeleton"
+            className="v-skel"
+            style={{ width: 96, height: 36, borderRadius: 8, marginTop: 12 }}
+            aria-hidden="true"
+          />
+          <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {SUB_LABELS.map(({ key, label }) => (
+              <div key={key}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontSize: 12.5, color: 'var(--v-text-secondary)' }}>{label}</span>
+                  <span
+                    className="v-skel"
+                    style={{ width: 26, height: 12, borderRadius: 6 }}
+                    aria-hidden="true"
+                  />
+                </div>
+                <span
+                  className="v-skel"
+                  style={{ height: 4, borderRadius: 999, marginTop: 6 }}
+                  aria-hidden="true"
+                />
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          {/* deterministic score */}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 10 }}>
         <span
           data-testid="health-score"
           style={{
@@ -160,6 +196,8 @@ export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTole
       >
         Ask Rufus to explain →
       </button>
+        </>
+      )}
     </section>
   );
 }

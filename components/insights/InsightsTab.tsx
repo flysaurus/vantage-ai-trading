@@ -188,6 +188,27 @@ export function InsightsTab() {
   const { dollars, cents } = splitCents(accountData.equity);
   const riskTolerance = (user as any)?.riskTolerance ?? (user as any)?.risk_tolerance ?? null;
 
+  // ── Data-readiness gate ─────────────────────────────────────
+  // `displayAccount` is null until the SELECTED source has actually resolved.
+  // usePortfolio() deliberately clears the account and sets `loading` the
+  // moment a broker connection appears (the "bridge gap"), so that a live
+  // account never shows stale demo numbers. Rendering the `equity: 0`
+  // placeholder as though it were data produced a visible "$0.00" flash —
+  // a WRONG number, which is worse than showing nothing. So: while the
+  // account (and, for a live source, `isConnected`) has not resolved we
+  // render a SKELETON, exactly like PortfolioTab's "Loading portfolio data…"
+  // guard — the same data path, just with the missing loading state added.
+  //
+  //   ready       → real numbers
+  //   pending     → skeleton (broker bridge gap / still connecting)
+  //   unavailable → never resolved and nothing in flight (e.g. broker error)
+  const sourceReady = !!displayAccount && (isShowingDemo || isConnected);
+  const accountState: 'ready' | 'pending' | 'unavailable' = sourceReady
+    ? 'ready'
+    : loading || !isConnected || isShowingDemo
+      ? 'pending'
+      : 'unavailable';
+
   return (
     <div style={{ paddingBottom: 24, background: 'var(--v-canvas)', minHeight: '100%' }}>
       {/* ── 1. Masthead ── */}
@@ -305,31 +326,59 @@ export function InsightsTab() {
             YOUR PORTFOLIO
           </div>
           <div data-testid="balance-section" style={{ marginTop: 12 }}>
-            <div>
+            {accountState === 'ready' ? (
+              <div>
+                <span
+                  data-testid="balance-amount"
+                  style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 32, color: 'var(--v-text-primary)', lineHeight: 1 }}
+                >
+                  ${dollars}
+                </span>
+                <span style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 20, color: 'var(--v-text-muted)' }}>
+                  .{cents}
+                </span>
+              </div>
+            ) : (
+              // No number until we actually have one. A shimmer placeholder keeps
+              // the card's height (no layout jump) without implying a value.
               <span
-                data-testid="balance-amount"
-                style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 32, color: 'var(--v-text-primary)', lineHeight: 1 }}
-              >
-                ${dollars}
-              </span>
-              <span style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 20, color: 'var(--v-text-muted)' }}>
-                .{cents}
-              </span>
-            </div>
+                data-testid={accountState === 'pending' ? 'balance-skeleton' : 'balance-unavailable'}
+                className={accountState === 'pending' ? 'v-skel' : undefined}
+                style={{ width: 172, height: 30, borderRadius: 8 }}
+                aria-hidden="true"
+              />
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 12, color: 'var(--v-text-muted)' }}>
-                Today{' '}
-                <span style={{ color: accountData.dayPnl >= 0 ? 'var(--v-gain)' : 'var(--v-loss)', fontWeight: 600 }}>
-                  {fmt(accountData.dayPnl)} ({pctStr(accountData.dayPnlPercent)})
+              {accountState === 'ready' ? (
+                <>
+                  <span style={{ fontSize: 12, color: 'var(--v-text-muted)' }}>
+                    Today{' '}
+                    <span style={{ color: accountData.dayPnl >= 0 ? 'var(--v-gain)' : 'var(--v-loss)', fontWeight: 600 }}>
+                      {fmt(accountData.dayPnl)} ({pctStr(accountData.dayPnlPercent)})
+                    </span>
+                  </span>
+                  <span style={{ color: 'var(--v-text-faint)', fontSize: 12 }}>·</span>
+                </>
+              ) : accountState === 'pending' ? (
+                <span
+                  data-testid="balance-skeleton-meta"
+                  className="v-skel"
+                  style={{ width: 148, height: 12, borderRadius: 6 }}
+                  aria-hidden="true"
+                />
+              ) : (
+                <span data-testid="balance-unavailable-meta" style={{ fontSize: 12, color: 'var(--v-text-muted)' }}>
+                  Couldn’t load this account — reconnect or refresh.
                 </span>
-              </span>
-              <span style={{ color: 'var(--v-text-faint)', fontSize: 12 }}>·</span>
-              <span style={{ fontSize: 12, color: 'var(--v-text-muted)' }}>
-                Total{' '}
-                <span style={{ color: accountData.totalPnl >= 0 ? 'var(--v-gain)' : 'var(--v-loss)', fontWeight: 600 }}>
-                  {fmt(accountData.totalPnl)} ({pctStr(accountData.totalPnlPercent)})
+              )}
+              {accountState === 'ready' && (
+                <span style={{ fontSize: 12, color: 'var(--v-text-muted)' }}>
+                  Total{' '}
+                  <span style={{ color: accountData.totalPnl >= 0 ? 'var(--v-gain)' : 'var(--v-loss)', fontWeight: 600 }}>
+                    {fmt(accountData.totalPnl)} ({pctStr(accountData.totalPnlPercent)})
+                  </span>
                 </span>
-              </span>
+              )}
             </div>
             <button
               type="button"
@@ -398,12 +447,16 @@ export function InsightsTab() {
         )}
       </div>
 
-      {/* ── 5. Portfolio Health ── */}
+      {/* ── 5. Portfolio Health ──
+          Gated on the same readiness flag: with no holdings yet the scorer
+          returns 0 / "Needs attention", which would flash a wrong verdict for
+          exactly the same reason the balance used to flash $0.00. */}
       <PortfolioHealthCard
         positions={positions}
         cash={accountData.cash || 0}
         totalPnlPercent={accountData.totalPnlPercent || 0}
         riskTolerance={riskTolerance}
+        pending={accountState !== 'ready'}
       />
 
       {/* ── 6. Quick-links 2×2 ── */}

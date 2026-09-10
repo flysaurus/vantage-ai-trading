@@ -23,6 +23,9 @@
   --v-card-border: #e7eae4;
   --v-rule: #e7eae4;
   --v-panel: #ffffff;
+  /* loading skeleton (used INSTEAD of printing a number we don't have yet) */
+  --v-skel-a: #ecefe9;
+  --v-skel-b: #f7f9f5;
 
   /* Rufus hero cards — dark-navy "islands" in BOTH themes */
   --v-hero-card: #10182b;
@@ -85,6 +88,9 @@
   --v-canvas: #000814;
   --v-card: #0a0f1e;
   --v-card-border: #141c2e;
+  /* loading skeleton */
+  --v-skel-a: #1b233c;
+  --v-skel-b: #263051;
   --v-rule: #141c2e;
   --v-panel: #0a0f1e;
 
@@ -158,4 +164,28 @@
 }
 [data-theme='dark'] body:has(.app-shell[data-active-tab='insights']) {
   background: var(--v-canvas);
+}
+
+/* ── Loading skeleton ────────────────────────────────────────
+   Used on Insights while the account is still resolving. The rule this
+   encodes: NEVER print a placeholder number (that reads as real data —
+   a $0.00 balance is a wrong number, not a loading state). */
+.v-skel {
+  display: block;
+  border-radius: 8px;
+  background-image: linear-gradient(
+    90deg,
+    var(--v-skel-a) 25%,
+    var(--v-skel-b) 37%,
+    var(--v-skel-a) 63%
+  );
+  background-size: 400% 100%;
+  animation: v-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes v-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .v-skel { animation: none; }
 }

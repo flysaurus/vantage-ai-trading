@@ -387,3 +387,116 @@ screenshot, not missing.
   a sibling above it — the source of the legend/ring misalignment.
 * Element screenshots under `/tmp` are rejected by the image tool; copy to
   `/root/.openclaw/workspace/tmp-shots/…` first.
+
+---
+
+# Bug fix: "$0.00 flash" on the Insights balance card
+
+**Reported:** the "YOUR PORTFOLIO" balance on Insights renders `$0.00` on
+initial load and populates a few seconds later — the first thing a user sees on
+app open is a **wrong number**.
+
+## Root cause (diagnosed before any change)
+
+**It is NOT a duplicate fetch.** The Insights balance reads the *same* account
+object the rest of the app reads:
+
+| | InsightsTab | PortfolioTab (Holdings — the proven path) |
+|---|---|---|
+| account source | `usePortfolio().brokerAccount` / `useLivePortfolio().liveAccount` | **identical** |
+| `displayAccount = brokerAccount \|\| liveAccount` | ✅ same expression | ✅ same expression |
+| `isBrokerExpected` / `isShowingDemo` branch | same | same |
+| endpoint | `/api/broker/snaptrade/account` | **same single call** |
+| loading guard | **NONE** | `if (loading) → "Loading portfolio data…"` spinner |
+| fallback when null | `{ equity: 0, cash: 0, … }` **rendered as real data** | same object, but never reached while loading |
+
+So the defect is the **missing loading gate**, not a parallel implementation.
+Chain of evidence:
+
+1. `hooks/usePortfolio.ts` deliberately **clears the account and sets
+   `loading = true`** the moment a broker connection appears ("bridge gap"), so a
+   live account can never display stale demo numbers. Console proof from the
+   cold-start capture:
+   `[usePortfolio] isConnected → true — clearing stale account, setting loading`
+   followed by `[usePortfolio] refresh started — calling broker.getAccount()`.
+2. During that window `displayAccount === null`, so `InsightsTab` fell through to
+   its `equity: 0` placeholder and used `splitCents(0)` → literal `"$0.00"`,
+   plus `Today $0.00` / `Total $0.00`.
+3. `PortfolioTab` protects against exactly this with its `loading` spinner —
+   captured on the same cold start: `spinner=true` at +8.0s.
+4. Measured pre-fix window: **2 440 ms of user-visible `$0.00`** on a cold start
+   with a 2.5 s mocked broker latency (dev-server compile inflates the absolute
+   timings; the zero-window itself is the broker round-trip).
+5. Same class of defect on the sibling card: with no holdings yet the
+   deterministic scorer returns `0 / "Needs attention"`, so **Portfolio Health
+   flashed a wrong verdict at the same moment**.
+
+## Fix
+
+* `components/insights/InsightsTab.tsx` — one readiness flag drives both cards:
+  `sourceReady = !!displayAccount && (isShowingDemo || isConnected)`;
+  → `ready` | `pending` | `unavailable`.
+  * `ready` → real numbers (unchanged markup).
+  * `pending` → **shimmer skeleton**, no digits at all. `balance-amount` does not
+    exist in the DOM, so nothing can mis-read as `$0.00`.
+  * `unavailable` → `—` + "Couldn't load this account — reconnect or refresh."
+    (never a fabricated 0).
+* `components/insights/PortfolioHealthCard.tsx` — new `pending` prop; while
+  pending it keeps its frame/testid but exposes **no** `data-health-score` and
+  no score/sub-score nodes, just shimmers.
+* `app/theme.css` — additive `--v-skel-a/--v-skel-b` tokens (light + dark) and a
+  `.v-skel` shimmer utility (`v-shimmer` keyframes, `prefers-reduced-motion`
+  honoured).
+
+Rule encoded: **never print a placeholder number.** A `$0.00` balance is a wrong
+number, not a loading state.
+
+## Evidence — `qa-agent/verify-balance-loading.cjs` → **17/17, exit 0**
+
+Scenario P (account endpoint hung → pending state):
+
+* P1 balance card renders · P2 shimmer present · P3 `animationName=v-shimmer`,
+  `linear-gradient(90deg, rgb(236,239,233)…)`
+* P4 **no `$` anywhere in the card** — text is exactly
+  `"YOUR PORTFOLIO | See Holdings →"`
+* P5 `balance-amount` = `null` (node absent) · P6 health `data-pending="true"`
+* P7 `data-health-score` = `null` · P8 score/sub-score nodes absent
+
+Scenario R (cold start, 2 500 ms broker latency), sampled every 50 ms:
+
+```
++  8072ms  amount=null        shimmer=false  health=pending
++  8218ms  amount=null        shimmer=true   health=pending
++ 10747ms  amount="$126,679"  shimmer=false  health=43
+```
+
+* R1 distinct values seen: `[null, null, "$126,679"]` → **`$0` never rendered**
+* R2 shimmer covered the window · R3 no digits while the shimmer was up
+* R4 lands on the real resolved number · R5 `balance-amount` contract preserved
+* R6 shimmer gone when ready · R7 health back to a real score (43, `pending=null`)
+* R8 score/sub-score nodes rendered again
+* R9 `Today/Total` row hidden while pending, present once ready
+
+Supporting diagnostic (not a gate): `qa-agent/diag-balance-flash.cjs` —
+pre-fix `$0` window, post-fix skeleton handoff, console logs above, plus the
+Holdings contrast arm.
+
+## No regressions
+
+`verify-insights.cjs` **65/65** · `verify-insights-polish.cjs` **46/46** ·
+`verify-insights-review.cjs` **29/29** · vitest `insights-deck` +
+`insights-health-score` + `basketcard-pnl-format` **27/27** ·
+`npx tsc --noEmit` → only the pre-existing `tests/etf-sectors.test.ts:124`.
+
+## Gotchas learned here
+
+* **A "loading" flag that one surface honours and another ignores is a bug
+  factory.** Both surfaces share the data; only one had the guard.
+* Deriving `equity: 0` for a null account and rendering it is indistinguishable
+  from a real zero — gate on *data readiness*, never on "is the number there".
+* Same trap one level up: a deterministic scorer fed an **empty** portfolio
+  returns a confident `0 / Needs attention`. Pending ≠ empty.
+* Mock **every** arm of a contrast experiment: the first Holdings arm hit the
+  real backend (per-page `route()`), so it measured the wrong thing.
+* `page.evaluate` runs in the browser — Node-scope constants must be passed as
+  arguments (`evaluate(fn, arg)`), not closed over.
