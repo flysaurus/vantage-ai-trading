@@ -18,13 +18,15 @@ import BasketCard from './BasketCard';
 import PortfolioChart from './PortfolioChart';
 import PositionRow from './PositionRow';
 import SectorAllocation from './SectorAllocation';
+import AssetMixChart from './AssetMixChart';
 import MarketOverview from '../shared/MarketOverview';
 import { Masthead } from '@/components/layout/Masthead';
 import { getStyleContent } from '@/lib/content/investor-styles';
 import BasketBuyMoreTicket from '@/components/trade/BasketBuyMoreTicket';
 import BasketSellTicket from '@/components/trade/BasketSellTicket';
 import { apiGet } from '@/lib/api-client';
-import { thresholdCrossings } from '@/lib/insights/threshold-badge';
+import { thresholdCrossings, computeThresholdCrossings } from '@/lib/insights/threshold-badge';
+import type { AssetMix } from '@/lib/portfolio/sector-mix';
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -37,6 +39,16 @@ const fmt = (n: number | null) =>
   n == null ? '—' : `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', DOLLAR_FMT)}`;
 
 const pctStr = (n: number | null) => n == null ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
+
+/** Holdings sort fields (Task 9, Part 4). `short` is what the collapsed
+ *  control shows; `label` is the menu row. */
+const SORT_OPTIONS = [
+  { key: 'value', short: 'Value', label: 'Market Value' },
+  { key: 'gainloss', short: 'Gain/Loss $', label: 'Gain/Loss ($)' },
+  { key: 'pnl', short: 'P&L %', label: 'P&L (%)' },
+  { key: 'qty', short: 'Qty', label: 'Quantity' },
+  { key: 'alpha', short: 'A–Z', label: 'Alphabetical (ticker)' },
+] as const;
 
 const formatCurrency = (n: number) => {
   const abs = Math.abs(n);
@@ -839,6 +851,21 @@ function BuyingPowerCard({ account, invested }: { account: AccountSummary; inves
 export function PortfolioTab() {
   const [filter, setFilter] = useState('all');
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+
+  // ── Sort (Task 9, Part 4) ──
+  // The chip row above is FILTERS (All/Gainers/Losers). Sorting is a separate
+  // control: one dropdown (which field) + one direction toggle (asc/desc).
+  const [sortKey, setSortKey] = useState<'value' | 'gainloss' | 'pnl' | 'qty' | 'alpha'>('value');
+  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
+  const [sortOpen, setSortOpen] = useState(false);
+
+  // Decomposed sector mix + asset mix (Parts 1 & 2) and the user's own
+  // target-return/-loss thresholds (Part 6 badges).
+  const [assetMix, setAssetMix] = useState<AssetMix | null>(null);
+  const [targetThresholds, setTargetThresholds] = useState<{
+    targetReturnPct: number | null;
+    targetLossPct: number | null;
+  }>({ targetReturnPct: null, targetLossPct: null });
   const [expandedSymbols, setExpandedSymbols] = useState<Set<string>>(new Set());
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
   const [sellModalOpen, setSellModalOpen] = useState(false);
@@ -921,10 +948,28 @@ export function PortfolioTab() {
   }, [activeAccountId]);
   useEffect(() => { fetchTopNoticed(); }, [fetchTopNoticed]);
 
+  // User's own target-return/-loss thresholds — the badge ladder honours them
+  // exactly like the trigger engine does (null = default ladder).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiGet('/api/user/preferences');
+        if (!res.ok) return;
+        const j = await res.json();
+        if (cancelled) return;
+        setTargetThresholds({
+          targetReturnPct: typeof j?.target_return_pct === 'number' ? j.target_return_pct : null,
+          targetLossPct: typeof j?.target_loss_pct === 'number' ? j.target_loss_pct : null,
+        });
+      } catch { /* default ladder */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // ── Threshold crossings → inline badges on the affected position rows ──
-  // Crossings used to be list items; they belong next to the position instead.
-  // Symbols without an active crossing simply have no entry (no badge).
-  const crossings = useMemo(() => thresholdCrossings(noticedAll), [noticedAll]);
+  // Computed further down, once `displayPositions` exists (it is declared
+  // later in this component — a useMemo here would hit the TDZ).
 
   // ── Cross-tab focus → the ONE canonical Position Detail overlay ──
   // Any legacy REVIEW_POSITION caller that still sets focusPosition lands in the
@@ -950,10 +995,29 @@ export function PortfolioTab() {
     clearTradeRequest();
   }, [tradeRequest, positions, displayAccount, clearTradeRequest]);
 
-  // Hydrate missing company names + sectors from API
+  // Hydrate missing company names + sectors from API.
+  // NOTE (Task 9, Part 2): this feeds the decomposed sector chart. Firing all
+  // ~25 profile lookups in parallel made the upstream provider rate-limit, some
+  // lookups silently failed, and those positions fell into the chart's "Other"
+  // bucket (the sector mix then differed between otherwise identical loads).
+  // Bounded concurrency + one retry keeps the mix deterministic.
   const [enrichedPositions, setEnrichedPositions] = useState<Position[]>(positions);
   useEffect(() => {
     let cancelled = false;
+    const HYDRATE_CONCURRENCY = 4;
+    async function fetchProfile(symbol: string): Promise<any | null> {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const r = await fetch(`/api/company/profile?symbol=${encodeURIComponent(symbol)}`);
+          if (r.ok) {
+            const j = await r.json();
+            if (j && !j.error) return j;
+          }
+        } catch { /* retry below */ }
+        await new Promise((res) => setTimeout(res, 300 * (attempt + 1)));
+      }
+      return null;
+    }
     async function hydrateNames() {
       const needsName = positions.filter(p => !p.name || p.name === p.symbol);
       const needsSector = positions.filter(p => !p.sector);
@@ -962,24 +1026,23 @@ export function PortfolioTab() {
         return;
       }
       const updated = [...positions];
-      // Fetch from server-side API (bypasses CORS)
-      const results = await Promise.allSettled(
-        positions.map(p => fetch(`/api/company/profile?symbol=${encodeURIComponent(p.symbol)}`).then(r => r.json()))
-      );
-      results.forEach((r, i) => {
-        if (r.status === 'fulfilled' && r.value && !cancelled) {
-          const result = r.value;
-          const idx = updated.findIndex(p => p.symbol === positions[i].symbol);
-          if (idx >= 0) {
-            if (result.name && (!updated[idx].name || updated[idx].name === updated[idx].symbol)) {
-              updated[idx] = { ...updated[idx], name: result.name };
-            }
-            if (result.sector && !updated[idx].sector) {
-              updated[idx] = { ...updated[idx], sector: result.sector };
-            }
+      for (let i = 0; i < positions.length; i += HYDRATE_CONCURRENCY) {
+        if (cancelled) return;
+        const chunk = positions.slice(i, i + HYDRATE_CONCURRENCY);
+        const results = await Promise.allSettled(chunk.map(p => fetchProfile(p.symbol)));
+        results.forEach((r, j) => {
+          const result = r.status === 'fulfilled' ? r.value : null;
+          if (!result || cancelled) return;
+          const idx = updated.findIndex(p => p.symbol === chunk[j].symbol);
+          if (idx < 0) return;
+          if (result.name && (!updated[idx].name || updated[idx].name === updated[idx].symbol)) {
+            updated[idx] = { ...updated[idx], name: result.name };
           }
-        }
-      });
+          if (result.sector && !updated[idx].sector) {
+            updated[idx] = { ...updated[idx], sector: result.sector };
+          }
+        });
+      }
       if (!cancelled) setEnrichedPositions(updated);
     }
     hydrateNames();
@@ -1087,23 +1150,101 @@ export function PortfolioTab() {
   const demoTodayPnL = displayPositions.reduce((acc: number, p: Position) => acc + (p.dayChange || 0), 0);
 
   const filteredPositions = useMemo(() => {
-    if (filter === 'all') return displayPositions;
-
     const calcPnL = (p: Position) =>
       p.currentPrice
         ? (p.currentPrice - p.avgCost) * p.qty
         : 0;
 
-    if (filter === 'gainers') {
-      return displayPositions.filter(p => calcPnL(p) >= 0);
-    }
+    const base =
+      filter === 'gainers' ? displayPositions.filter(p => calcPnL(p) >= 0)
+      : filter === 'losers' ? displayPositions.filter(p => calcPnL(p) < 0)
+      : displayPositions;
 
-    if (filter === 'losers') {
-      return displayPositions.filter(p => calcPnL(p) < 0);
-    }
+    // ── Sort (Task 9, Part 4) ──
+    // Applied to whatever the filter left. The direction toggle is shared by
+    // every key, so "lowest P&L first" is one tap, not a separate option.
+    const val = (p: Position) => p.marketValue || p.qty * (p.currentPrice || p.avgCost) || 0;
+    const qty = (p: Position) => p.qty || 0;
+    const pnlPct = (p: Position) => {
+      if (p.totalPnlPercent != null) return p.totalPnlPercent;
+      const cb = p.totalCost ?? p.qty * p.avgCost;
+      return cb > 0 ? (calcPnL(p) / cb) * 100 : 0;
+    };
+    const keyed: Array<[Position, number | string]> = base.map((p) => {
+      switch (sortKey) {
+        case 'alpha': return [p, (p.symbol || '').toUpperCase()];
+        case 'qty': return [p, qty(p)];
+        case 'pnl': return [p, pnlPct(p)];
+        case 'gainloss': return [p, calcPnL(p)];
+        default: return [p, val(p)];
+      }
+    });
 
-    return displayPositions;
-  }, [displayPositions, filter]);
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return keyed
+      .slice()
+      .sort((a, b) => {
+        if (typeof a[1] === 'string' || typeof b[1] === 'string') {
+          const cmp = String(a[1]).localeCompare(String(b[1]));
+          return dir * cmp;
+        }
+        const av = a[1] as number;
+        const bv = b[1] as number;
+        if (av === bv) return 0;
+        return av < bv ? -dir : dir;
+      })
+      .map(([p]) => p);
+  }, [displayPositions, filter, sortKey, sortDir]);
+
+  // ── Threshold crossings → inline badges on the affected position rows ──
+  // Crossings used to be list items; they belong next to the position instead.
+  // Symbols without an active crossing simply have no entry (no badge).
+  //
+  // Source of truth = the LIVE position P&L % measured against the SAME band
+  // ladder the Noticed trigger engine uses (lib/noticed/bands.ts). The noticed
+  // feed is layered underneath for provenance (it can still contribute an
+  // event id) but it is no longer the only input: its rows get `resolved` once
+  // fired, which is why the badges had disappeared entirely.
+  const crossings = useMemo(
+    () => ({
+      ...thresholdCrossings(noticedAll),
+      ...computeThresholdCrossings(displayPositions, targetThresholds),
+    }),
+    [noticedAll, displayPositions, targetThresholds],
+  );
+
+  // ── Asset mix + decomposed sector mix (Parts 1 & 2) ──
+  // ETF sector weights are resolved server-side (Yahoo topHoldings, 7-day
+  // cache) — never guessed here. Until it lands, the charts fall back to the
+  // positions' own sectors.
+  useEffect(() => {
+    const payload = displayPositions
+      .map((p: Position) => ({
+        symbol: p.symbol,
+        sector: p.sector ?? null,
+        value: p.marketValue || p.qty * (p.currentPrice || p.avgCost) || 0,
+      }))
+      .filter((p) => p.symbol && p.value > 0);
+    if (payload.length === 0) {
+      setAssetMix(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/portfolio/sector-mix', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ positions: payload }),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as AssetMix;
+        if (!cancelled && data && typeof data.total === 'number') setAssetMix(data);
+      } catch { /* fallback to raw sectors */ }
+    })();
+    return () => { cancelled = true; };
+  }, [displayPositions]);
 
   // Fallback: if broker expected but not loaded yet, show zeroes (loading skeleton)
   // If demo, use computed demo numbers ($100K starting capital)
@@ -1205,8 +1346,11 @@ export function PortfolioTab() {
       {/* ── 4. Cash / Reserved / Buying Power / Invested ── */}
       <BuyingPowerCard account={accountData} invested={investedValue} />
 
-      {/* ── 4b. Sector Allocation ── */}
-      <SectorAllocation positions={positions} />
+      {/* ── 4b. Asset mix — ETFs vs individual stocks (structure) ── */}
+      <AssetMixChart mix={assetMix} />
+
+      {/* ── 4c. Sector Allocation (ETF exposure decomposed) ── */}
+      <SectorAllocation positions={positions} mix={assetMix} />
 
       {/* ── 5. Market Overview ── */}
       <MarketOverview />
@@ -1249,6 +1393,99 @@ export function PortfolioTab() {
               );
             })}
           </div>
+
+          {/* Sort — a separate control from the filter chips: which field, and
+              which direction. Value/Gain-Loss are option #1 and #2; both
+              directions work for every field. */}
+          {!showFilterDropdown && (
+            <div style={{ position: 'relative' }}>
+              <button
+                type="button"
+                data-testid="sort-toggle"
+                data-sort-key={sortKey}
+                data-sort-dir={sortDir}
+                onClick={() => setSortOpen((v) => !v)}
+                aria-haspopup="listbox"
+                aria-expanded={sortOpen}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '6px 10px', borderRadius: 999,
+                  background: 'transparent', border: '1px solid var(--v-card-border)',
+                  color: 'var(--v-text-secondary)',
+                  fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 12,
+                  cursor: 'pointer', whiteSpace: 'nowrap',
+                }}
+              >
+                {SORT_OPTIONS.find((o) => o.key === sortKey)?.short}
+                <span aria-hidden="true" style={{ fontSize: 10 }}>{sortDir === 'desc' ? '\u2193' : '\u2191'}</span>
+              </button>
+
+              {sortOpen && (
+                <>
+                  {/* Click-away catcher */}
+                  <div
+                    data-testid="sort-scrim"
+                    onClick={() => setSortOpen(false)}
+                    style={{ position: 'fixed', inset: 0, zIndex: 60 }}
+                  />
+                  <div
+                    data-testid="sort-menu"
+                    role="listbox"
+                    style={{
+                      position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 61,
+                      minWidth: 210, padding: 6,
+                      background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)',
+                      borderRadius: 12, boxShadow: '0 10px 28px rgba(16,24,43,0.18)',
+                    }}
+                  >
+                    {SORT_OPTIONS.map((o) => {
+                      const active = o.key === sortKey;
+                      return (
+                        <button
+                          key={o.key}
+                          type="button"
+                          data-testid={`sort-option-${o.key}`}
+                          data-active={active ? 'true' : undefined}
+                          role="option"
+                          aria-selected={active}
+                          onClick={() => { setSortKey(o.key); setSortOpen(false); }}
+                          style={{
+                            display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '9px 10px', borderRadius: 8, border: 'none',
+                            background: active ? 'var(--v-accent-dim)' : 'transparent',
+                            color: active ? 'var(--v-accent-label)' : 'var(--v-text-secondary)',
+                            fontFamily: 'var(--font-sans)', fontWeight: active ? 700 : 600, fontSize: 13,
+                            cursor: 'pointer', textAlign: 'left',
+                          }}
+                        >
+                          <span>{o.label}</span>
+                          {active && <span aria-hidden="true" style={{ fontSize: 11 }}>{sortDir === 'desc' ? '\u2193' : '\u2191'}</span>}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      data-testid="sort-direction"
+                      onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
+                      style={{
+                        display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
+                        marginTop: 4, padding: '9px 10px', borderRadius: 8,
+                        border: 'none', borderTop: '1px solid var(--v-card-border)',
+                        background: 'transparent', color: 'var(--v-text-secondary)',
+                        fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
+                        cursor: 'pointer', textAlign: 'left',
+                      }}
+                    >
+                      <span>Direction</span>
+                      <span style={{ fontWeight: 700, color: 'var(--v-text-primary)' }}>
+                        {sortDir === 'desc' ? 'High → Low ↓' : 'Low → High ↑'}
+                      </span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Select mode — a MODE toggle, not a filter. Demoted to a text link so the
               chip row reads purely as All / Gainers / Losers. Hidden entirely on

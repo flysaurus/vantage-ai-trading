@@ -31,13 +31,15 @@
   --v-skel-a: #ecefe9;
   --v-skel-b: #f7f9f5;
 
-  /* threshold-crossing badge — rendered on the ALWAYS-dark position cards,
-     so these are bright values in BOTH themes (the theme-tuned --v-gain/
-     --v-loss would be unreadable on #1a2235 in light mode). */
-  --v-badge-gain: #3ddc84;
-  --v-badge-loss: #ff8f85;
-  --v-badge-gain-bg: rgba(61, 220, 132, 0.14);
-  --v-badge-loss-bg: rgba(255, 143, 133, 0.14);
+  /* threshold-crossing badge — sits on a Position row, which follows the theme
+     canvas (white in light mode). 10px bold text needs AA, so light uses the
+     darkened label variants (5.4:1 / 6.0:1); dark keeps the bright values
+     (10.7:1 on the dark card). Updated in Task 9: the rows moved off the
+     old always-dark card surface. */
+  --v-badge-gain: #15794a;
+  --v-badge-loss: #b93030;
+  --v-badge-gain-bg: rgba(21, 121, 74, 0.10);
+  --v-badge-loss-bg: rgba(185, 48, 48, 0.10);
 
   /* Rufus hero cards — dark "islands" in BOTH themes. ONE unified fill for
      every hero-deck card type (concentration risk, event-impact, bounce-back,
@@ -126,8 +128,8 @@
   --v-skel-a: #1b233c;
   --v-skel-b: #263051;
 
-  /* threshold-crossing badge — same bright values as light (the cards it sits
-     on are dark navy in both themes; the badge must not change with the theme). */
+  /* threshold-crossing badge — dark rows are dark navy, so the bright values
+     stay (10.7:1 / 8.7:1). Light theme uses the darkened variants above. */
   --v-badge-gain: #3ddc84;
   --v-badge-loss: #ff8f85;
   --v-badge-gain-bg: rgba(61, 220, 132, 0.16);
@@ -184,31 +186,31 @@
   --v-nav-idle: #c4ccdc;
 }
 
-/* ── Insights screen canvas ───────────────────────────────────
- * The shell/body stay on the legacy dark tokens so un-migrated
- * screens are untouched. When Insights is the active tab we swap
- * the shell canvas to the themed one. Scoped by data-active-tab
- * (set in components/app/MainApp.tsx). */
-[data-theme='light'] .app-shell[data-active-tab='insights'],
-[data-theme='light'] .app-shell[data-active-tab='insights'] .content-area {
+/* ── Themed screen canvas — ALL MIGRATED TABS ────────────────
+ * The shell/body had been swapped to the themed canvas per-tab
+ * (insights, then invest) which left Holdings + Settings on the legacy
+ * dark tokens (#0a0f1e). That dark shell showed through as a black band
+ * behind/around the floating "Ask Rufus" pill on those two tabs.
+ *
+ * The tabs are now ALL migrated (light/dark both), so the swap is global:
+ * the shell, its content area, the `.bg-app` helper and the document body
+ * all paint `--v-canvas`. Scoping by data-active-tab is no longer needed
+ * and is deliberately removed so a future tab can't regress into the
+ * black-band state again. */
+[data-theme='light'] .app-shell,
+[data-theme='light'] .app-shell .content-area,
+[data-theme='dark'] .app-shell,
+[data-theme='dark'] .app-shell .content-area {
   background: var(--v-canvas);
 }
-[data-theme='light'] .app-shell[data-active-tab='insights'] .bg-app,
-[data-theme='light'].bg-app {
-  background: var(--v-canvas);
-}
-[data-theme='light'] body:has(.app-shell[data-active-tab='insights']) {
-  background: var(--v-canvas);
-}
-[data-theme='dark'] .app-shell[data-active-tab='insights'],
-[data-theme='dark'] .app-shell[data-active-tab='insights'] .content-area {
-  background: var(--v-canvas);
-}
-[data-theme='dark'] .app-shell[data-active-tab='insights'] .bg-app,
+[data-theme='light'] .app-shell .bg-app,
+[data-theme='light'].bg-app,
+[data-theme='dark'] .app-shell .bg-app,
 [data-theme='dark'].bg-app {
   background: var(--v-canvas);
 }
-[data-theme='dark'] body:has(.app-shell[data-active-tab='insights']) {
+[data-theme='light'] body:has(.app-shell),
+[data-theme='dark'] body:has(.app-shell) {
   background: var(--v-canvas);
 }
 
@@ -308,19 +310,9 @@
 
 /* ═══════════════════════════════════════════════════════════════
    INVEST screen (Task 4, Part 2)
-   Same treatment as Insights: the shell keeps legacy dark tokens for
-   un-migrated screens, but the Invest tab swaps to the themed canvas.
+   The Invest tab uses the same global themed canvas defined above;
+   its per-tab override was folded into that rule in Task 9 Part 3.
    ═══════════════════════════════════════════════════════════════ */
-[data-theme='light'] .app-shell[data-active-tab='invest'],
-[data-theme='light'] .app-shell[data-active-tab='invest'] .content-area,
-[data-theme='dark'] .app-shell[data-active-tab='invest'],
-[data-theme='dark'] .app-shell[data-active-tab='invest'] .content-area {
-  background: var(--v-canvas);
-}
-[data-theme='light'] body:has(.app-shell[data-active-tab='invest']),
-[data-theme='dark'] body:has(.app-shell[data-active-tab='invest']) {
-  background: var(--v-canvas);
-}
 
 /* Derived semantic tints used by the Invest surfaces (additive — these
    do not exist in the base token set). */

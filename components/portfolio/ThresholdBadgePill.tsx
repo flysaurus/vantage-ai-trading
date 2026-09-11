@@ -2,10 +2,10 @@
 // One shared pill for the inline threshold badge ("▲ crossed +250%" /
 // "▼ crossed -20%") that sits NEXT TO THE TICKER on a position row.
 //
-// It is rendered on the position cards, which live on the always-dark card
-// surface (`--bg-card: #1a2235` in both themes — see app/globals.css), so the
-// pill uses its own badge tokens rather than --v-gain/--v-loss (which are
-// tuned for the theme canvas and would be unreadable there in light mode).
+// It is rendered inline on a Position row, which follows the THEME canvas
+// (white in light mode, dark navy in dark mode), so it uses the theme-aware
+// `--v-badge-*` tokens: darkened gain/loss in light (AA for 10px text),
+// bright values in dark.
 
 'use client';
 

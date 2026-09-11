@@ -12,6 +12,14 @@ const ALPACA_BASE = process.env.ALPACA_ENVIRONMENT === 'live'
   ? 'https://api.alpaca.markets'
   : 'https://paper-api.alpaca.markets';
 
+// ─── Sector resolution cache ─────────────────────────────────
+// Finnhub tier is rate-limited to ~55 req/min (5-symbol batches, 1.1s apart),
+// so a cold 25-symbol book took ~19s and the caller could time out — which used
+// to strand positions on 'Other' and silently flatten the decomposed sector
+// chart. Sectors are effectively static; cache them in-process for 24h.
+const SECTOR_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const sectorCache = new Map<string, { sector: string | null; ts: number }>();
+
 function alpacaHeaders() {
   return {
     'APCA-API-KEY-ID': process.env.ALPACA_API_KEY_ID || '',
@@ -27,6 +35,24 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (symbols.length === 0) {
     return NextResponse.json({ sectors: {} });
   }
+
+  // Cache-first: serve known sectors without spending provider calls.
+  const cachedSectors: Record<string, string | null> = {};
+  const unknown: string[] = [];
+  for (const sym of symbols) {
+    const hit = sectorCache.get(sym);
+    if (hit && Date.now() - hit.ts < SECTOR_CACHE_TTL_MS) cachedSectors[sym] = hit.sector;
+    else unknown.push(sym);
+  }
+  if (unknown.length === 0) {
+    return NextResponse.json(
+      { sectors: cachedSectors },
+      { headers: { 'X-Cache': 'HIT', 'Cache-Control': 'no-store' } },
+    );
+  }
+  // Only the misses continue through the tiers below.
+  symbols.length = 0;
+  symbols.push(...unknown);
 
   const sectors: Record<string, string | null> = {};
   const failed: string[] = [];
@@ -107,5 +133,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  return NextResponse.json({ sectors });
+  // Remember every resolution for the rest of the process lifetime (24h TTL).
+  for (const [sym, sec] of Object.entries(sectors)) {
+    sectorCache.set(sym, { sector: sec, ts: Date.now() });
+  }
+
+  return NextResponse.json(
+    { sectors: { ...sectors, ...cachedSectors } },
+    { headers: { 'X-Cache': 'MISS' } },
+  );
 }

@@ -46,10 +46,17 @@ export async function GET(req: NextRequest) {
   const userId = authUser!.id;
 
   const supabase = createServerClient() as any;
-  const { data } = await supabase.from('users').select('risk_tolerance, investor_style').eq('id', userId).single();
+  const { data } = await supabase.from('users').select('risk_tolerance, investor_style, target_return_pct, target_loss_pct, conc_single_pct, conc_top3_pct').eq('id', userId).single();
 
   return NextResponse.json({
     risk_tolerance: data?.risk_tolerance || 'moderate',
     investor_style: data?.investor_style || null,
+    // Target-return/-loss ladder + concentration thresholds: consumed by the
+    // inline threshold-crossing badges (Holdings rows) so they use the SAME
+    // user-configured bands as the Noticed trigger engine.
+    target_return_pct: data?.target_return_pct ?? null,
+    target_loss_pct: data?.target_loss_pct ?? null,
+    conc_single_pct: data?.conc_single_pct ?? null,
+    conc_top3_pct: data?.conc_top3_pct ?? null,
   });
 }

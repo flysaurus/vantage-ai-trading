@@ -1,12 +1,24 @@
 'use client';
 
-// ─── SectorAllocation (PART 3.4) ────────────────────────────
+// ─── SectorAllocation (PART 3.4 / Task 9 Part 2) ────────────
 // Stacked bar + legend of the portfolio's sector mix, weighted by MARKET VALUE.
-// Positions carry `sector`; anything unclassified falls into "Other". Colours
-// are a fixed, theme-safe palette (they read on both the light canvas and the
-// dark panel) — the markup itself uses no hardcoded hex outside this palette.
+//
+// Two modes:
+//   1. DECOMPOSED (preferred) — pass `mix` from POST /api/portfolio/sector-mix.
+//      Each fund's underlying sector weights (Yahoo `topHoldings`, resolved by
+//      lib/etf-sectors.ts) are folded in, so a broad-market ETF shows up as
+//      Technology / Financial Services / Healthcare / … instead of one opaque
+//      "ETF"/"Broad Market" slice. Buckets use the same vocabulary as the drift
+//      engine (normalizeSectorBucket) so stocks and funds share one axis.
+//   2. FALLBACK — no `mix` yet (first paint / provider down): the original
+//      per-position `sector` grouping, unchanged.
+//
+// Colours are a fixed, theme-safe palette (they read on both the light canvas
+// and the dark panel) — the markup itself uses no hardcoded hex outside this
+// palette.
 import { useMemo } from 'react';
 import type { Position } from '@/types';
+import type { AssetMix } from '@/lib/portfolio/sector-mix';
 
 const PALETTE = [
   '#0e8c99',
@@ -19,8 +31,42 @@ const PALETTE = [
   '#7c8899',
 ];
 
-export function SectorAllocation({ positions }: { positions: Position[] }) {
-  const rows = useMemo(() => {
+/** Legend labels are tight at 430px — shorten the two longest buckets so they
+ *  never get ellipsised. (Keys are the canonical bucket vocabulary.) */
+const SHORT_BUCKET: Record<string, string> = {
+  'Media & Entertainment': 'Media & Ent.',
+  'Financial Services': 'Financials',
+  'Broad Market': 'Broad Mkt',
+  'Fixed Income': 'Fixed Inc.',
+};
+
+interface Row {
+  sector: string;
+  value: number;
+  pct: number;
+  color: string;
+}
+
+export function SectorAllocation({
+  positions,
+  mix,
+}: {
+  positions: Position[];
+  /** Decomposed sector mix (Part 2). When present it is the source of truth. */
+  mix?: AssetMix | null;
+}) {
+  const rows = useMemo<Row[]>(() => {
+    // ── 1. Decomposed ETF-aware mix ──
+    if (mix && mix.buckets.length > 0 && mix.total > 0) {
+      return mix.buckets.map((b, i) => ({
+        sector: SHORT_BUCKET[b.bucket] || b.bucket,
+        value: b.value,
+        pct: b.pct,
+        color: PALETTE[i % PALETTE.length],
+      }));
+    }
+
+    // ── 2. Fallback: position sectors as-reported ──
     const byValue = new Map<string, number>();
     let total = 0;
     for (const p of positions) {
@@ -32,12 +78,14 @@ export function SectorAllocation({ positions }: { positions: Position[] }) {
     }
     if (total <= 0) return [];
     return Array.from(byValue.entries())
-      .map(([sector, value]) => ({ sector, value, pct: (value / total) * 100 }))
+      .map(([sector, value]) => ({ sector, value, pct: (value / total) * 100, color: '' }))
       .sort((a, b) => b.pct - a.pct)
       .map((r, i) => ({ ...r, color: PALETTE[i % PALETTE.length] }));
-  }, [positions]);
+  }, [positions, mix]);
 
   if (rows.length === 0) return null;
+
+  const decomposed = !!mix && mix.buckets.length > 0 && mix.total > 0;
 
   return (
     <section style={{ margin: '0 20px 16px' }} data-testid="sector-allocation">
@@ -48,6 +96,7 @@ export function SectorAllocation({ positions }: { positions: Position[] }) {
         {/* Stacked bar */}
         <div
           data-testid="sector-bar"
+          data-decomposed={decomposed ? 'true' : 'false'}
           style={{ display: 'flex', width: '100%', height: 12, borderRadius: 999, overflow: 'hidden', background: 'var(--v-skel-a)' }}
         >
           {rows.map((r) => (
@@ -70,6 +119,25 @@ export function SectorAllocation({ positions }: { positions: Position[] }) {
             </div>
           ))}
         </div>
+        {decomposed && (
+          <div data-testid="sector-decomposed-note" style={{ fontSize: 11, color: 'var(--v-text-muted)', marginTop: 10 }}>
+            ETF sector exposure decomposed into its underlying holdings.
+          </div>
+        )}
+        {decomposed && (mix?.unresolvedFundish?.length ?? 0) > 0 && (
+          <div data-testid="sector-unresolved-note" style={{ fontSize: 11, color: 'var(--v-text-muted)', marginTop: 4 }}>
+            {mix!.unresolvedFundish!.length === 1
+              ? `${mix!.unresolvedFundish![0]} has no sector breakdown yet — its value sits under “Other”.`
+              : `${mix!.unresolvedFundish!.length} funds have no sector breakdown yet — their value sits under “Other”.`}
+          </div>
+        )}
+        {decomposed && (mix?.otherSymbols?.length ?? 0) > 0 && (
+          <div data-testid="sector-other-note" style={{ fontSize: 11, color: 'var(--v-text-muted)', marginTop: 4 }}>
+            {mix!.otherSymbols!.length === 1
+              ? `${mix!.otherSymbols![0]} has no sector on file yet — grouped under “Other”.`
+              : `${mix!.otherSymbols!.length} holdings have no sector on file yet — grouped under “Other” (${mix!.otherSymbols!.slice(0, 4).join(', ')}${mix!.otherSymbols!.length > 4 ? '…' : ''}).`}
+          </div>
+        )}
       </div>
     </section>
   );

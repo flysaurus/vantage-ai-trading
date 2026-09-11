@@ -49,6 +49,21 @@ So the palette carries a **label variant** of each semantic color, used only for
 
 In the dark theme these label tokens **alias the base values** (`#3DDC84` / `#F0716B` / `#5FD8DE`) — the dark palette already clears 7:1, so nothing changes there. Never hardcode a hex for a small label; always use the token.
 
+#### Threshold-crossing badge — theme-aware since TASK 9
+
+The inline "▲ crossed +250%" / "▼ crossed −20%" pill sits on a **Position row**, which follows the theme canvas (white in light mode) — it is no longer on the old always-dark card surface. So it carries its own theme-aware pair:
+
+| Token | Light (on white) | Dark (on `#0A0F1E`) |
+| --- | --- | --- |
+| `--v-badge-gain` | `#15794A` (5.43:1) | `#3DDC84` (10.70:1) |
+| `--v-badge-loss` | `#B93030` (5.95:1) | `#FF8F85` (8.65:1) |
+
+Both are 10px bold, so they are small text and must clear 4.5:1 — the earlier "bright in both themes" values measured **1.78:1** on a white row and were rejected. Rule of thumb: if a surface changes colour, every token tuned for the *old* surface colour must be re-audited.
+
+#### Themed canvas applies to ALL tabs
+
+The themed shell/content background is **not** tab-scoped. Light theme: canvas `#F5F7F4` on every tab (Insights, Holdings, Invest, Settings). Dark theme: canvas `#000814`. The earlier `[data-active-tab='insights']` / `'invest'`-scoped rules left Holdings and Settings on the legacy dark token `#0A0F1E`, which painted a black band behind the floating Ask Rufus pill in light mode. Never re-introduce per-tab canvas rules.
+
 `--v-text-faint` is the low-emphasis tier. It is no longer allowed to fail AA: in the light theme it is `#6A7280` (4.50:1 on the canvas, 4.85:1 on white) and in the dark theme `#7C8AA0` (5.74:1). The earlier light value (`#8891A6`, 2.93:1) and dark value (`#5C6478`, 3.40:1) were both under the bar. The low end of the hierarchy is expressed with **size and weight**, not with illegible contrast. Faint is still the right choice for genuinely decorative marks (the `·` separators in the balance row, an inactive selection dot) — if a value is meant to be read, it belongs on secondary/tertiary.
 
 ### Dark theme

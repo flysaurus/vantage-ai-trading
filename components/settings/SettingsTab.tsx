@@ -460,7 +460,7 @@ export function SettingsTab() {
               {INVESTOR_STYLES.find(s => s.id === selectedStyle)?.subtitle || 'Growth Focus'}
             </p>
           </div>
-          <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
+          <span style={{ color: 'var(--v-text-muted)', fontSize: '18px' }}>›</span>
         </div>
 
         {/* Risk Tolerance */}
@@ -504,7 +504,7 @@ export function SettingsTab() {
               })()}
             </p>
           </div>
-          <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
+          <span style={{ color: 'var(--v-text-muted)', fontSize: '18px' }}>›</span>
         </div>
 
 
@@ -546,7 +546,7 @@ export function SettingsTab() {
             borderRadius: '10px',
           }}
         >
-          <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.5, margin: '0 0 14px 0' }}>
+          <p style={{ fontSize: '13px', color: 'var(--v-text-muted)', lineHeight: 1.5, margin: '0 0 14px 0' }}>
             Get nudged when one position — or your top three — grows past your comfort zone.
             Style default: <span style={{ color: '#22d3ee' }}>{CONCENTRATION_PRESETS.find((p) => p.id === suggestedPreset)?.label}</span>.
           </p>
@@ -580,7 +580,7 @@ export function SettingsTab() {
           {/* Custom inputs */}
           <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
             <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Single position %</span>
+              <span style={{ fontSize: '11px', color: 'var(--v-text-muted)' }}>Single position %</span>
               <input
                 type="number"
                 min={1}
@@ -600,7 +600,7 @@ export function SettingsTab() {
               />
             </label>
             <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Top 3 holdings %</span>
+              <span style={{ fontSize: '11px', color: 'var(--v-text-muted)' }}>Top 3 holdings %</span>
               <input
                 type="number"
                 min={1}
@@ -649,7 +649,7 @@ export function SettingsTab() {
                 borderRadius: '8px',
                 border: '1px solid rgba(255,255,255,0.10)',
                 background: 'transparent',
-                color: '#94a3b8',
+                color: 'var(--v-text-muted)',
                 fontSize: '12px',
                 fontWeight: 600,
                 cursor: savingConc ? 'default' : 'pointer',
@@ -669,7 +669,7 @@ export function SettingsTab() {
 
       <div style={{ margin: '0 16px 12px 16px' }}>
         <div style={{ padding: '14px 16px', background: '#1a2235', borderRadius: '10px' }}>
-          <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.5, margin: '0 0 14px 0' }}>
+          <p style={{ fontSize: '13px', color: 'var(--v-text-muted)', lineHeight: 1.5, margin: '0 0 14px 0' }}>
             Get a single nudge when a position crosses your target. Leave blank to use the
             default milestones (<span style={{ color: '#22d3ee' }}>+15%/+25%/+50%/+100%/+250%</span>{' '}
             gains, <span style={{ color: '#22d3ee' }}>-10%/-20%/-35%/-50%</span> losses).
@@ -677,7 +677,7 @@ export function SettingsTab() {
 
           <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
             <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Target return %</span>
+              <span style={{ fontSize: '11px', color: 'var(--v-text-muted)' }}>Target return %</span>
               <input
                 type="number"
                 min={1}
@@ -698,7 +698,7 @@ export function SettingsTab() {
               />
             </label>
             <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Target loss %</span>
+              <span style={{ fontSize: '11px', color: 'var(--v-text-muted)' }}>Target loss %</span>
               <input
                 type="number"
                 min={1}
@@ -747,7 +747,7 @@ export function SettingsTab() {
                 borderRadius: '8px',
                 border: '1px solid rgba(255,255,255,0.10)',
                 background: 'transparent',
-                color: '#94a3b8',
+                color: 'var(--v-text-muted)',
                 fontSize: '12px',
                 fontWeight: 600,
                 cursor: savingTarget ? 'default' : 'pointer',
@@ -819,7 +819,7 @@ export function SettingsTab() {
                   <span style={{ color: '#10b981' }}>Connected ✓</span>
                 </p>
               </div>
-              <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
+              <span style={{ color: 'var(--v-text-muted)', fontSize: '18px' }}>›</span>
             </div>
             <div
               onClick={() => setBrokerConnected(false)}
@@ -858,7 +858,7 @@ export function SettingsTab() {
               <p style={{ fontSize: '15px', color: '#ffffff' }}>📊 Tier Limits</p>
               <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>AI usage limits and model access per tier</p>
             </div>
-            <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
+            <span style={{ color: 'var(--v-text-muted)', fontSize: '18px' }}>›</span>
           </div>
           <div
             onClick={() => router.push('/admin/gamification')}
@@ -872,7 +872,7 @@ export function SettingsTab() {
               <p style={{ fontSize: '15px', color: '#ffffff' }}>⚙️ Gamification Config</p>
               <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>Pillar weights, milestones, and point caps</p>
             </div>
-            <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
+            <span style={{ color: 'var(--v-text-muted)', fontSize: '18px' }}>›</span>
           </div>
           <div
             onClick={() => router.push('/admin/users')}
@@ -886,7 +886,7 @@ export function SettingsTab() {
               <p style={{ fontSize: '15px', color: '#ffffff' }}>👥 Manage Users</p>
               <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>User management and tier overrides</p>
             </div>
-            <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
+            <span style={{ color: 'var(--v-text-muted)', fontSize: '18px' }}>›</span>
           </div>
         </div>
       )}
@@ -925,7 +925,7 @@ export function SettingsTab() {
               <p style={{ fontSize: '15px', color: '#ffffff' }}>{row.label}</p>
               <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>{row.sub}</p>
             </div>
-            <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
+            <span style={{ color: 'var(--v-text-muted)', fontSize: '18px' }}>›</span>
           </div>
         ))}
 
@@ -957,7 +957,7 @@ export function SettingsTab() {
             <p style={{ fontSize: '15px', color: '#ffffff' }}>Preferences</p>
             <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>Appearance · Security</p>
           </div>
-          <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
+          <span style={{ color: 'var(--v-text-muted)', fontSize: '18px' }}>›</span>
         </div>
 
         {/* Help & Support */}
@@ -980,7 +980,7 @@ export function SettingsTab() {
             <p style={{ fontSize: '15px', color: '#ffffff' }}>Help & Support</p>
             <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>Email us · We reply within 24h</p>
           </div>
-          <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
+          <span style={{ color: 'var(--v-text-muted)', fontSize: '18px' }}>›</span>
         </a>
       </div>
 
@@ -1012,11 +1012,11 @@ export function SettingsTab() {
           padding: '24px 16px 8px 16px',
         }}
       >
-        <p style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff', letterSpacing: '0.1em' }}>
+        <p style={{ fontSize: '16px', fontWeight: '700', color: 'var(--v-text-primary)', letterSpacing: '0.1em' }}>
           Vantage
         </p>
-        <p style={{ fontSize: '11px', color: '#334155', marginTop: '4px' }}>v0.1.0</p>
-        <p style={{ fontSize: '11px', color: '#334155', marginTop: '4px' }}>
+        <p style={{ fontSize: '11px', color: 'var(--v-text-muted)', marginTop: '4px' }}>v0.1.0</p>
+        <p style={{ fontSize: '11px', color: 'var(--v-text-muted)', marginTop: '4px' }}>
           AI-First · Mobile-First · Built with ❤️
         </p>
       </div>
@@ -1070,7 +1070,7 @@ export function SettingsTab() {
                   background: 'transparent',
                   border: '1px solid #475569',
                   borderRadius: '10px',
-                  color: '#94a3b8',
+                  color: 'var(--v-text-muted)',
                   fontSize: '14px',
                   fontWeight: '600',
                   cursor: 'pointer',
@@ -1297,7 +1297,7 @@ export function SettingsTab() {
                   {INVESTOR_STYLES.find(s => s.id === confirmDialog.value)?.description}.
                   {' '}All stock picks, daily briefs, and recommendations will reflect this lens.
                 </p>
-                <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.4, margin: '0 0 20px' }}>
+                <p style={{ fontSize: '12px', color: 'var(--v-text-muted)', lineHeight: 1.4, margin: '0 0 20px' }}>
                   Your portfolio and positions are not affected.
                 </p>
               </>
@@ -1316,7 +1316,7 @@ export function SettingsTab() {
                   }
                   {' '}All future trades, baskets, and portfolio alerts will reflect this risk profile.
                 </p>
-                <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.4, margin: '0 0 20px' }}>
+                <p style={{ fontSize: '12px', color: 'var(--v-text-muted)', lineHeight: 1.4, margin: '0 0 20px' }}>
                   Existing positions are not affected.
                 </p>
               </>

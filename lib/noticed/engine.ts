@@ -22,11 +22,13 @@ import {
 } from '@/lib/concentration';
 import { findEventImpactTriggers } from './event-impact';
 import { findBounceBackTriggers } from './bounce-back';
+// Band ladder lives in lib/noticed/bands.ts so the inline threshold-crossing
+// badge (lib/insights/threshold-badge.ts) uses the SAME bands as this engine.
+import { POSITIVE_BANDS, NEGATIVE_BANDS, crossedBand } from './bands';
+export { POSITIVE_BANDS, NEGATIVE_BANDS } from './bands';
 
 // ── Config ──
 const FINBERT_URL = process.env.FINBERT_URL || 'http://127.0.0.1:8765';
-const POSITIVE_BANDS = [15, 25, 50, 100, 250];
-const NEGATIVE_BANDS = [-10, -20, -35, -50];
 
 // ── Types ──
 export interface PortfolioPosition {
@@ -149,14 +151,9 @@ export function findNewTriggers(
   // target_loss_pct fires a single card at exactly that loss.
   for (const pos of positions) {
     const pnlPct = pos.totalPnlPercent || 0;
-    const positiveBands = typeof targetReturnPct === 'number' ? [targetReturnPct] : POSITIVE_BANDS;
-    const negativeBands = typeof targetLossPct === 'number' ? [-Math.abs(targetLossPct)] : NEGATIVE_BANDS;
-    const crossedBands = pnlPct > 0
-      ? positiveBands.filter(b => pnlPct >= b)
-      : negativeBands.filter(b => pnlPct <= b);
-    if (crossedBands.length === 0) continue;
-
-    const band = crossedBands[crossedBands.length - 1];
+    // Same ladder the badge uses (lib/noticed/bands.ts).
+    const band = crossedBand(pnlPct, targetReturnPct, targetLossPct);
+    if (band == null) continue;
     const bandLabel = band > 0 ? `+${band}` : `${band}`;
     const key = `MILESTONE_${pos.symbol}_${bandLabel}`;
     if (!existingKeys.has(key)) {

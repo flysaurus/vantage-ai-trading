@@ -469,20 +469,31 @@ export function usePortfolio() {
         .map(p => p.symbol);
       
       if (unknownSymbols.length > 0) {
-        try {
-          const res = await fetch(`/api/sectors?symbols=${unknownSymbols.join(',')}`);
-          if (res.ok) {
-            const data = await res.json();
-            const resolved: Record<string, string | null> = data.sectors || {};
-            for (const pos of positions) {
-              if ((!pos.sector || pos.sector === 'Other') && resolved[pos.symbol]) {
-                pos.sector = resolved[pos.symbol]!;
+        // A single failed /api/sectors call used to strand these positions on
+        // 'Other' for the whole session — which silently flattened the
+        // decomposed Sector Allocation chart (Task 9, Part 2). Retry with
+        // backoff so one transient provider/rate-limit blip doesn't degrade it.
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const res = await fetch(`/api/sectors?symbols=${unknownSymbols.join(',')}`);
+            if (res.ok) {
+              const data = await res.json();
+              const resolved: Record<string, string | null> = data.sectors || {};
+              for (const pos of positions) {
+                if ((!pos.sector || pos.sector === 'Other') && resolved[pos.symbol]) {
+                  pos.sector = resolved[pos.symbol]!;
+                }
               }
+              break;
             }
+          } catch {
+            // fall through to the retry below
           }
-        } catch {
-          // Keep 'Other' if sector API fails
+          const stillUnknown = positions.filter(p => !p.sector || p.sector === 'Other').length;
+          if (stillUnknown === 0 || !mountedRef.current) break;
+          await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
         }
+        // Keep 'Other' only if every attempt failed.
       }
 
       // ── Enrich positions: persisted names (Issue 1) + basket linkage (Issue 2) ──
