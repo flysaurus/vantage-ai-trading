@@ -19,8 +19,8 @@ const DOLLAR_FMT: Intl.NumberFormatOptions = {
 
 export function AccountSummaryCard({ account }: { account: AccountSummary }) {
   const router = useRouter();
-  const fmt = (n: number) => `$${Math.abs(n).toLocaleString('en-US', DOLLAR_FMT)}`;
-  const pct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
+  const fmt = (n: number | null) => (n == null ? '—' : `$${Math.abs(n).toLocaleString('en-US', DOLLAR_FMT)}`);
+  const pct = (n: number | null) => (n == null ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`);
 
   // Resolve investor style
   const { user } = useAuth();
@@ -71,8 +71,8 @@ export function AccountSummaryCard({ account }: { account: AccountSummary }) {
           <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 2 }}>
             Today P&amp;L
           </div>
-          <div className={account.dayPnl >= 0 ? 'up' : 'down'} style={{ fontSize: 13, fontWeight: 700 }}>
-            {fmt(account.dayPnl)} ({pct(account.dayPnlPercent)})
+          <div className={account.dayPnl == null ? '' : account.dayPnl >= 0 ? 'up' : 'down'} style={{ fontSize: 13, fontWeight: 700 }}>
+            {account.dayPnl == null ? '—' : `${fmt(account.dayPnl)} (${pct(account.dayPnlPercent)})`}
           </div>
         </div>
         <div style={{ flex: 1 }}>

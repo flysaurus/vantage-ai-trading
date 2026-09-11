@@ -19,13 +19,15 @@ Both palettes are first-class; neither is "legacy." Light is the default theme; 
 
 - Canvas background: `#F5F7F4`
 - Card fill (white cards): `#FFFFFF`
-- Hero/AI-attributed card fill (Rufus cards — concentration risk, recommendations, Build Basket, chat responses with embedded cards): `#10182B` (dark navy — deliberate: Rufus's cards stay dark-navy "islands" even in light theme; this is the visual signature that makes AI-authored content identifiable at a glance)
+- "Your Portfolio" card fill: `#EAF1F0` (soft teal tint — scoped to the Your Portfolio card ONLY; this does not change the general white-card token, which stays `#FFFFFF` for Health Score, quick-links, More from Rufus, and Holdings rows)
+- Hero/AI-attributed card fill (Rufus hero-deck cards — concentration risk, event-impact, bounce-back, idle-cash, Daily Brief teaser, Weekly Snapshot teaser — plus Build Basket and chat responses with embedded cards): `#17323B` (teal-tinted charcoal, replaces the earlier near-black `#10182B`; deliberate: Rufus's cards stay dark "islands" even in light theme, and this is the visual signature that makes AI-authored content identifiable at a glance). **One unified value: every hero-deck card type uses this same fill — there is no per-card-type variation.**
 - Border/hairline: `#E7EAE4`
 - Text primary: `#10182B` · Text secondary: `#5B6472` · Text tertiary: `#8891A6`
-- Text-on-hero-card primary: `#FFFFFF` · Text-on-hero-card secondary: `#C7CEDB` · Text-on-hero-card tertiary: `#7C8AA0`
+- Text-on-hero-card primary: `#FFFFFF` · Text-on-hero-card secondary: `#C9D8D6` (slightly warmer than the earlier `#C7CEDB`, to sit correctly on the teal undertone of `#17323B`) · Text-on-hero-card tertiary: `#7C8AA0`
 - Accent (links, selected states, primary CTA fill except on hero cards): `#0E8C99`
 - Semantic gain: `#1E9E5A` · Semantic loss: `#D64545`
 - View-only tag: text `#8A6D1E` on background `rgba(217,169,74,0.15)`
+- Brief section tags (Daily Brief, one accent per category): MARKET `#0E8C99` (accent) · PORTFOLIO `#1E9E5A` (gain) · WATCH `#8A6D1E` · EARNINGS `#5B4BC4`. These render on the white brief sheet, so WATCH uses the label amber rather than the text-on-dark `#D9A94A` — see `--v-tag-watch` / `--v-tag-earnings` in `app/theme.css`.
 - Admin-restricted card: background `#FDF6E9`, border `#E8C976`, label `#8A6D1E`
 
 ### Dark theme
@@ -37,6 +39,7 @@ Both palettes are first-class; neither is "legacy." Light is the default theme; 
 - Accent: `#5FD8DE`
 - Semantic gain: `#3DDC84` · Semantic loss: `#F0716B`
 - View-only tag: text `#D9A94A` on background `rgba(217,169,74,0.1)`
+- Brief section tags: MARKET `#5FD8DE` (accent) · PORTFOLIO `#3DDC84` (gain) · WATCH `#D9A94A` · EARNINGS `#A78BFA`
 - Admin-restricted card: background `#161008`, border `#3A2E1C`, label `#D9A94A`
 
 #### Derived dark surfaces (resolve from the palette above — do not invent new tokens)

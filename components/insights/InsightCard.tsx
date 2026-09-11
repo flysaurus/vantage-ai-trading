@@ -188,7 +188,7 @@ interface InsightCardProps {
 }
 
 export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTeaser, width = 300 }: InsightCardProps) {
-  const { setTab, setChatOpen, setPendingPrompt, setFocusPosition } = useTabStore();
+  const { setTab, setChatOpen, setPendingPrompt, setFocusPosition, openPositionDetail } = useTabStore();
   const item = card.item;
 
   /* ── Teaser card (Daily Brief / Weekly Snapshot) ── */
@@ -202,7 +202,9 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
         data-card-id={card.id}
         style={cardStyle(width)}
       >
-        <CardHeader />
+        {/* No per-card orb + "RUFUS NOTICED" row any more — that label is now a
+            single shared header rendered ONCE above the deck (see InsightsTab).
+            The card leads directly with its category label. */}
         <TeaserBody teaser={t} />
         <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginTop: 16, flexWrap: 'wrap' }}>
           <button
@@ -236,7 +238,7 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
   const isConcentration =
     item.triggerType === 'concentration_single' || item.triggerType === 'concentration_top3';
 
-  const primary = buildPrimaryAction({ action, item, isReadOnly, setPendingPrompt, setChatOpen, setFocusPosition, setTab, positions });
+  const primary = buildPrimaryAction({ action, item, isReadOnly, setPendingPrompt, setChatOpen, setFocusPosition, openPositionDetail, setTab, positions });
   const secondary = buildSecondaryAction({ item, setPendingPrompt, setChatOpen });
 
   /* Shared pieces — identical in both layouts, so the concentration split
@@ -304,8 +306,8 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
       data-trigger-type={item.triggerType}
       style={cardStyle(width)}
     >
-      <CardHeader />
-
+      {/* Card leads directly with its category label — the orb + "RUFUS NOTICED"
+          row now lives in the shared deck header above the scroller. */}
       {isConcentration ? (
         /* ── CONCENTRATION CARD ──
            Row 1 (compact): category + stat (~28px) on the left, the 66px
@@ -317,7 +319,7 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
         <>
           <div
             data-testid="concentration-top-row"
-            style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, minWidth: 0 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 0, minWidth: 0 }}
           >
             {/* No donut/legend on the concentration card — the stat carries it.
                 The row is gone entirely rather than left as an empty slot, so the
@@ -386,20 +388,6 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
 
 /* ── Sub-pieces + styles ───────────────────────────────────── */
 
-function CardHeader() {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-      <span
-        aria-hidden="true"
-        style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--v-orb)', flexShrink: 0 }}
-      />
-      <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', color: 'var(--v-hero-text-3)' }}>
-        RUFUS NOTICED
-      </span>
-    </div>
-  );
-}
-
 function TeaserBody({ teaser }: { teaser: { label: string; headline: string; body?: string } }) {
   return (
     <>
@@ -434,7 +422,11 @@ const cardStyle = (width: number | string): React.CSSProperties => ({
   background: 'var(--v-hero-card)',
   border: '0.5px solid var(--v-hero-card-border)',
   borderRadius: 20,
-  padding: '16px 16px 14px',
+  // Tightened from '16px 16px 14px' after hoisting the orb + "RUFUS NOTICED"
+  // row out of the card: a full row (~12px + its gap) is gone, so the card is
+  // shorter overall and the category label must start closer to the top edge
+  // (no dead space where the old label row used to be).
+  padding: '14px 16px 14px',
   boxSizing: 'border-box',
   textAlign: 'left',
 });
@@ -443,7 +435,9 @@ const categoryStyle: React.CSSProperties = {
   fontSize: 9.5,
   fontWeight: 800,
   letterSpacing: '0.08em',
-  marginTop: 10,
+  // 0 (was 10): the category label is now the card's FIRST row, so the card's
+  // own padding is the only spacing above it.
+  marginTop: 0,
 };
 
 const primaryBtnStyle: React.CSSProperties = {
@@ -502,11 +496,13 @@ interface CtaCtx {
   setPendingPrompt: (p: string) => void;
   setChatOpen: (o: boolean) => void;
   setFocusPosition: (s: string | null) => void;
+  /** PART 2 — opens the ONE canonical full-screen Position Detail overlay. */
+  openPositionDetail: (symbol: string, origin?: any) => void;
   setTab: (t: any) => void;
 }
 
 function buildPrimaryAction(ctx: CtaCtx): { label: string; onClick: () => void } | null {
-  const { action, item, isReadOnly, setPendingPrompt, setChatOpen, setFocusPosition, setTab, positions } = ctx;
+  const { action, item, isReadOnly, setPendingPrompt, setChatOpen, setFocusPosition, openPositionDetail, setTab, positions } = ctx;
 
   const openChat = (prompt: string) => { setPendingPrompt(prompt); setChatOpen(true); };
 
@@ -518,7 +514,7 @@ function buildPrimaryAction(ctx: CtaCtx): { label: string; onClick: () => void }
   if (action.startsWith('REVIEW_POSITION:')) {
     const ticker = action.slice('REVIEW_POSITION:'.length).trim();
     if (ticker) {
-      return { label: `Review ${ticker}`, onClick: () => { setFocusPosition(ticker); setTab('portfolio'); } };
+      return { label: `Review ${ticker}`, onClick: () => { if (openPositionDetail) openPositionDetail(ticker, 'insights'); else { setFocusPosition(ticker); setTab('portfolio'); } } };
     }
   }
 

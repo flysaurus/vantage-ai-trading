@@ -23,8 +23,6 @@ interface PositionCardV3Props {
   connectionId?: string | null;
   /** Render only the expanded content inline (no card chrome/header) — used inside basket accordion. */
   inline?: boolean;
-  /** Broker display name for source attribution ("Synced from X"). null = demo/unknown. */
-  brokerLabel?: string | null;
   /**
    * Active threshold crossing for THIS position (target-return/-loss milestone).
    * Rendered as a small pill next to the ticker. Most rows have none.
@@ -68,7 +66,6 @@ export default function PositionCardV3({
   basketContext = null,
   connectionId = null,
   inline = false,
-  brokerLabel = null,
   crossing = null,
 }: PositionCardV3Props) {
   const { user } = useAuth();
@@ -217,6 +214,7 @@ export default function PositionCardV3({
   // Single source of truth: broker-authoritative open PnL when present.
   const totalPnL = pos.totalPnl ?? (currentPrice - pos.avgCost) * pos.qty;
   const totalPnLPct = pos.totalPnlPercent ?? (costBasis > 0 ? (totalPnL / costBasis) * 100 : 0);
+  const hasToday = pos.dayChange != null && pos.dayChangePercent != null;
   const todayPnL = pos.dayChange ?? 0;
   const todayPnLPct = pos.dayChangePercent ?? 0;
 
@@ -359,11 +357,6 @@ export default function PositionCardV3({
             <div style={{ fontSize: '11.5px', color: '#cbd5e1', marginTop: 1, fontWeight: 500 }}>
               {pos.qty % 1 === 0 ? pos.qty : pos.qty.toFixed(4)} shares
             </div>
-            {brokerLabel && (
-              <div style={{ fontSize: '10.5px', color: '#94a3b8', marginTop: 2, opacity: 0.95 }}>
-                Synced from {brokerLabel}
-              </div>
-            )}
           </div>
         </div>
 
@@ -388,19 +381,24 @@ export default function PositionCardV3({
             >
               ${currentPrice.toFixed(2)}
             </div>
+            {/* Unavailable quote (no usable source) → explicit dash, NEVER a
+                fabricated +0.00%. A genuinely flat day still renders +0.00%. */}
             <div
+              data-testid="position-day-change"
               style={{
                 fontSize: '9.5px',
                 fontWeight: 600,
-                color:
-                  (pos.dayChangePercent ?? 0) >= 0
+                color: !hasToday
+                  ? 'var(--text-muted, #94a3b8)'
+                  : (pos.dayChangePercent as number) >= 0
                     ? 'var(--gain, #10b981)'
                     : 'var(--loss, #ef4444)',
                 marginTop: 1,
               }}
             >
-              {(pos.dayChangePercent ?? 0) >= 0 ? '+' : ''}
-              {(pos.dayChangePercent ?? 0).toFixed(2)}%
+              {!hasToday
+                ? '—'
+                : `${(pos.dayChangePercent as number) >= 0 ? '+' : ''}${(pos.dayChangePercent as number).toFixed(2)}%`}
             </div>
           </div>
 
@@ -782,17 +780,19 @@ export default function PositionCardV3({
             }}
           >
             <div
-              className={`pcv3-pill ${gainLossClass(todayPnL)}`}
+              className={`pcv3-pill ${hasToday ? gainLossClass(todayPnL) : ''}`}
               style={{
                 flex: 1,
                 padding: '8px 12px',
                 borderRadius: 10,
-                background:
-                  todayPnL >= 0
+                background: !hasToday
+                  ? 'transparent'
+                  : todayPnL >= 0
                     ? 'rgba(16,185,129,0.08)'
                     : 'rgba(239,68,68,0.08)',
-                border:
-                  todayPnL >= 0
+                border: !hasToday
+                  ? '1px solid var(--v-border, rgba(148,163,184,0.2))'
+                  : todayPnL >= 0
                     ? '1px solid rgba(16,185,129,0.15)'
                     : '1px solid rgba(239,68,68,0.15)',
               }}
@@ -805,11 +805,17 @@ export default function PositionCardV3({
                   style={{
                     fontSize: 12,
                     fontWeight: 700,
-                    color: todayPnL >= 0 ? 'var(--gain, #10b981)' : 'var(--loss, #ef4444)',
+                    color: !hasToday
+                      ? 'var(--dim, #aab4c7)'
+                      : todayPnL >= 0
+                        ? 'var(--gain, #10b981)'
+                        : 'var(--loss, #ef4444)',
                     fontFamily: 'var(--mono-font, monospace)',
                   }}
                 >
-                  {(todayPnL >= 0 ? '+' : '-')}{Math.abs(todayPnLPct).toFixed(2)}% · {(todayPnL >= 0 ? '+' : '-')}${Math.abs(todayPnL).toFixed(2)}
+                  {hasToday
+                    ? `${todayPnL >= 0 ? '+' : '-'}${Math.abs(todayPnLPct).toFixed(2)}% · ${todayPnL >= 0 ? '+' : '-'}$${Math.abs(todayPnL).toFixed(2)}`
+                    : '—'}
                 </span>
               </div>
             </div>

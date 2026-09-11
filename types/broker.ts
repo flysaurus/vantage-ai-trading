@@ -29,8 +29,9 @@ export interface BrokerAccount {
   /** null = non-margin account */
   buyingPower: number | null;
   dayTradeCount: number;
-  dayPnl: number;
-  dayPnlPercent: number;
+  /** null = day change unavailable (no usable quote) — render "—", not $0.00. */
+  dayPnl: number | null;
+  dayPnlPercent: number | null;
   totalPnl: number;
   totalPnlPercent: number;
   portfolioValue: number;
@@ -53,8 +54,9 @@ export interface BrokerPosition {
   currentPrice: number;
   marketValue: number;
   costBasis: number;
-  dayChange: number;
-  dayChangePercent: number;
+  /** null = day change unavailable (no usable quote) vs 0 = genuinely flat. */
+  dayChange: number | null;
+  dayChangePercent: number | null;
   totalPnl: number;
   totalPnlPercent: number;
   portfolioPercent: number;

@@ -20,6 +20,10 @@
   /* surfaces */
   --v-canvas: #f5f7f4;
   --v-card: #ffffff;
+  /* "Your Portfolio" card ONLY — soft teal tint. Do not promote this to
+     general --v-card: Health Score, quick-links, More from Rufus and
+     Holdings rows all stay pure #ffffff. */
+  --v-por-card: #eaf1f0;
   --v-card-border: #e7eae4;
   --v-rule: #e7eae4;
   --v-panel: #ffffff;
@@ -35,11 +39,14 @@
   --v-badge-gain-bg: rgba(61, 220, 132, 0.14);
   --v-badge-loss-bg: rgba(255, 143, 133, 0.14);
 
-  /* Rufus hero cards — dark-navy "islands" in BOTH themes */
-  --v-hero-card: #10182b;
+  /* Rufus hero cards — dark "islands" in BOTH themes. ONE unified fill for
+     every hero-deck card type (concentration risk, event-impact, bounce-back,
+     idle-cash, Daily Brief teaser, Weekly Snapshot teaser, fallback) — no
+     per-card-type variation. */
+  --v-hero-card: #17323b;
   --v-hero-card-border: #1c2740;
   --v-hero-text: #ffffff;
-  --v-hero-text-2: #c7cedb;
+  --v-hero-text-2: #c9d8d6;
   --v-hero-text-3: #7c8aa0;
   --v-hero-muted-rule: rgba(255, 255, 255, 0.08);
   /* hero cards are dark-navy islands in BOTH themes, so the
@@ -63,6 +70,10 @@
   /* EARNINGS tag on the daily brief (WATCH reuses --v-hero-warn,
      MARKET --v-accent, PORTFOLIO --v-gain) */
   --v-tag-earnings: #5b4bc4;
+  /* WATCH tag — theme-tuned. --v-hero-warn (#d9a94a) is a text-on-dark token
+     and only reaches ~2.2:1 on the light sheet, so light uses the palette's
+     established label amber (#8a6d1e, ~4.9:1). Dark keeps #d9a94a (~8.8:1). */
+  --v-tag-watch: #8a6d1e;
 
   /* view-only / admin */
   --v-view-only-text: #8a6d1e;
@@ -96,6 +107,8 @@
   --v-canvas: #000814;
   --v-card: #0a0f1e;
   --v-card-border: #141c2e;
+  /* "Your Portfolio" card — dark theme keeps today's plain card fill */
+  --v-por-card: #0a0f1e;
   /* loading skeleton */
   --v-skel-a: #1b233c;
   --v-skel-b: #263051;
@@ -131,6 +144,7 @@
   --v-loss: #f0716b;
   /* EARNINGS tag on the daily brief (dark-set value) */
   --v-tag-earnings: #a78bfa;
+  --v-tag-watch: #d9a94a;
 
   --v-view-only-text: #d9a94a;
   --v-view-only-bg: rgba(217, 169, 74, 0.1);
@@ -273,4 +287,53 @@
   --v-chat-input-bg: rgba(20, 28, 48, 0.9);
   --v-chat-gain: #3ddc84;
   --v-chat-loss: #f0716b;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   INVEST screen (Task 4, Part 2)
+   Same treatment as Insights: the shell keeps legacy dark tokens for
+   un-migrated screens, but the Invest tab swaps to the themed canvas.
+   ═══════════════════════════════════════════════════════════════ */
+[data-theme='light'] .app-shell[data-active-tab='invest'],
+[data-theme='light'] .app-shell[data-active-tab='invest'] .content-area,
+[data-theme='dark'] .app-shell[data-active-tab='invest'],
+[data-theme='dark'] .app-shell[data-active-tab='invest'] .content-area {
+  background: var(--v-canvas);
+}
+[data-theme='light'] body:has(.app-shell[data-active-tab='invest']),
+[data-theme='dark'] body:has(.app-shell[data-active-tab='invest']) {
+  background: var(--v-canvas);
+}
+
+/* Derived semantic tints used by the Invest surfaces (additive — these
+   do not exist in the base token set). */
+:root,
+[data-theme='light'] {
+  --v-accent-dim: rgba(14, 140, 153, 0.10);
+  --v-gain-dim: rgba(30, 158, 90, 0.10);
+  --v-loss-dim: rgba(214, 69, 69, 0.10);
+  --v-warn: #a9741f;
+  --v-warn-dim: rgba(169, 116, 31, 0.12);
+  --v-disabled-bg: #e7eae4;
+  --v-disabled-text: #98a2b3;
+  --v-hero-on-accent: #06262b;
+}
+[data-theme='dark'] {
+  --v-accent-dim: rgba(95, 216, 222, 0.14);
+  --v-gain-dim: rgba(61, 220, 132, 0.14);
+  --v-loss-dim: rgba(240, 113, 107, 0.14);
+  --v-warn: #d9a94a;
+  --v-warn-dim: rgba(217, 169, 74, 0.14);
+  --v-disabled-bg: rgba(95, 216, 222, 0.16);
+  --v-disabled-text: rgba(196, 204, 220, 0.45);
+  --v-hero-on-accent: #06262b;
+}
+
+/* Standalone strategy setup pages (DCA / Rebalancing / Tax Harvesting)
+   render outside .app-shell — give them the themed canvas too. */
+[data-theme='light'] body:has(.strategy-page),
+[data-theme='light'] .strategy-page,
+[data-theme='dark'] body:has(.strategy-page),
+[data-theme='dark'] .strategy-page {
+  background: var(--v-canvas);
 }

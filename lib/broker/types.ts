@@ -146,8 +146,9 @@ export interface BrokerAccountSummary {
   totalInvested: number;
   totalPnL: number;
   totalPnLPct: number;
-  todayPnL: number;
-  todayPnLPct: number;
+  /** null = day change unavailable (no usable quote) — render "—", not $0.00. */
+  todayPnL: number | null;
+  todayPnLPct: number | null;
   /** Connection-level metadata — null for Demo */
   lastSynced: string | null;
   accountStatus: 'open' | 'closed' | 'archived' | null;

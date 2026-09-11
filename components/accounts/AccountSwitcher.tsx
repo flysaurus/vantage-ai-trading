@@ -62,7 +62,11 @@ export function AccountSwitcher({
       : null;
   }
 
-  const showReadOnlyBadge = activeAccount && !activeAccount.isDemo && !activeAccount.tradingEnabled;
+  // The `masthead` variant renders its own two-weight BROKER / VIEW ONLY badge
+  // (see components/layout/Masthead.tsx), so this inline chip must be
+  // suppressed there or the same account shows two "VIEW ONLY" badges.
+  const showReadOnlyBadge =
+    !!activeAccount && !activeAccount.isDemo && !activeAccount.tradingEnabled && !isMasthead;
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -104,7 +108,14 @@ export function AccountSwitcher({
 
         {/* Read-only badge */}
         {showReadOnlyBadge && (
-          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold tracking-wide">
+          <span
+            className="text-[9px] px-1.5 py-0.5 rounded font-semibold tracking-wide"
+            style={{
+              color: 'var(--v-view-only-text)',
+              background: 'var(--v-view-only-bg)',
+              border: '1px solid var(--v-view-only-bg)',
+            }}
+          >
             VIEW ONLY
           </span>
         )}

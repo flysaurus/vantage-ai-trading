@@ -25,7 +25,7 @@ interface Props {
 }
 
 export function QuickLinks({ items }: Props) {
-  const { setChatOpen, setPendingPrompt, setTab, setFocusPosition } = useTabStore();
+  const { setChatOpen, setPendingPrompt, setTab, openPositionDetail } = useTabStore();
 
   const drift = items.find((i) => i?.triggerType === 'portfolio_drift') || null;
   const concentration =
@@ -58,8 +58,7 @@ export function QuickLinks({ items }: Props) {
             concentration?.meta?.symbol ||
             (Array.isArray(concentration?.meta?.symbols) ? concentration.meta.symbols[0] : null);
           if (sym) {
-            setFocusPosition(sym);
-            setTab('portfolio');
+            openPositionDetail(sym, 'insights');
             return;
           }
         }

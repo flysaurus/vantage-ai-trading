@@ -24,6 +24,7 @@ import { SettingsTab } from '@/components/settings/SettingsTab';
 import WatchlistTab from '@/components/ai/WatchlistTab';
 import { InsightsTab } from '@/components/insights/InsightsTab';
 import { PageScrollArea } from '@/components/layout/PageScrollArea';
+import { PositionDetail } from '@/components/portfolio/PositionDetail';
 import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider';
 import { AccountProvider, useAccounts } from '@/context/AccountContext';
 import { AccountSwitcher } from '@/components/accounts/AccountSwitcher';
@@ -291,16 +292,24 @@ function AppShell() {
   }
 
   const isInsights = activeTab === 'insights';
+  // Tabs that render their OWN shared <Masthead/> inside the scroll area
+  // (Insights + Holdings) — MainApp must NOT also draw the generic header
+  // above them, or the account name / account switcher appears twice.
+  const rendersOwnMasthead = isInsights || activeTab === 'portfolio' || activeTab === 'invest';
 
   const mainContent = (
     <>
       {!isInsights && (
         <>
-          <Header />
-          <div className="flex items-center gap-2 px-4 py-1.5 border-b border-white/5">
-            <AccountSwitcher />
-            <InvestorStyleBadge />
-          </div>
+          {!rendersOwnMasthead && (
+            <>
+              <Header />
+              <div className="flex items-center gap-2 px-4 py-1.5 border-b border-white/5">
+                <AccountSwitcher />
+                <InvestorStyleBadge />
+              </div>
+            </>
+          )}
           {TABS_WITH_MARKETBAR.has(activeTab) && <MarketBar />}
           <WatchlistBar />
         </>
@@ -326,6 +335,11 @@ function AppShell() {
     <div className="app-shell bg-app" data-active-tab={activeTab}>
       {isDesktop && <DesktopSidebar />}
       {isDesktop ? <div className="main-panel">{mainContent}</div> : mainContent}
+
+      {/* PART 2 — the ONE canonical Position Detail screen (full-screen overlay)
+          lives ABOVE the tab tree so it can be opened identically from Insights
+          and Holdings without remounting (and thus losing) the scroller. */}
+      <PositionDetail />
 
       {/* Full-screen chat overlay — replaces the old AI tab destination */}
       {chatOpen && (

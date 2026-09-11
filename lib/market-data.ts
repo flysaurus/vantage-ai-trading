@@ -253,7 +253,7 @@ function alpacaHeaders(): Record<string, string> | null {
 /**
  * Single-quote from Alpaca via snapshot (richer than /quotes/latest).
  */
-async function alpacaQuote(symbol: string, timeout = 5000): Promise<Quote | null> {
+export async function alpacaQuote(symbol: string, timeout = 5000): Promise<Quote | null> {
   const headers = alpacaHeaders();
   if (!headers) return null;
   try {
@@ -420,7 +420,7 @@ function parseYahooQuote(symbol: string, result: any): Quote | null {
   };
 }
 
-async function yahooQuote(symbol: string, timeout = 5000): Promise<Quote | null> {
+export async function yahooQuote(symbol: string, timeout = 5000): Promise<Quote | null> {
   try {
     const ySymbol = yahooSymbol(symbol.toUpperCase());
     const res = await fetch(

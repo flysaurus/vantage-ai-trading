@@ -19,6 +19,12 @@ interface Props {
    *  score computed from an EMPTY portfolio (which would read as a real
    *  "0 / Needs attention" verdict). */
   pending?: boolean;
+  /** The load reached a TERMINAL failure (or timed out). A skeleton is only
+   *  ever correct while something is genuinely still in flight — a failed fetch
+   *  must resolve to a visible error, never an endless shimmer. (PART 3) */
+  failed?: boolean;
+  /** Retry handler for the failed state — re-runs the account fetch. */
+  onRetry?: () => void;
 }
 
 const SUB_LABELS: { key: 'diversification' | 'riskBalance' | 'returns'; label: string }[] = [
@@ -27,7 +33,7 @@ const SUB_LABELS: { key: 'diversification' | 'riskBalance' | 'returns'; label: s
   { key: 'returns', label: 'Returns' },
 ];
 
-export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTolerance, pending = false }: Props) {
+export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTolerance, pending = false, failed = false, onRetry }: Props) {
   const { setChatOpen, setPendingPrompt } = useTabStore();
 
   const health = useMemo(
@@ -48,8 +54,9 @@ export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTole
   return (
     <section
       data-testid="portfolio-health-card"
-      data-health-score={pending ? undefined : health.score}
+      data-health-score={pending || failed ? undefined : health.score}
       data-pending={pending ? 'true' : undefined}
+      data-failed={failed ? 'true' : undefined}
       style={{
         margin: '24px 20px 0',
         background: 'var(--v-card)',
@@ -62,7 +69,30 @@ export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTole
         PORTFOLIO HEALTH
       </div>
 
-      {pending ? (
+      {failed ? (
+        /* TERMINAL FAILURE — never a skeleton. A fetch that died must resolve to
+           something a human can act on (PART 3: the silent permanent skeleton). */
+        <>
+          <p
+            data-testid="health-error"
+            style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--v-text-secondary)', marginTop: 12 }}
+          >
+            Couldn’t load this account’s health.
+          </p>
+          <button
+            type="button"
+            data-testid="health-retry"
+            onClick={() => onRetry?.()}
+            style={{
+              marginTop: 12, background: 'none', border: '0.5px solid var(--v-card-border)',
+              borderRadius: 999, padding: '7px 14px', color: 'var(--v-accent)',
+              fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            Retry
+          </button>
+        </>
+      ) : pending ? (
         // Nothing to score yet — shimmer, never a number.
         <>
           <span

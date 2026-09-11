@@ -1,160 +1,96 @@
 'use client';
 
+// ─── PositionRow (PART 3.7) ─────────────────────────────────
+// The Holdings position-list row. Lightweight by design: the ONLY detail view
+// is the canonical full-screen PositionDetail (opened via onOpen). Left = icon
+// avatar (coloured initials) + ticker (with inline threshold-crossing badge) +
+// company name + share count. Right = MARKET VALUE + TOTAL gain % (no Today
+// column — Today lives on the detail screen). All colours are `--v-*` tokens.
 import React from 'react';
+import type { Position } from '@/types';
+import type { ThresholdCrossing } from '@/lib/insights/threshold-badge';
+import { avatarColor, initials } from '@/lib/position-avatar';
+import { ThresholdBadgePill } from './ThresholdBadgePill';
 
-export interface PositionRowData {
-  symbol: string;
-  qty: number;
-  marketValue: number;
-  unrealizedPnL: number;
-  unrealizedPnLPercent: number;
-  currentPrice: number;
-  sector?: string;
-}
-
-interface PositionRowProps {
-  position: PositionRowData;
-  onSell?: () => void;
-  showBasketBadge?: boolean;
-  basketName?: string;
-  isSelectable?: boolean;
+interface Props {
+  pos: Position;
+  crossing?: ThresholdCrossing | null;
+  onOpen: () => void;
+  selectMode?: boolean;
   isSelected?: boolean;
-  onSelect?: () => void;
-  /** If true, treat as compact list item (no checkbox, no sell button) */
-  compact?: boolean;
-  /** Day change display */
-  dayChange?: number;
-  dayChangePercent?: number;
-  totalPnl?: number;
-  totalPnlPercent?: number;
-  avgCost?: number;
-  portfolioPercent?: number;
+  onToggleSelect?: () => void;
 }
 
-export function PositionRow({
-  position,
-  onSell,
-  showBasketBadge,
-  basketName,
-  isSelectable,
-  isSelected,
-  onSelect,
-  compact,
-  dayChange,
-  dayChangePercent,
-  totalPnl,
-  totalPnlPercent,
-}: PositionRowProps) {
-  const pnl = totalPnl ?? position.unrealizedPnL;
-  const pnlPct = totalPnlPercent ?? position.unrealizedPnLPercent;
-  const isUp = pnl >= 0;
+const fmt = (n: number | null | undefined) =>
+  n == null ? '—' : `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const pctStr = (n: number | null | undefined) => (n == null ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`);
+
+export function PositionRow({ pos, crossing, onOpen, selectMode = false, isSelected = false, onToggleSelect }: Props) {
+  const symbol = (pos.symbol || '').toUpperCase();
+  const tint = avatarColor(symbol);
+  const marketValue = pos.marketValue || pos.qty * (pos.currentPrice || pos.avgCost) || 0;
+  const costBasis = pos.totalCost ?? pos.qty * pos.avgCost;
+  const totalPnl = pos.totalPnl ?? marketValue - costBasis;
+  const totalPnlPct = pos.totalPnlPercent ?? (costBasis > 0 ? (totalPnl / costBasis) * 100 : 0);
+  const shares = pos.qty % 1 === 0 ? String(pos.qty) : pos.qty.toFixed(4);
 
   return (
     <div
-      className={`position-row ${isSelectable ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
-      onClick={isSelectable && onSelect ? onSelect : undefined}
+      data-testid={`position-row-${symbol}`}
+      role="button"
+      tabIndex={0}
+      onClick={() => (selectMode ? onToggleSelect?.() : onOpen())}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectMode ? onToggleSelect?.() : onOpen(); } }}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '12px 20px', cursor: 'pointer',
+        borderBottom: '0.5px solid var(--v-card-border)',
+        background: isSelected ? 'var(--v-badge-gain-bg)' : 'transparent',
+      }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        {/* Left side */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {isSelectable && (
-            <div className={`select-circle ${isSelected ? 'checked' : ''}`}>
-              {isSelected && <span style={{ fontSize: 10, lineHeight: 1 }}>✓</span>}
-            </div>
-          )}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontWeight: 600, fontSize: 13, color: '#f1f5f9' }}>
-                {position.symbol}
-              </span>
-              {basketName && (
-                <span className="basket-badge">{basketName}</span>
-              )}
-            </div>
-            <div style={{ fontSize: 10, color: '#cbd5e1' }}>
-              {position.qty} shares{position.sector ? ` · ${position.sector}` : ''}
-            </div>
-          </div>
-        </div>
+      {selectMode && (
+        <span
+          aria-hidden="true"
+          style={{
+            width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+            border: `1.5px solid ${isSelected ? 'var(--v-accent)' : 'var(--v-text-faint)'}`,
+            background: isSelected ? 'var(--v-accent)' : 'transparent',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'var(--v-accent-text)', fontSize: 12, fontWeight: 900,
+          }}
+        >
+          {isSelected ? '✓' : ''}
+        </span>
+      )}
 
-        {/* Right side */}
-        <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 13, color: '#f1f5f9' }}>
-              ${position.marketValue.toLocaleString()}
-            </div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: isUp ? '#22c55e' : '#ef4444' }}>
-              {isUp ? '+' : '-'}{pnlPct.toFixed(1)}% · {isUp ? '+' : '-'}${Math.round(Math.abs(pnl)).toLocaleString()}
-            </div>
-          </div>
-          {onSell && !isSelectable && !compact && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onSell(); }}
-              className="sell-single-btn"
-            >
-              Sell
-            </button>
-          )}
-          {!compact && !isSelectable && (
-            <span style={{ color: '#94a3b8', fontSize: 16, lineHeight: 1 }}>›</span>
-          )}
+      <span
+        aria-hidden="true"
+        style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: tint.bg, color: tint.fg, fontWeight: 800, fontSize: 12.5 }}
+      >
+        {initials(symbol)}
+      </span>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          <span style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--v-text-primary)', letterSpacing: '-0.01em' }}>{symbol}</span>
+          <ThresholdBadgePill crossing={crossing} testId={`threshold-badge-${symbol}`} />
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--v-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {pos.name && pos.name !== symbol ? pos.name : (pos.type || 'Holding')}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--v-text-muted)', marginTop: 1 }}>
+          {shares} {Number(shares) === 1 ? 'share' : 'shares'}{pos.sector ? ` · ${pos.sector}` : ''}
         </div>
       </div>
 
-      <style jsx>{`
-        .position-row {
-          padding: 10px 12px;
-          background: #0f172a;
-          border-radius: 16px;
-          margin-bottom: 6px;
-        }
-        .position-row.selectable {
-          cursor: pointer;
-        }
-        .position-row.selected {
-          border: 1px solid #06b6d4;
-          background: rgba(6,182,212,0.06);
-        }
-        .select-circle {
-          width: 18px;
-          height: 18px;
-          border-radius: 50%;
-          border: 2px solid #334155;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          color: #06b6d4;
-          font-weight: 700;
-          font-size: 11px;
-          transition: all 0.15s;
-        }
-        .select-circle.checked {
-          border-color: #06b6d4;
-          background: rgba(6,182,212,0.15);
-        }
-        .basket-badge {
-          font-size: 9px;
-          font-weight: 600;
-          padding: 1px 6px;
-          border-radius: 10px;
-          background: rgba(6,182,212,0.15);
-          color: #06b6d4;
-          white-space: nowrap;
-        }
-        .sell-single-btn {
-          padding: 3px 10px;
-          font-size: 10px;
-          font-weight: 700;
-          background: rgba(239,68,68,0.12);
-          border: 1px solid rgba(239,68,68,0.25);
-          border-radius: 6px;
-          color: #f87171;
-          cursor: pointer;
-          font-family: inherit;
-          white-space: nowrap;
-        }
-      `}</style>
+      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--v-text-primary)', fontVariantNumeric: 'tabular-nums' }}>{fmt(marketValue)}</div>
+        <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2, color: totalPnl >= 0 ? 'var(--v-gain)' : 'var(--v-loss)', fontVariantNumeric: 'tabular-nums' }}>
+          {pctStr(totalPnlPct)}
+        </div>
+      </div>
     </div>
   );
 }
+
+export default PositionRow;

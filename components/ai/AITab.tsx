@@ -219,7 +219,7 @@ const CHAT_PLACEHOLDER = 'Ask about your portfolio…';
 
 export function AITab({ messages, setMessages, onClose }: AITabProps) {
   const router = useRouter();
-  const { setTab, setFocusPosition } = useTabStore();
+  const { setTab, openPositionDetail } = useTabStore();
   const { account: liveAccount, executeTrade, brokerMeta } = useLivePortfolio();
   const { isConnected } = useBroker();
   // Canonical account source of truth. brokerMeta is derived (and goes null/stale
@@ -2541,7 +2541,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                     readOnly={isReadOnly}
                     disabled={loading}
                     onRebalance={() => sendMessage('rebalance', 'chat')}
-                    onReviewPosition={(ticker) => { setFocusPosition(ticker); setTab('portfolio'); onClose && onClose(); }}
+                    onReviewPosition={(ticker) => { openPositionDetail(ticker, 'insights'); onClose && onClose(); }}
                   />
                 );
               })()}
@@ -3385,7 +3385,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                         <ActionButton
                           action={item.action}
                           onRebalance={() => { setShowExplore(false); sendToChat('rebalance'); }}
-                          onReviewPosition={(ticker) => { setShowExplore(false); setFocusPosition(ticker); setTab('portfolio'); }}
+                          onReviewPosition={(ticker) => { setShowExplore(false); openPositionDetail(ticker, 'insights'); }}
                           onInvestCash={(amount) => { setShowExplore(false); sendToChat(`Build me a portfolio with my $${amount.toLocaleString()} of idle cash.`); }}
                           onDismiss={() => setSnoozeTarget(snoozeTarget === item.id ? null : item.id)}
                         />

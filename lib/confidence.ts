@@ -111,9 +111,15 @@ function scoreTechnicalHealth(positions: Position[]): FactorResult {
   }
 
   // Without real-time technical data (RSI, MACD, MAs), we approximate
-  // using dayChangePercent as a proxy for momentum
-  const winningPct = positions.filter((p) => p.dayChangePercent > 0).length / positions.length;
-  const avgDayChange = positions.reduce((s, p) => s + p.dayChangePercent, 0) / positions.length;
+  // using dayChangePercent as a proxy for momentum. Positions whose day
+  // change is unavailable (null — no usable quote) are excluded rather than
+  // being treated as flat/down, so a quote outage never skews the score.
+  const withDay = positions.filter((p) => p.dayChangePercent != null);
+  if (withDay.length === 0) {
+    return { score: 60, explanation: 'Technical Health (60/100): day-change data unavailable — score held at neutral.', detail: 'No live day-change quote available for any position.' };
+  }
+  const winningPct = withDay.filter((p) => (p.dayChangePercent as number) > 0).length / withDay.length;
+  const avgDayChange = withDay.reduce((s, p) => s + (p.dayChangePercent as number), 0) / withDay.length;
 
   let score = 60; // neutral baseline
 
@@ -128,7 +134,7 @@ function scoreTechnicalHealth(positions: Position[]): FactorResult {
   else if (avgDayChange < -1) score -= 5;
 
   // Penalize if any single position is down >5% on the day
-  const bigLosers = positions.filter((p) => p.dayChangePercent < -5).length;
+  const bigLosers = withDay.filter((p) => (p.dayChangePercent as number) < -5).length;
   if (bigLosers > 2) score -= 15;
   else if (bigLosers > 0) score -= 5 * bigLosers;
 

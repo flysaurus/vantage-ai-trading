@@ -45,20 +45,25 @@ interface TabStore {
   /** Ticker to focus/expand in the Portfolio tab (set cross-tab, consumed + cleared by PortfolioTab). */
   focusPosition: string | null;
   setFocusPosition: (symbol: string | null) => void;
+  /**
+   * PART 2 — the ONE canonical Position Detail screen (full-screen overlay).
+   * `origin` records which tab the user opened it from so Back returns to the
+   * originating list and restores its scroll position. `scrollTop` captures the
+   * page scroller's offset at open time.
+   */
+  positionDetail: { symbol: string; origin: TabId; scrollTop: number } | null;
+  openPositionDetail: (symbol: string, origin?: TabId) => void;
+  closePositionDetail: () => void;
+  /** A pending Buy More / Sell request raised from the Position Detail overlay. */
+  tradeRequest: { symbol: string; side: 'BUY' | 'SELL' } | null;
+  requestTrade: (symbol: string, side: 'BUY' | 'SELL') => void;
+  clearTradeRequest: () => void;
   /** Pending chat prompt to auto-send when the AI chat next mounts (set cross-tab, consumed by AITab). */
   pendingPrompt: string | null;
   setPendingPrompt: (prompt: string | null) => void;
   /** Whether the full-screen Ask Rufus chat overlay is open (replaces the old AI tab destination). */
   chatOpen: boolean;
   setChatOpen: (open: boolean) => void;
-  /**
-   * Cross-tab signal: which brief to expand in the Holdings screen.
-   * The Insights hero deck's Daily Brief / Weekly Snapshot teaser cards set
-   * this before navigating to 'portfolio'; PortfolioTab consumes + clears it.
-   * (There was no global way to open these briefs before.)
-   */
-  briefTarget: 'daily' | 'weekly' | null;
-  setBriefTarget: (target: 'daily' | 'weekly' | null) => void;
 }
 
 export const useTabStore = create<TabStore>((set) => ({
@@ -66,12 +71,26 @@ export const useTabStore = create<TabStore>((set) => ({
   setTab: (tab) => set({ activeTab: tab }),
   focusPosition: null,
   setFocusPosition: (symbol) => set({ focusPosition: symbol }),
+  positionDetail: null,
+  openPositionDetail: (symbol, origin) => set((s) => ({
+    positionDetail: {
+      symbol,
+      origin: origin ?? (s.activeTab as TabId),
+      scrollTop:
+        typeof document !== 'undefined'
+          ? (document.querySelector('[data-page-scroller]') as HTMLElement | null)?.scrollTop ??
+            (typeof window !== 'undefined' ? window.scrollY : 0)
+          : 0,
+    },
+  })),
+  closePositionDetail: () => set({ positionDetail: null }),
+  tradeRequest: null,
+  requestTrade: (symbol, side) => set({ tradeRequest: { symbol, side } }),
+  clearTradeRequest: () => set({ tradeRequest: null }),
   pendingPrompt: null,
   setPendingPrompt: (prompt) => set({ pendingPrompt: prompt }),
   chatOpen: false,
   setChatOpen: (open) => set({ chatOpen: open }),
-  briefTarget: null,
-  setBriefTarget: (target) => set({ briefTarget: target }),
 }));
 
 // ─── Market Data ───

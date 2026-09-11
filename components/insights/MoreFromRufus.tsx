@@ -33,6 +33,13 @@ import {
 interface Props {
   /** All active noticed items (already fetched by InsightsTab). */
   items: any[];
+  /**
+   * PART 5 — lightweight earnings-date rows (held positions reporting within
+   * the look-ahead window). Informational only: no action link. Computed
+   * deterministically in InsightsTab from the same fundamentals source the
+   * Position Detail "Earnings" field uses. Empty → nothing added.
+   */
+  earnings?: { id: string; icon: string; text: string }[];
 }
 
 interface Row {
@@ -42,28 +49,32 @@ interface Row {
   ticker: string | null;
 }
 
-export function MoreFromRufus({ items }: Props) {
-  const { setFocusPosition, setTab } = useTabStore();
+export function MoreFromRufus({ items, earnings }: Props) {
+  const { openPositionDetail } = useTabStore();
 
-  const rows: Row[] = useMemo(
-    () =>
-      (items || [])
-        .filter(isMoreFromRufusEligible)
-        .map((i) => ({
-          id: String(i.id ?? i.triggerKey),
-          icon: (typeof i.icon === 'string' && i.icon.trim()) || '•',
-          text: humanizeNoticedItem(i),
-          ticker: reviewTickerForItem(i),
-        })),
-    [items],
-  );
+  const rows: Row[] = useMemo(() => {
+    const eventRows: Row[] = (items || [])
+      .filter(isMoreFromRufusEligible)
+      .map((i) => ({
+        id: String(i.id ?? i.triggerKey),
+        icon: (typeof i.icon === 'string' && i.icon.trim()) || '•',
+        text: humanizeNoticedItem(i),
+        ticker: reviewTickerForItem(i),
+      }));
+    const earningsRows: Row[] = (earnings || []).map((e) => ({
+      id: e.id,
+      icon: e.icon,
+      text: e.text,
+      ticker: null,
+    }));
+    return [...eventRows, ...earningsRows];
+  }, [items, earnings]);
 
   // Nothing to surface → render nothing (no empty card, no layout gap).
   if (rows.length === 0) return null;
 
   const onReview = (ticker: string) => {
-    setFocusPosition(ticker);
-    setTab('portfolio');
+    openPositionDetail(ticker, 'insights');
   };
 
   return (

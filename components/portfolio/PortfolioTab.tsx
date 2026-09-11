@@ -15,16 +15,14 @@ import TradeTicket from './TradeTicket';
 import BasketActionPanel from '@/components/basket/BasketActionPanel';
 import BasketCard from './BasketCard';
 import PortfolioChart from './PortfolioChart';
-import PositionCardV3 from './PositionCardV3';
+import PositionRow from './PositionRow';
+import SectorAllocation from './SectorAllocation';
 import MarketOverview from '../shared/MarketOverview';
-import DailyBriefCard from '@/components/ai/DailyBriefCard';
-import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
+import { Masthead } from '@/components/layout/Masthead';
+import { getStyleContent } from '@/lib/content/investor-styles';
 import BasketBuyMoreTicket from '@/components/trade/BasketBuyMoreTicket';
 import BasketSellTicket from '@/components/trade/BasketSellTicket';
-import ActionButton from '@/components/ai/ActionButton';
-import { VantageOrb } from '@/components/brand/VantageOrb';
-import { apiGet, apiPost } from '@/lib/api-client';
-import { humanizeNoticedItem } from '@/lib/insights/noticed-copy';
+import { apiGet } from '@/lib/api-client';
 import { thresholdCrossings } from '@/lib/insights/threshold-badge';
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -34,10 +32,10 @@ const DOLLAR_FMT: Intl.NumberFormatOptions = {
   maximumFractionDigits: 2,
 };
 
-const fmt = (n: number) =>
-  `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', DOLLAR_FMT)}`;
+const fmt = (n: number | null) =>
+  n == null ? '—' : `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', DOLLAR_FMT)}`;
 
-const pctStr = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
+const pctStr = (n: number | null) => n == null ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
 
 const formatCurrency = (n: number) => {
   const abs = Math.abs(n);
@@ -45,92 +43,6 @@ const formatCurrency = (n: number) => {
   if (abs >= 10000) return `${sign}$${(abs / 1000).toFixed(1)}K`;
   return `${sign}$${abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
-
-// ─── AI Noticed visual upgrade — concentration donut (real holdings) ───
-// Donut chart of actual portfolio composition. Top 1-3 over-concentrated
-// holdings in accent/danger; everything else muted. Data only — no prediction.
-function ConcentrationDonut({ positions }: { positions: Position[] }) {
-  const data = useMemo(() => {
-    const total = positions.reduce((s, p) => s + (p.marketValue || 0), 0);
-    if (total <= 0) return [];
-    return positions
-      .filter((p) => (p.marketValue || 0) > 0)
-      .map((p) => ({ symbol: p.symbol, value: p.marketValue, pct: (p.marketValue / total) * 100 }))
-      .sort((a, b) => b.value - a.value);
-  }, [positions]);
-
-  if (data.length === 0) return null;
-
-  const R = 30;
-  const C = 2 * Math.PI * R;
-  const STROKE = 11;
-  let cumulative = 0;
-  const segments = data.map((d, i) => {
-    const len = (d.pct / 100) * C;
-    const color = i === 0 ? '#f59e0b' : i === 1 ? '#22d3ee' : 'rgba(255,255,255,0.12)';
-    const seg = (
-      <circle
-        key={d.symbol}
-        cx="40"
-        cy="40"
-        r={R}
-        fill="none"
-        stroke={color}
-        strokeWidth={STROKE}
-        strokeDasharray={`${len} ${C - len}`}
-        strokeDashoffset={-cumulative}
-        transform="rotate(-90 40 40)"
-      />
-    );
-    cumulative += len;
-    return seg;
-  });
-
-  const topThree = data.slice(0, 3);
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
-      <svg width="80" height="80" viewBox="0 0 80 80" style={{ flexShrink: 0 }}>
-        {segments}
-      </svg>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
-        {topThree.map((d, i) => (
-          <div key={d.symbol} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'rgba(255,255,255,0.8)' }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: i === 0 ? '#f59e0b' : i === 1 ? '#22d3ee' : 'rgba(255,255,255,0.35)', flexShrink: 0 }} />
-            <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{d.symbol}</span>
-            <span style={{ color: 'rgba(255,255,255,0.45)' }}>{d.pct.toFixed(0)}%</span>
-          </div>
-        ))}
-        <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.35)' }}>
-          {data.length} holding{data.length === 1 ? '' : 's'} · top {Math.min(3, data.length)} concentrated
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── AI Noticed visual upgrade — idle-cash illustrative chart ───
-// Two STATIC bars (Cash vs Invested). No percentages, no index, no timeframe.
-// Illustrative only — this is intentionally not a projection or guarantee.
-function IdleCashIllustration() {
-  return (
-    <div style={{ marginTop: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, height: 72, padding: '0 2px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
-          <div style={{ width: '100%', maxWidth: 46, height: 34, background: 'rgba(255,255,255,0.12)', borderRadius: 6 }} />
-          <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>Cash</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
-          <div style={{ width: '100%', maxWidth: 46, height: 62, background: '#22d3ee', borderRadius: 6 }} />
-          <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>Invested</span>
-        </div>
-      </div>
-      <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 8, fontSize: 11, lineHeight: 1.5, color: 'rgba(255,255,255,0.62)', fontStyle: 'italic' }}>
-        Illustrative only - not a projection or guarantee. Investing involves risk of loss.
-      </div>
-    </div>
-  );
-}
 
 function splitCents(value: number): { dollars: string; cents: string } {
   const str = value.toLocaleString('en-US', DOLLAR_FMT);
@@ -157,86 +69,65 @@ function formatRelativeTime(dateStr: string): string {
 // ─── Account Hero Card ────────────────────────────────────
 
 function AccountHero({ account, isConnected }: { account: AccountSummary; isConnected: boolean }) {
-  const { brokerSource, brokerMeta } = useLivePortfolio();
   const { dollars, cents } = splitCents(account.equity);
-  
-  // Label badge — driven by broker metadata + canonical fields, never a hardcoded isDemo bool
-  const isDemo = brokerSource === 'demo';
-  const isReadOnly = account.holdingsUnavailable === true;
 
-  // Broker name (e.g. "Fidelity") + account name (e.g. "ANIKET -YOUTH ACCOUNT")
-  // are shown together, deduping when they're identical (e.g. Alpaca Paper).
-  const accountName = brokerMeta?.name ?? 'Broker';
-  const brokerName = brokerMeta?.broker && brokerMeta.broker !== accountName ? brokerMeta.broker : null;
-  const namePrefix = brokerName ? `${brokerName} · ` : '';
-
-  const envLabel = isDemo
-    ? 'Demo Portfolio · Demo'
-    : brokerMeta?.environment === 'paper'
-      ? `${namePrefix}${accountName} · Paper`
-      : isReadOnly
-        ? `${namePrefix}${accountName} · Read-only`
-        : `${namePrefix}${accountName} · Live`;
-  
-  const dataSourceStyle = isDemo
-    ? { background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' }
-    : brokerMeta?.tradingEnabled && !isReadOnly
-      ? { background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' }
-      : { background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' };
-  
   return (
-    <div className="hero-container" style={{ position: 'relative' }}>
-      {/* Data source badge */}
-      <span
-        className={isDemo ? 'hero-demo-badge' : ''}
-        style={isDemo ? undefined : dataSourceStyle as any}
+    <div style={{ margin: '20px 20px 0' }} data-testid="balance-block">
+      <div data-testid="balance-rule" style={{ borderTop: '2px solid var(--v-accent)', marginBottom: 12 }} />
+      <div
+        data-testid="balance-card"
+        style={{
+          background: 'var(--v-por-card)',
+          border: '0.5px solid var(--v-card-border)',
+          borderRadius: 16,
+          padding: '16px 18px 18px',
+        }}
       >
-        {envLabel}
-      </span>
+        {/* label row — orb + label, mirroring the Insights balance card */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span
+            aria-hidden="true"
+            data-testid="balance-orb"
+            style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--v-orb)', flexShrink: 0 }}
+          />
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--v-text-muted)' }}>
+            PORTFOLIO VALUE
+          </span>
+        </div>
 
-      {/* Label */}
-      <div className="hero-label">Portfolio Value</div>
+        {/* balance — BOLD SANS (was italic serif) */}
+        <div data-testid="balance-section" style={{ marginTop: 12 }}>
+          <div>
+            <span
+              data-testid="balance-amount"
+              style={{ fontFamily: 'var(--font-sans, Inter, sans-serif)', fontWeight: 800, letterSpacing: '-0.02em', fontSize: 44, color: 'var(--v-text-primary)', lineHeight: 1 }}
+            >
+              ${dollars}
+            </span>
+            <span style={{ fontFamily: 'var(--font-sans, Inter, sans-serif)', fontWeight: 700, fontSize: 26, color: 'var(--v-text-muted)' }}>
+              .{cents}
+            </span>
+          </div>
 
-      {/* Hero number */}
-      <div>
-        <span className="hero-value">${dollars}</span>
-        <span className="hero-cents">.{cents}</span>
-      </div>
-
-      {/* P&L row */}
-      <div className="hero-pnl-row">
-        <div>
-          <div className="hero-pnl-item-label">Today</div>
-          <div
-            className="hero-pnl-item-value"
-            style={{ color: account.dayPnl >= 0 ? 'var(--gain)' : 'var(--loss)' }}
-          >
-            {fmt(account.dayPnl)} ({pctStr(account.dayPnlPercent)})
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: 'var(--v-text-muted)' }}>
+              Today{' '}
+              {/* colour follows the REAL SIGN of THIS figure */}
+              <span data-testid="today-figure" style={{ color: account.dayPnl == null ? 'var(--v-text-muted)' : account.dayPnl >= 0 ? 'var(--v-gain)' : 'var(--v-loss)', fontWeight: 700 }}>
+                {account.dayPnl == null ? '—' : `${fmt(account.dayPnl)} (${pctStr(account.dayPnlPercent)})`}
+              </span>
+            </span>
+            <span style={{ color: 'var(--v-text-faint)', fontSize: 12 }}>·</span>
+            <span style={{ fontSize: 12, color: 'var(--v-text-muted)' }}>
+              Total{' '}
+              {/* independent of Today — loss-red whenever TOTAL is negative */}
+              <span data-testid="total-figure" style={{ color: account.totalPnl >= 0 ? 'var(--v-gain)' : 'var(--v-loss)', fontWeight: 700 }}>
+                {fmt(account.totalPnl)} ({pctStr(account.totalPnlPercent)})
+              </span>
+            </span>
           </div>
         </div>
-        <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>·</span>
-        <div>
-          <div className="hero-pnl-item-label">Total</div>
-          <div
-            className="hero-pnl-item-value"
-            style={{ color: account.totalPnl >= 0 ? 'var(--gain)' : 'var(--loss)' }}
-          >
-            {fmt(account.totalPnl)} ({pctStr(account.totalPnlPercent)})
-          </div>
-        </div>
       </div>
-
-      {/* Last synced indicator */}
-      {account.lastSynced && (
-        <div style={{
-          marginTop: 8,
-          fontSize: 10,
-          color: 'var(--text-muted)',
-          opacity: 0.6,
-        }}>
-          Last synced {formatRelativeTime(account.lastSynced)}
-        </div>
-      )}
     </div>
   );
 }
@@ -268,6 +159,7 @@ function PositionCard({
   const totalPnL = (currentPrice - pos.avgCost) * pos.qty;
   const costBasis = pos.totalCost ?? pos.qty * pos.avgCost;
   const totalPnLPct = costBasis > 0 ? (totalPnL / costBasis) * 100 : 0;
+  const hasToday = pos.dayChange != null && pos.dayChangePercent != null;
   const todayPnL = pos.dayChange ?? 0;
   const todayPnLPct = pos.dayChangePercent ?? 0;
 
@@ -383,9 +275,14 @@ function PositionCard({
         </div>
         <div className="position-card-right">
           <span className="position-price">${currentPrice.toFixed(2)}</span>
-          <span className={`position-change ${gainLossClass(pos.dayChangePercent ?? 0)}`}>
-            {(pos.dayChangePercent ?? 0) >= 0 ? '+' : ''}{(pos.dayChangePercent ?? 0).toFixed(2)}%
-          </span>
+          {hasToday ? (
+            <span className={`position-change ${gainLossClass(pos.dayChangePercent as number)}`}>
+              {(pos.dayChangePercent as number) >= 0 ? '+' : ''}{(pos.dayChangePercent as number).toFixed(2)}%
+            </span>
+          ) : (
+            // No usable quote → explicit dash, never a fabricated +0.00%.
+            <span className="position-change" style={{ color: 'var(--text-muted)' }}>—</span>
+          )}
         </div>
       </div>
 
@@ -418,10 +315,17 @@ function PositionCard({
       </div>
 
       <div className="position-card-bottom">
-        <div className={`position-pill ${gainLossClass(todayPnL)}`}>
+        <div className={`position-pill ${hasToday ? gainLossClass(todayPnL) : 'flat'}`}>
           <span className="pill-label">TODAY</span>
-          <span className="pill-value">{todayPnL >= 0 ? '+' : ''}${Math.abs(todayPnL).toFixed(2)}</span>
-          <span className="pill-pct">({todayPnL >= 0 ? '+' : ''}{Math.abs(todayPnLPct).toFixed(2)}%)</span>
+          {hasToday ? (
+            <>
+              <span className="pill-value">{todayPnL >= 0 ? '+' : ''}${Math.abs(todayPnL).toFixed(2)}</span>
+              <span className="pill-pct">({todayPnL >= 0 ? '+' : ''}{Math.abs(todayPnLPct).toFixed(2)}%)</span>
+            </>
+          ) : (
+            // No usable quote — explicit unavailable marker, never a fake $0.00.
+            <span className="pill-value">—</span>
+          )}
         </div>
         <div className={`position-pill ${gainLossClass(totalPnL)}`}>
           <span className="pill-label">TOTAL</span>
@@ -900,26 +804,26 @@ function BuyingPowerCard({ account, invested }: { account: AccountSummary; inves
   // Two rows of two — prevents the 4-across layout from clipping Invested.
   const cells: Array<{ label: string; value: string; color?: string }> = [
     { label: 'CASH', value: formatCurrency(computeAvailableCash(account)) },
-    { label: 'RESERVED', value: formatCurrency(account.reservedCash ?? 0), color: '#fbbf24' },
+    { label: 'RESERVED', value: formatCurrency(account.reservedCash ?? 0), color: 'var(--v-hero-warn)' },
     { label: 'BUYING POWER', value: account.buyingPower != null ? formatCurrency(account.buyingPower) : '—' },
     { label: 'INVESTED', value: formatCurrency(invested) },
   ];
   return (
-    <div style={{ padding: '0 16px 16px' }}>
+    <div style={{ padding: '0 20px 16px' }} data-testid="holdings-stats">
       <div style={{
         display: 'grid',
         gridTemplateColumns: '1fr 1fr',
         gap: '12px 16px',
         padding: 16,
-        background: 'var(--card-bg)',
-        border: '1px solid var(--card-border)',
+        background: 'var(--v-card)',
+        border: '0.5px solid var(--v-card-border)',
         borderRadius: 16,
       }}>
         {cells.map((c) => (
           <div key={c.label} style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-            <div style={{ fontSize: 11, letterSpacing: 0.5, color: '#e2e8f0', fontFamily: 'var(--font-sans)', fontWeight: 600, whiteSpace: 'nowrap' }}>{c.label}</div>
+            <div style={{ fontSize: 10, letterSpacing: '0.08em', color: 'var(--v-text-muted)', fontFamily: 'var(--font-sans)', fontWeight: 700, whiteSpace: 'nowrap' }}>{c.label}</div>
             <div style={{
-              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: c.color ?? 'var(--text-primary)',
+              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: c.color ?? 'var(--v-text-primary)',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>{c.value}</div>
           </div>
@@ -933,15 +837,12 @@ function BuyingPowerCard({ account, invested }: { account: AccountSummary; inves
 
 export function PortfolioTab() {
   const [filter, setFilter] = useState('all');
-  const [dailyExpanded, setDailyExpanded] = useState(false);
-  const [weeklyExpanded, setWeeklyExpanded] = useState(false);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [expandedSymbols, setExpandedSymbols] = useState<Set<string>>(new Set());
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
   const [sellModalOpen, setSellModalOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [expandedBasketIds, setExpandedBasketIds] = useState<Set<string>>(new Set());
-  const briefsRef = useRef<HTMLDivElement>(null);
   const [tradeTicket, setTradeTicket] = useState<{
     symbol: string; side: 'BUY' | 'SELL'; currentPrice: number;
     sharesHeld: number; availableCash: number;
@@ -957,20 +858,16 @@ export function PortfolioTab() {
   } | null>(null);
 
   const { account: brokerAccount, accountScope: brokerScope, loading: brokerLoading, error: brokerError } = usePortfolio();
-  const { account: liveAccount, accountScope: liveScope, loading: liveLoading, baskets, executeTrade, sellBasketPositions, refresh: refreshContext } = useLivePortfolio();
+  const { account: liveAccount, accountScope: liveScope, loading: liveLoading, baskets, executeTrade, sellBasketPositions, refresh: refreshContext, brokerMeta } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { activeAccount, activeAccountId } = useAccounts();
   const { user } = useAuth();
-  const { focusPosition, setFocusPosition, setTab, setPendingPrompt, setChatOpen, briefTarget, setBriefTarget } = useTabStore();
+  const { focusPosition, setFocusPosition, openPositionDetail, tradeRequest, clearTradeRequest, setTab, setPendingPrompt, setChatOpen } = useTabStore();
 
   // Hard boundary: Demo must NEVER show broker data. Scope data source by active account.
   const isShowingDemo = activeAccount?.isDemo ?? false;
   // Read-only = live broker connection without trading access (demo is always full).
   const isReadOnly = !isShowingDemo && !(activeAccount?.tradingEnabled ?? false);
-
-  // Source attribution: position cards show "Synced from {broker}" for live
-  // accounts (null for demo, where Vantage itself is the broker).
-  const brokerLabel = isShowingDemo ? null : (activeAccount?.name ?? null);
 
   const isBrokerExpected = isConnected && !isShowingDemo;
 
@@ -996,47 +893,25 @@ export function PortfolioTab() {
     : (liveScope === (activeAccountId ?? null) ? (liveAccount as AccountSummary | null) : null);
   const loading = isBrokerExpected ? brokerLoading : liveLoading;
 
-  // ── Close briefs on outside click ──
-  useEffect(() => {
-    if (!dailyExpanded && !weeklyExpanded) return;
-    const handler = (e: MouseEvent) => {
-      if (briefsRef.current && !briefsRef.current.contains(e.target as Node)) {
-        setDailyExpanded(false);
-        setWeeklyExpanded(false);
-      }
-    };
-    setTimeout(() => document.addEventListener('mousedown', handler), 0);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [dailyExpanded, weeklyExpanded]);
-
-  // ── Cross-tab signal: expand a brief requested from the Insights deck teasers ──
-  // (Minimal addition required by the Insights tab's Daily Brief / Weekly Snapshot
-  //  teaser cards. Previously there was no global way to open these briefs.)
-  useEffect(() => {
-    if (!briefTarget) return;
-    setDailyExpanded(briefTarget === 'daily');
-    setWeeklyExpanded(briefTarget === 'weekly');
-    setBriefTarget(null);
-    const t = window.setTimeout(() => {
-      briefsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 300);
-    return () => window.clearTimeout(t);
-  }, [briefTarget, setBriefTarget]);
   const positions: Position[] = displayAccount?.positions || [];
 
-  // ── Top AI insight (Option B: single curated card on Portfolio, replaces prose) ──
-  const [topNoticed, setTopNoticed] = useState<any>(null);
-  // ALL active notices — used for the inline threshold badges below. The hero
-  // card only wants one item, but the position rows need every active crossing.
+  // Account / broker labels for the shared <Masthead/> (same as Insights).
+  const accountName = isShowingDemo ? 'Demo' : brokerMeta?.name || activeAccount?.name || 'Broker';
+  const brokerLabel = (
+    isShowingDemo ? 'Demo' : brokerMeta?.broker || brokerMeta?.name || activeAccount?.name || 'Broker'
+  ).toUpperCase();
+  const dotColor = isShowingDemo ? 'var(--v-admin-label)' : isConnected ? 'var(--v-gain)' : 'var(--v-text-faint)';
+  const investorStyle = (user?.investorStyle as string | undefined) || 'buffett';
+  const styleLabel = getStyleContent(investorStyle).shortLabel;
+
+  // ALL active notices — used for the inline threshold badges below.
   const [noticedAll, setNoticedAll] = useState<any[]>([]);
   const fetchTopNoticed = useCallback(async () => {
     try {
       const res = await apiGet(`/api/ai/noticed?accountId=${encodeURIComponent(activeAccountId || 'demo')}`);
       if (res.ok) {
         const data = await res.json();
-        const items = data.items || [];
-        setNoticedAll(items);
-        setTopNoticed(items.find((i: any) => i.action) || items[0] || null);
+        setNoticedAll(data.items || []);
       }
     } catch { /* ignore */ }
   }, [activeAccountId]);
@@ -1047,33 +922,29 @@ export function PortfolioTab() {
   // Symbols without an active crossing simply have no entry (no badge).
   const crossings = useMemo(() => thresholdCrossings(noticedAll), [noticedAll]);
 
-  const [topSnoozeOpen, setTopSnoozeOpen] = useState(false);
-
-  const handleTopDismiss = async (itemId: string, dismissType: string) => {
-    setTopSnoozeOpen(false);
-    setTopNoticed(null);
-    try { await apiPost('/api/ai/noticed/dismiss', { itemId, dismissType }); } catch { /* ignore */ }
-  };
-
-  // ── Cross-tab focus: expand + scroll to a ticker's position card ──
-  // Set by the AI Noticed REVIEW_POSITION CTA (AITab → setFocusPosition + setTab('portfolio')).
+  // ── Cross-tab focus → the ONE canonical Position Detail overlay ──
+  // Any legacy REVIEW_POSITION caller that still sets focusPosition lands in the
+  // same full-screen detail every other entry point opens.
   useEffect(() => {
     if (!focusPosition) return;
-    const target = focusPosition.toUpperCase();
-    const pos = positions.find((p: any) => (p.symbol || '').toUpperCase() === target);
-    if (!pos) return; // positions still loading — retry on next positions change
-    const symbol = pos.symbol;
-    setExpandedSymbols((prev) => {
-      const next = new Set(prev);
-      next.add(symbol);
-      return next;
+    openPositionDetail(focusPosition, 'portfolio');
+    setFocusPosition(null);
+  }, [focusPosition, openPositionDetail, setFocusPosition]);
+
+  // ── Buy More / Sell raised from the Position Detail overlay ──
+  useEffect(() => {
+    if (!tradeRequest) return;
+    const pos = positions.find((p: any) => (p.symbol || '').toUpperCase() === tradeRequest.symbol.toUpperCase());
+    if (!pos) return; // positions not resolved yet — retry on next positions change
+    setTradeTicket({
+      symbol: pos.symbol,
+      side: tradeRequest.side,
+      currentPrice: pos.currentPrice ?? pos.avgCost,
+      sharesHeld: pos.qty,
+      availableCash: tradeRequest.side === 'BUY' ? computeAvailableCash(displayAccount) : 0,
     });
-    const timer = setTimeout(() => {
-      document.getElementById(`position-${symbol}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setFocusPosition(null);
-    }, 80);
-    return () => clearTimeout(timer);
-  }, [focusPosition, positions, setFocusPosition]);
+    clearTradeRequest();
+  }, [tradeRequest, positions, displayAccount, clearTradeRequest]);
 
   // Hydrate missing company names + sectors from API
   const [enrichedPositions, setEnrichedPositions] = useState<Position[]>(positions);
@@ -1241,78 +1112,25 @@ export function PortfolioTab() {
   }
 
   return (
-    <div style={{ paddingBottom: 24 }}>
-      {/* ── 1. Rufus Noticed hero card — leads the screen (single card, single label) ── */}
-      {topNoticed ? (() => {
-        const accent = topNoticed.variant === 'warn' ? '#f59e0b' : topNoticed.variant === 'gain' ? '#22c55e' : '#22d3ee';
-        const isRebalance = topNoticed.action === 'REBALANCE';
-        const isIdleCash = typeof topNoticed.action === 'string' && topNoticed.action.startsWith('INVEST_CASH:');
-        return (
-          <div style={{ padding: '16px 16px 0' }}>
-            <div style={{
-              position: 'relative',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 16,
-              padding: 14,
-              background: 'rgba(255,255,255,0.03)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                <VantageOrb size={20} animate={false} showEntrance={false} />
-                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', color: accent }}>RUFUS NOTICED</span>
-              </div>
-              <div data-testid="rufus-noticed-body" style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 15, color: '#f1f5f9', lineHeight: 1.5 }}>{humanizeNoticedItem(topNoticed)}</div>
-              {isRebalance && <ConcentrationDonut positions={displayPositions} />}
-              {isIdleCash && <IdleCashIllustration />}
-              {topNoticed.action && (
-                <ActionButton
-                  action={topNoticed.action}
-                  readOnly={isReadOnly}
-                  flush
-                  onRebalance={() => { setPendingPrompt('rebalance'); setChatOpen(true); }}
-                  onReviewPosition={(ticker) => { setFocusPosition(ticker); setTab('portfolio'); }}
-                  onInvestCash={(amount) => { setPendingPrompt(`Build me a portfolio with my $${amount.toLocaleString()} of idle cash.`); setChatOpen(true); }}
-                  onDismiss={() => setTopSnoozeOpen((o) => !o)}
-                />
-              )}
-              {topSnoozeOpen && (
-                <>
-                  <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={() => setTopSnoozeOpen(false)} />
-                  <div style={{
-                    position: 'absolute', right: '8px', top: '44px', zIndex: 9999,
-                    background: '#1a2235', border: '1px solid rgba(255,255,255,0.15)',
-                    borderRadius: '10px', padding: '6px', display: 'flex', flexDirection: 'column',
-                    gap: '2px', minWidth: '170px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                  }}>
-                    {[
-                      { label: 'Remind in 3 days', type: '3d' },
-                      { label: 'Remind in 5 days', type: '5d' },
-                      { label: 'Remind in 1 week', type: '1w' },
-                      { label: 'Remind in 2 weeks', type: '14d' },
-                      { label: "Don't remind again", type: 'permanent' },
-                    ].map((opt) => (
-                      <button
-                        key={opt.type}
-                        onClick={(e) => { e.stopPropagation(); handleTopDismiss(topNoticed.id, opt.type); }}
-                        style={{
-                          background: 'transparent', border: 'none', color: '#cbd5e1',
-                          fontSize: '12px', padding: '8px 12px', borderRadius: '6px',
-                          cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                        }}
-                        onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
-                        onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        );
-      })() : null}
+    <div style={{ paddingBottom: 24, background: 'var(--v-canvas)', minHeight: '100%' }}>
+      {/* ── 0. Shared masthead (SAME component Insights uses) ── */}
+      <Masthead
+        accountName={accountName}
+        brokerLabel={brokerLabel}
+        dotColor={dotColor}
+        isReadOnly={isReadOnly}
+        styleLabel={styleLabel}
+        onStyleClick={() => setTab('settings')}
+        testIds={{
+          masthead: 'holdings-masthead',
+          rule: 'holdings-masthead-rule',
+          header: 'holdings-header',
+          wordmark: 'masthead-wordmark',
+          account: 'masthead-account',
+        }}
+      />
 
-      {/* ── 2. Account Hero ── */}
+      {/* ── 1. Balance block (bold sans) ── */}
       <AccountHero account={accountData} isConnected={isBrokerExpected} />
 
       {/* ── 3. Portfolio Chart ── */}
@@ -1329,18 +1147,11 @@ export function PortfolioTab() {
         />
       </div>
 
-      {/* ── 4. Daily Brief / Weekly Snapshot ── */}
-      <div ref={briefsRef} style={{ padding: '0 16px 16px' }}>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <DailyBriefCard mode="pill" active={dailyExpanded} accountId={activeAccountId || 'demo'} onClick={() => { setDailyExpanded(!dailyExpanded); if (weeklyExpanded) setWeeklyExpanded(false); }} />
-          <WeeklySnapshotCard mode="pill" active={weeklyExpanded} accountId={activeAccountId || 'demo'} onClick={() => { setWeeklyExpanded(!weeklyExpanded); if (dailyExpanded) setDailyExpanded(false); }} />
-        </div>
-        {dailyExpanded && <DailyBriefCard mode="content" accountId={activeAccountId || 'demo'} onClick={() => setDailyExpanded(false)} />}
-        {weeklyExpanded && <WeeklySnapshotCard mode="content" accountId={activeAccountId || 'demo'} onClick={() => setWeeklyExpanded(false)} />}
-      </div>
-
-      {/* ── 4. Cash / Invested Summary ── */}
+      {/* ── 4. Cash / Reserved / Buying Power / Invested ── */}
       <BuyingPowerCard account={accountData} invested={investedValue} />
+
+      {/* ── 4b. Sector Allocation ── */}
+      <SectorAllocation positions={positions} />
 
       {/* ── 5. Market Overview ── */}
       <MarketOverview />
@@ -1350,70 +1161,55 @@ export function PortfolioTab() {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         padding: '20px 20px 12px',
       }}>
-        <h2 className="section-header" style={{ padding: 0 }}>
+        <h2 className="section-header" style={{ padding: 0, color: 'var(--v-text-primary)' }}>
           Positions
         </h2>
 
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          {/* Filter */}
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-              style={{
-                padding: '6px 12px', borderRadius: 999,
-                background: filter !== 'all' ? 'rgba(34,211,238,0.10)' : 'transparent',
-                border: filter !== 'all' ? '1px solid rgba(34,211,238,0.25)' : '1px solid rgba(255,255,255,0.08)',
-                color: filter !== 'all' ? 'var(--accent)' : 'var(--text-secondary)',
-                fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
-                cursor: 'pointer',
-              }}
-            >
-              {filter === 'all' ? 'All' : filter === 'gainers' ? 'Gainers' : 'Losers'}
-            </button>
-            {showFilterDropdown && (
-              <div style={{
-                position: 'absolute', top: '100%', right: 0, marginTop: 4,
-                background: '#131929', border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 12, padding: 4, zIndex: 50,
-                boxShadow: '0 4px 16px rgba(0,0,0,0.4)', minWidth: 120,
-              }}>
-                {[
-                  { key: 'all', label: 'All' },
-                  { key: 'gainers', label: 'Gainers' },
-                  { key: 'losers', label: 'Losers' },
-                ].map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => { setFilter(key); setShowFilterDropdown(false); }}
-                    style={{
-                      display: 'block', width: '100%', textAlign: 'left',
-                      padding: '8px 12px', borderRadius: 8,
-                      background: filter === key ? 'rgba(34,211,238,0.10)' : 'transparent',
-                      color: filter === key ? 'var(--accent)' : '#ffffff',
-                      fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: 13,
-                      cursor: 'pointer', border: 'none',
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
+          {/* Filter chips — All / Gainers / Losers (replaces the All+dropdown) */}
+          <div data-testid="filter-chips" style={{ display: 'flex', gap: 6 }}>
+            {([
+              { key: 'all', label: 'All' },
+              { key: 'gainers', label: 'Gainers' },
+              { key: 'losers', label: 'Losers' },
+            ] as const).map(({ key, label }) => {
+              const active = filter === key;
+              return (
+                <button
+                  key={key}
+                  data-testid={`filter-chip-${key}`}
+                  data-active={active ? 'true' : undefined}
+                  onClick={() => setFilter(key)}
+                  style={{
+                    padding: '6px 12px', borderRadius: 999,
+                    background: active ? 'var(--v-accent)' : 'transparent',
+                    border: active ? '1px solid var(--v-accent)' : '1px solid var(--v-card-border)',
+                    color: active ? 'var(--v-accent-text)' : 'var(--v-text-secondary)',
+                    fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Select */}
+          {/* Select mode — a MODE toggle, not a filter. Demoted to a text link so the
+              chip row reads purely as All / Gainers / Losers. */}
           <button
+            type="button"
+            data-testid="select-toggle"
             onClick={() => {
               if (selectMode) cancelSelect();
               else setSelectMode(true);
             }}
             style={{
-              padding: '6px 12px', borderRadius: 999,
-              background: 'transparent',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: selectMode ? 'var(--accent)' : 'var(--text-secondary)',
-              fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
-              cursor: 'pointer',
+              padding: 0, background: 'transparent', border: 'none',
+              marginLeft: 8,
+              color: 'var(--v-accent)',
+              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 12,
+              cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap',
             }}
           >
             {selectMode ? 'Done' : 'Select'}
@@ -1610,29 +1406,27 @@ export function PortfolioTab() {
               );
             })}
 
-            {/* Individual stocks NOT in any basket */}
-            {filteredPositions
-              .filter((pos: any) => !basketSymbolMap.has(pos.symbol))
-              .map((pos: any) => (
-                <div key={pos.symbol} id={`position-${pos.symbol}`}>
-                  <PositionCardV3
-                    pos={pos}
-                    crossing={crossings[pos.symbol?.toUpperCase()] || null}
-                    isSelected={selectedSymbols.has(pos.symbol)}
-                    isExpanded={expandedSymbols.has(pos.symbol)}
-                    onToggleSelect={() => toggleSelect(pos.symbol)}
-                    onToggleExpand={() => toggleExpand(pos.symbol)}
-                    onBuy={() => {
-                      console.log('[BUY] setTradeTicket firing for', pos.symbol, 'cash:', displayAccount?.cash);
-                      setTradeTicket({ symbol: pos.symbol, side: 'BUY', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: computeAvailableCash(displayAccount) });
-                    }}
-                    onSell={(lots) => setTradeTicket({ symbol: pos.symbol, side: 'SELL', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: 0, lots })}
-                    showCheckbox={selectMode}
-                    connectionId={null}
-                    brokerLabel={brokerLabel}
-                  />
-                </div>
-              ))}
+            {/* Individual stocks NOT in any basket — one card, tap → canonical detail */}
+            {filteredPositions.filter((pos: any) => !basketSymbolMap.has(pos.symbol)).length > 0 && (
+              <div
+                data-testid="positions-list"
+                style={{ margin: '0 20px', background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 16, overflow: 'hidden' }}
+              >
+                {filteredPositions
+                  .filter((pos: any) => !basketSymbolMap.has(pos.symbol))
+                  .map((pos: any) => (
+                    <PositionRow
+                      key={pos.symbol}
+                      pos={pos}
+                      crossing={crossings[pos.symbol?.toUpperCase()] || null}
+                      selectMode={selectMode}
+                      isSelected={selectedSymbols.has(pos.symbol)}
+                      onToggleSelect={() => toggleSelect(pos.symbol)}
+                      onOpen={() => openPositionDetail(pos.symbol, 'portfolio')}
+                    />
+                  ))}
+              </div>
+            )}
 
             {/* No items at all */}
             {allBasketRows.length === 0 && filteredPositions.filter((pos: any) => !basketSymbolMap.has(pos.symbol)).length === 0 && (

@@ -45,8 +45,9 @@ interface RawPosition {
   marketValue: number;
   costBasis: number;
   openPnl: number;
-  dayChange: number;
-  dayChangePct: number;
+  /** null = no usable quote (unavailable) — must NOT be coerced to 0. */
+  dayChange: number | null;
+  dayChangePct: number | null;
   assetType?: string;
   currency?: string;
 }
@@ -94,8 +95,8 @@ export class SnapTradeAdapter implements BrokerAdapter {
       buyingPower: number | null;
       invested: number;
       marketValue: number;
-      dayChange: number;
-      dayChangePct: number;
+      dayChange: number | null;
+      dayChangePct: number | null;
       totalPnl: number;
       totalPnlPct: number;
       currency: string;
@@ -111,8 +112,8 @@ export class SnapTradeAdapter implements BrokerAdapter {
       cash: data.cash ?? 0,
       buyingPower: data.buyingPower ?? null,
       dayTradeCount: 0,
-      dayPnl: data.dayChange ?? 0,
-      dayPnlPercent: data.dayChangePct ?? 0,
+      dayPnl: data.dayChange ?? null,
+      dayPnlPercent: data.dayChangePct ?? null,
       totalPnl: data.totalPnl ?? 0,
       totalPnlPercent: data.totalPnlPct ?? 0,
       portfolioValue: data.totalValue ?? 0,
@@ -150,8 +151,8 @@ export class SnapTradeAdapter implements BrokerAdapter {
       currentPrice: p.price || 0,
       marketValue: p.marketValue || 0,
       costBasis: p.costBasis || 0,
-      dayChange: p.dayChange || 0,
-      dayChangePercent: p.dayChangePct || 0,
+      dayChange: p.dayChange ?? null,
+      dayChangePercent: p.dayChangePct ?? null,
       totalPnl: p.openPnl || 0,
       totalPnlPercent: p.costBasis > 0 ? (p.openPnl / p.costBasis) * 100 : 0,
       portfolioPercent: (p.marketValue || 0) / totalValue * 100,

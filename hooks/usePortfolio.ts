@@ -242,6 +242,14 @@ const SECTOR_COLORS = [
 
 const REFRESH_INTERVAL = 60000; // 60 seconds
 const RETRY_DELAY = 3000;
+// PART 3 — WATCHDOG. A load must reach a TERMINAL state (data or error) within
+// this window. Without it, a refresh that is awaiting `/api/sectors` or the
+// Supabase enrichment can never produce data and never produce an error, so the
+// UI sits on a skeleton forever with no way for the user to know or retry.
+// NOT a performance budget: measured live loads on this SnapTrade path run
+// 8-22s (26-position Alpaca Paper book), so this leaves ~2-3x headroom and only
+// fires on a genuine stall, never on "slow".
+const LOAD_TIMEOUT = 45000;
 
 export function usePortfolio() {
   const store = usePortfolioStore();
@@ -316,6 +324,9 @@ export function usePortfolio() {
   }, [isConnected, user?.investorStyle, setAccount, activeAccountId]);
 
   const refresh = useCallback(async (): Promise<void> => {
+    // Declared OUTSIDE the try so the watchdog is always cleared in `finally`
+    // (a const declared inside `try` is not visible from `finally`).
+    let loadTimeout: ReturnType<typeof setTimeout> | undefined;
     if (!broker || !isConnected) {
       console.error('[usePortfolio] refresh skipped — broker:', !!broker, 'isConnected:', isConnected);
       return;
@@ -335,6 +346,22 @@ export function usePortfolio() {
         setLoading(true);
       }
       setError(null);
+
+      // Watchdog for THIS attempt only: if we are still the active scope and
+      // nothing has resolved by LOAD_TIMEOUT, surface a terminal error instead
+      // of shimmering forever. Cleared in `finally` below.
+      loadTimeout = setTimeout(() => {
+        if (!mountedRef.current) return;
+        // If the user switched accounts, the CURRENT scope owns the loading
+        // flag — this attempt must not speak for it.
+        if (scopeRef.current !== scope) return;
+        if (!usePortfolioStore.getState().loading) return; // someone already settled
+        console.error('[usePortfolio] TIMEOUT — no data after', LOAD_TIMEOUT, 'ms');
+        setError(
+          'This account is taking longer than usual to load. Pull to refresh or try again.',
+        );
+        setLoading(false);
+      }, LOAD_TIMEOUT);
 
       const uid = user?.id as string | undefined;
       const connectionId = activeAccountId?.startsWith('snaptrade:')
@@ -554,6 +581,21 @@ export function usePortfolio() {
         holdingsUnavailable: brokerAccount.holdingsUnavailable,
       };
 
+      // ── PART 3 — FINAL SCOPE RE-CHECK (the actual TOCTOU fix) ──
+      // Every scope guard above ran BEFORE the awaits that follow it: the
+      // `/api/sectors?symbols=...` fetch (2-3s for a large book) and the
+      // Supabase enrichment. If the user switches accounts while we are parked
+      // on one of those awaits, this refresh belongs to the account they JUST
+      // LEFT. Writing it here flips the SHARED store's `loading` back to false
+      // while the new account's fetch is still in flight, which the UI reads as
+      // "loaded, but no data for this account" → a FALSE "Couldn't load this
+      // account — reconnect or refresh" and a Portfolio Health card stuck on a
+      // skeleton. Bail out instead: the new scope's own refresh owns the store.
+      if (!mountedRef.current || scopeRef.current !== scope) {
+        console.error('[usePortfolio] discarding stale account write for scope', scope);
+        return;
+      }
+
       setAccount({
         ...accountSummary,
         sectorAllocations: allocations,
@@ -584,6 +626,8 @@ export function usePortfolio() {
       retryTimer.current = setTimeout(() => {
         if (mountedRef.current) refresh();
       }, RETRY_DELAY);
+    } finally {
+      clearTimeout(loadTimeout);
     }
   }, [broker, isConnected, clearAccount, setAccount, setLoading, user?.id, activeAccountId]);
 

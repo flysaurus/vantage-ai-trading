@@ -205,8 +205,10 @@ export async function GET(req: NextRequest) {
           marketValue: p.units * p.price,
           costBasis: p.units * (p.costBasisPerUnit || 0),
           openPnl: p.openPnl || 0,
-          dayChange: p.dayChange || 0,
-          dayChangePct: p.dayChangePct || 0,
+          // null = no usable quote (unavailable) — preserved end-to-end so the
+          // UI renders "—" instead of a fabricated flat $0.00 / 0.00%.
+          dayChange: p.dayChange ?? null,
+          dayChangePct: p.dayChangePct ?? null,
           assetType: 'stock' as const,
           currency: 'USD',
         })),

@@ -77,7 +77,7 @@ export default function MarketOverview() {
   return (
     <div style={{ padding: '0 14px 20px' }}>
       {/* Section Header */}
-      <h2 className="section-header" style={{ padding: '20px 0 12px' }}>
+      <h2 className="section-header" style={{ padding: '20px 0 12px', color: 'var(--v-text-primary)' }}>
         Market Overview
       </h2>
 

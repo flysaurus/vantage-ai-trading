@@ -13,10 +13,16 @@ const DOLLAR_FMT: Intl.NumberFormatOptions = {
   maximumFractionDigits: 2,
 };
 
-export const fmt = (n: number) =>
-  `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', DOLLAR_FMT)}`;
+// Null/undefined = unavailable (no usable quote) → '—', never a fabricated $0.00.
+export const fmt = (n: number | null | undefined) =>
+  n == null || !Number.isFinite(Number(n))
+    ? '—'
+    : `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', DOLLAR_FMT)}`;
 
-export const pctStr = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
+export const pctStr = (n: number | null | undefined) =>
+  n == null || !Number.isFinite(Number(n))
+    ? '—'
+    : `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
 
 export function splitCents(value: number): { dollars: string; cents: string } {
   const str = value.toLocaleString('en-US', DOLLAR_FMT);

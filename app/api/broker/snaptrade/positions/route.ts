@@ -22,8 +22,9 @@ export interface SnapTradePosition {
   marketValue: number;
   costBasis: number;
   openPnl: number;
-  dayChange: number;
-  dayChangePct: number;
+  /** null = no usable quote (unavailable) — must render "—", never a fake $0.00. */
+  dayChange: number | null;
+  dayChangePct: number | null;
   assetType: string;
   currency: string;
 }

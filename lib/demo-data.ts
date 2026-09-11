@@ -357,7 +357,7 @@ export function getDemoAccount(
     pos.portfolioPercent = totalValue > 0 ? (pos.marketValue / totalValue) * 100 : 0;
   }
 
-  const dayPnl = positions.reduce((s, p) => s + p.dayChange, 0);
+  const dayPnl = positions.reduce((s, p) => s + (p.dayChange ?? 0), 0);
   const dayPnlPercent = totalValue > 0 ? (dayPnl / (totalValue - dayPnl)) * 100 : 0;
 
   // Cash = $100,000 - sum(position cost basis)

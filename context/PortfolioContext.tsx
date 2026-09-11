@@ -629,8 +629,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           buyingPower: ba.buyingPower,
           cash: Math.max(0, ba.cash - reservedCash),
           reservedCash,
-          dayPnl: ba.dayPnl ?? 0,
-          dayPnlPercent: ba.dayPnlPercent ?? 0,
+          dayPnl: ba.dayPnl ?? null,
+          dayPnlPercent: ba.dayPnlPercent ?? null,
           totalPnl: ba.totalPnl ?? 0,
           totalPnlPercent: ba.totalPnlPercent ?? 0,
           positions: positions.map(p => ({
@@ -1909,13 +1909,16 @@ export function buildLivePortfolioContext(account: AccountSummary | null): strin
       return `${p.symbol} (${p.name || p.symbol}): ${p.qty} shares @ ${p.currentPrice.toFixed(2)} | ` +
         `Value: ${p.marketValue.toFixed(0)} | ` +
         `Total P&L: ${p.totalPnl >= 0 ? '+' : ''}${p.totalPnl.toFixed(0)} (${p.totalPnlPercent.toFixed(1)}%) | ` +
-        `Today: ${p.dayChange >= 0 ? '+' : ''}${p.dayChange.toFixed(0)} (${p.dayChangePercent.toFixed(1)}%) | ` +
+        `Today: ${p.dayChange == null || p.dayChangePercent == null ? '—' : `${p.dayChange >= 0 ? '+' : ''}${p.dayChange.toFixed(0)} (${p.dayChangePercent.toFixed(1)}%)`} | ` +
         `Avg Cost: ${p.avgCost.toFixed(2)}${reservedInfo}`;
     })
     .join('\n');
 
-  const daySign = account.dayPnl >= 0 ? '+' : '';
+  const daySign = account.dayPnl == null ? '' : account.dayPnl >= 0 ? '+' : '';
   const totalSign = account.totalPnl >= 0 ? '+' : '';
+  const todayLine = account.dayPnl == null || account.dayPnlPercent == null
+    ? 'Today P&L: —'
+    : `Today P&L: ${daySign}$${Math.abs(account.dayPnl).toFixed(2)} (${account.dayPnlPercent.toFixed(1)}%)`;
 
   const buyingPowerLine = account.buyingPower != null
     ? `\nBuying power: $${account.buyingPower.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -1927,7 +1930,7 @@ ${priceAnchor}
 
 PORTFOLIO CONTEXT (live Finnhub prices):
 Total Value: $${account.equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-Today P&L: ${daySign}$${Math.abs(account.dayPnl).toFixed(2)} (${account.dayPnlPercent.toFixed(1)}%)
+${todayLine}
 Total P&L: ${totalSign}$${Math.abs(account.totalPnl).toFixed(2)} (${account.totalPnlPercent.toFixed(1)}%)
 Cash balance: ${availableCash(account).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${buyingPowerLine}
 

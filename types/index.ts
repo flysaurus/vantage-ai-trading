@@ -27,8 +27,9 @@ export interface AccountSummary {
   cash: number;
   /** Dollar value reserved by still-open BUY orders. null/undefined = no reservation data (Demo). */
   reservedCash?: number | null;
-  dayPnl: number;
-  dayPnlPercent: number;
+  /** null = day change unavailable (no usable quote) — render "—", not $0.00. */
+  dayPnl: number | null;
+  dayPnlPercent: number | null;
   totalPnl: number;
   totalPnlPercent: number;
   positions: Position[];
@@ -52,8 +53,9 @@ export interface Position extends BasketInfo {
   avgCost: number;
   currentPrice: number;
   marketValue: number;
-  dayChange: number;
-  dayChangePercent: number;
+  /** null = day change unavailable (no usable quote) vs 0 = genuinely flat. */
+  dayChange: number | null;
+  dayChangePercent: number | null;
   totalPnl: number;
   totalPnlPercent: number;
   profitLossPct?: number;

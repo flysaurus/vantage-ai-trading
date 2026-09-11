@@ -43,12 +43,14 @@ interface BriefData {
 
 const EMPTY: BriefData = { content: '', healthScore: null, riskLevel: null, generatedAt: null, cached: false };
 
-/** Section tag accent — readable on both themes (see --v-* tokens). */
+/** Section tag accent — readable on BOTH themes (per-category, see --v-* tokens).
+ *  MARKET=accent, PORTFOLIO=gain, WATCH=tag-watch (theme-tuned amber),
+ *  EARNINGS=tag-earnings (violet). */
 function tagColor(label: string): string {
   switch (label) {
     case 'MARKET': return 'var(--v-accent)';
     case 'PORTFOLIO': return 'var(--v-gain)';
-    case 'WATCH': return 'var(--v-hero-warn)';
+    case 'WATCH': return 'var(--v-tag-watch)';
     case 'EARNINGS': return 'var(--v-tag-earnings)';
     default: return 'var(--v-text-muted)';
   }
@@ -184,7 +186,7 @@ export function BriefModal({ kind, accountId, onClose, onAskRufus }: BriefModalP
               {title}
             </div>
             {subtitle && (
-              <div style={{ fontSize: 12, color: 'var(--v-text-muted)', marginTop: 4 }}>{subtitle}</div>
+              <div style={{ fontSize: 12, color: 'var(--v-text-secondary)', marginTop: 4 }}>{subtitle}</div>
             )}
           </div>
           <button
@@ -216,13 +218,13 @@ export function BriefModal({ kind, accountId, onClose, onAskRufus }: BriefModalP
           style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', touchAction: 'pan-y', padding: '14px 16px 4px', WebkitOverflowScrolling: 'touch' }}
         >
           {loading && (
-            <div data-testid="brief-modal-loading" style={{ fontSize: 13.5, color: 'var(--v-text-muted)', padding: '18px 0' }}>
+            <div data-testid="brief-modal-loading" style={{ fontSize: 13.5, color: 'var(--v-text-secondary)', padding: '18px 0' }}>
               Loading your brief…
             </div>
           )}
 
           {!loading && !data.content && (
-            <div data-testid="brief-modal-empty" style={{ fontSize: 13.5, color: 'var(--v-text-muted)', padding: '18px 0', lineHeight: 1.6 }}>
+            <div data-testid="brief-modal-empty" style={{ fontSize: 13.5, color: 'var(--v-text-secondary)', padding: '18px 0', lineHeight: 1.6 }}>
               Your {kind === 'daily' ? 'daily brief' : 'weekly snapshot'} isn&rsquo;t ready yet. It&rsquo;ll appear here as soon as there&rsquo;s something to report.
             </div>
           )}

@@ -37,9 +37,9 @@ import { useTabStore } from '@/store';
 import type { Position, AccountSummary } from '@/types';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { fmt, pctStr, splitCents } from '@/lib/insights/format';
-import { buildDeck, type DeckTeaser } from '@/lib/insights/deck';
+import { buildDeck, buildEarningsRows, type DeckTeaser } from '@/lib/insights/deck';
 import { briefAskPrompt } from '@/lib/insights/brief';
-import { AccountSwitcher } from '@/components/accounts/AccountSwitcher';
+import { Masthead } from '@/components/layout/Masthead';
 import { HeroDeck } from './HeroDeck';
 import { MoreFromRufus } from './MoreFromRufus';
 import { PortfolioHealthCard } from './PortfolioHealthCard';
@@ -55,8 +55,8 @@ function firstLine(content: string): string {
 }
 
 export function InsightsTab() {
-  const { account: brokerAccount, accountScope: brokerScope, loading: brokerLoading } = usePortfolio();
-  const { account: liveAccount, accountScope: liveScope, loading: liveLoading, brokerMeta } = useLivePortfolio();
+  const { account: brokerAccount, accountScope: brokerScope, loading: brokerLoading, refresh: brokerRefresh } = usePortfolio();
+  const { account: liveAccount, accountScope: liveScope, loading: liveLoading, brokerMeta, refresh: liveRefresh } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { activeAccount, activeAccountId } = useAccounts();
   const { user } = useAuth();
@@ -178,6 +178,50 @@ export function InsightsTab() {
     [],
   );
 
+  // ── PART 5 — held-position earnings dates ("More from Rufus") ──
+  // Reuses the SAME fundamentals source the Position Detail "Earnings" field
+  // uses (GET /api/stock/fundamentals → nextEarningsDate). Deterministic and
+  // quiet: unknown/failed lookups simply contribute no row.
+  const positionSymbols = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of displayAccount?.positions || []) {
+      const s = (p.symbol || '').toUpperCase();
+      if (s) set.add(s);
+    }
+    return [...set].sort();
+  }, [displayAccount]);
+
+  const [earningsBySymbol, setEarningsBySymbol] = useState<Record<string, string | null>>({});
+
+  useEffect(() => {
+    if (positionSymbols.length === 0) { setEarningsBySymbol({}); return; }
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        positionSymbols.map(async (symbol) => {
+          try {
+            const r = await apiGet(`/api/stock/fundamentals?symbol=${encodeURIComponent(symbol)}`);
+            if (!r.ok) return [symbol, null] as const;
+            const d = await r.json();
+            return [symbol, typeof d?.nextEarningsDate === 'string' ? d.nextEarningsDate : null] as const;
+          } catch {
+            return [symbol, null] as const;
+          }
+        }),
+      );
+      if (!cancelled) setEarningsBySymbol(Object.fromEntries(entries));
+    })();
+    return () => { cancelled = true; };
+  }, [positionSymbols]);
+
+  const earningsRows = useMemo(
+    () => buildEarningsRows(
+      (displayAccount?.positions || []).map((p) => ({ symbol: p.symbol })),
+      earningsBySymbol,
+    ),
+    [displayAccount, earningsBySymbol],
+  );
+
   // ── Derived account numbers (same single source of truth as before) ──
   const investedValue = positions.reduce((acc, p) => acc + (p.marketValue || p.qty * (p.currentPrice || p.avgCost)), 0);
   const demoTotalCost = positions.reduce((acc, p) => acc + p.qty * p.avgCost, 0);
@@ -224,96 +268,21 @@ export function InsightsTab() {
 
   return (
     <div style={{ paddingBottom: 24, background: 'var(--v-canvas)', minHeight: '100%' }}>
-      {/* ── 1. Masthead ── */}
-      <div style={{ padding: '14px 20px 0' }} data-testid="insights-masthead">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <span
-              aria-hidden="true"
-              style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0, background: 'var(--v-orb)' }}
-            />
-            <span
-              data-testid="masthead-wordmark"
-              style={{
-                fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 19,
-                lineHeight: 1, color: 'var(--v-text-primary)', letterSpacing: '0.01em',
-              }}
-            >
-              Vantage
-            </span>
-          </div>
-          {/* The account name is the ACCOUNT SWITCHER trigger (PART 3): tapping it
-              on any screen opens the same account list Settings > Accounts uses.
-              Reuses <AccountSwitcher/> — no duplicate account data or list UI. */}
-          <AccountSwitcher variant="masthead" testId="masthead-account" fallbackLabel={accountName} />
-        </div>
-        {/* the ONE deliberate hairline deviation — 2px accent rule */}
-        <div data-testid="masthead-rule" style={{ borderTop: '2px solid var(--v-accent)', marginTop: 12 }} />
-      </div>
-
-      {/* ── 2. Header row (single row) ── */}
-      <div
-        data-testid="insights-header"
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 12, padding: '12px 20px 0',
+      <Masthead
+        accountName={accountName}
+        brokerLabel={brokerLabel}
+        dotColor={dotColor}
+        isReadOnly={isReadOnly}
+        styleLabel={styleLabel}
+        onStyleClick={() => setTab('settings')}
+        testIds={{
+          masthead: 'insights-masthead',
+          rule: 'masthead-rule',
+          header: 'insights-header',
+          wordmark: 'masthead-wordmark',
+          account: 'masthead-account',
         }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <span
-            data-testid="connection-dot"
-            style={{ width: 7, height: 7, borderRadius: '50%', background: dotColor, flexShrink: 0 }}
-          />
-          <button
-            type="button"
-            onClick={() => setTab('settings')}
-            style={{
-              background: 'none', border: 'none', color: 'var(--v-accent)', fontSize: 13,
-              fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0,
-              whiteSpace: 'nowrap', textDecoration: 'underline', textUnderlineOffset: 3,
-            }}
-          >
-            {styleLabel}
-          </button>
-        </div>
-        {isReadOnly && (
-          // Two-weight badge: broker NAME in bold primary text, "view only" in
-          // smaller muted text — same badge, one tint, no reflow.
-          <span
-            data-testid="view-only-tag"
-            data-broker={brokerLabel}
-            style={{
-              background: 'var(--v-view-only-bg)',
-              borderRadius: 6,
-              padding: '4px 8px 4px 8px',
-              flexShrink: 0,
-              display: 'inline-flex',
-              flexDirection: 'column',
-              alignItems: 'flex-end',
-              gap: 1,
-              lineHeight: 1.1,
-            }}
-          >
-            <span
-              data-testid="view-only-broker"
-              style={{
-                fontSize: 10.5, fontWeight: 800, letterSpacing: '0.04em',
-                color: 'var(--v-text-primary)', whiteSpace: 'nowrap',
-              }}
-            >
-              {brokerLabel}
-            </span>
-            <span
-              style={{
-                fontSize: 8.5, fontWeight: 700, letterSpacing: '0.1em',
-                color: 'var(--v-view-only-text)', whiteSpace: 'nowrap',
-              }}
-            >
-              VIEW ONLY
-            </span>
-          </span>
-        )}
-      </div>
+      />
 
       {/* ── 3. Balance section (no chart) — directly under the header ──
           This is a real CARD on the canvas (white fill in light, panel fill in
@@ -321,10 +290,15 @@ export function InsightsTab() {
           serif-italic balance, Today/Total and "See Holdings →". It replaces
           the earlier bare-text-on-canvas treatment, which was the bug. */}
       <div style={{ margin: '20px 20px 0' }} data-testid="balance-block">
+        {/* PART 2 — signature line: 2px accent rule directly above the card,
+            same language as the masthead rule below the wordmark. Gives this
+            section its own quiet identity marker, visually distinct from
+            Rufus's dark-navy hero cards. */}
+        <div data-testid="balance-rule" style={{ borderTop: '2px solid var(--v-accent)', marginBottom: 12 }} />
         <div
           data-testid="balance-card"
           style={{
-            background: 'var(--v-card)',
+            background: 'var(--v-por-card)',
             border: '0.5px solid var(--v-card-border)',
             borderRadius: 16,
             padding: '16px 18px 18px',
@@ -348,11 +322,11 @@ export function InsightsTab() {
               <div>
                 <span
                   data-testid="balance-amount"
-                  style={{ fontFamily: 'var(--font-sans, Inter, sans-serif)', fontWeight: 800, letterSpacing: '-0.02em', fontSize: 40, color: 'var(--v-text-primary)', lineHeight: 1 }}
+                  style={{ fontFamily: 'var(--font-sans, Inter, sans-serif)', fontWeight: 800, letterSpacing: '-0.02em', fontSize: 44, color: 'var(--v-text-primary)', lineHeight: 1 }}
                 >
                   ${dollars}
                 </span>
-                <span style={{ fontFamily: 'var(--font-sans, Inter, sans-serif)', fontWeight: 700, fontSize: 24, color: 'var(--v-text-muted)' }}>
+                <span style={{ fontFamily: 'var(--font-sans, Inter, sans-serif)', fontWeight: 700, fontSize: 26, color: 'var(--v-text-muted)' }}>
                   .{cents}
                 </span>
               </div>
@@ -371,8 +345,10 @@ export function InsightsTab() {
                 <>
                   <span style={{ fontSize: 12, color: 'var(--v-text-muted)' }}>
                     Today{' '}
-                    <span style={{ color: accountData.dayPnl >= 0 ? 'var(--v-gain)' : 'var(--v-loss)', fontWeight: 600 }}>
-                      {fmt(accountData.dayPnl)} ({pctStr(accountData.dayPnlPercent)})
+                    {/* PART 2 — colour follows the REAL SIGN of this figure
+                        (never a fixed colour per figure). */}
+                    <span data-testid="today-figure" style={{ color: accountData.dayPnl == null ? 'var(--v-text-muted)' : accountData.dayPnl >= 0 ? 'var(--v-gain)' : 'var(--v-loss)', fontWeight: 700 }}>
+                      {accountData.dayPnl == null ? '—' : `${fmt(accountData.dayPnl)} (${pctStr(accountData.dayPnlPercent)})`}
                     </span>
                   </span>
                   <span style={{ color: 'var(--v-text-faint)', fontSize: 12 }}>·</span>
@@ -392,7 +368,9 @@ export function InsightsTab() {
               {accountState === 'ready' && (
                 <span style={{ fontSize: 12, color: 'var(--v-text-muted)' }}>
                   Total{' '}
-                  <span style={{ color: accountData.totalPnl >= 0 ? 'var(--v-gain)' : 'var(--v-loss)', fontWeight: 600 }}>
+                  {/* PART 2 — independent of Today: loss-red whenever the TOTAL
+                      return is negative, even on a day where Today is up. */}
+                  <span data-testid="total-figure" style={{ color: accountData.totalPnl >= 0 ? 'var(--v-gain)' : 'var(--v-loss)', fontWeight: 700 }}>
                     {fmt(accountData.totalPnl)} ({pctStr(accountData.totalPnlPercent)})
                   </span>
                 </span>
@@ -404,7 +382,7 @@ export function InsightsTab() {
               onClick={() => setTab('portfolio')}
               style={{
                 display: 'inline-block', marginTop: 14, background: 'none', border: 'none',
-                color: 'var(--v-accent)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                color: 'var(--v-accent)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
                 fontFamily: 'inherit', padding: 0, textDecoration: 'underline', textUnderlineOffset: 3,
               }}
             >
@@ -415,9 +393,36 @@ export function InsightsTab() {
       </div>
 
       {/* ── 4. Hero deck (or single fallback card) ──
-          The fallback is reserved for the GENUINELY-EMPTY case only (no eligible
-          trigger AND no brief teaser). A teaser alone is a real, browsable deck. */}
+          SHARED HEADER (PART 1): orb + "RUFUS NOTICED" renders exactly ONCE,
+          hoisted OUT of the individual cards and OUTSIDE the horizontal
+          scroller (so swiping between cards cannot move it). It is NOT sticky —
+          it scrolls with the page like every other section header.
+
+          3-TIER EMPTY-STATE RULE (deck.length > 0 already encodes tiers A+B,
+          because buildDeck() only returns [] when there is no eligible trigger
+          AND no brief teaser with a headline):
+            (a) real trigger active         → header + deck shows the card
+            (b) no trigger, teaser exists   → header + deck shows teaser card(s)
+            (c) genuinely nothing           → header does NOT render AND the
+                fallback "no action needed" card does NOT render (both gone).
+          The fallback card therefore survives ONLY for the middle ground where
+          Rufus HAS produced notices but none are deck-eligible — a truthful
+          "no action needed", not an empty shell. */}
       <div style={{ marginTop: 18 }}>
+        {deck.length > 0 && (
+          <div
+            data-testid="rufus-noticed-header"
+            style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '0 20px 10px' }}
+          >
+            <span
+              aria-hidden="true"
+              style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--v-orb)', flexShrink: 0 }}
+            />
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--v-text-muted)' }}>
+              RUFUS NOTICED
+            </span>
+          </div>
+        )}
         {deck.length > 0 ? (
           <HeroDeck
             cards={deck}
@@ -426,7 +431,7 @@ export function InsightsTab() {
             onDismiss={handleDismiss}
             onOpenTeaser={openTeaser}
           />
-        ) : (
+        ) : noticedItems.length > 0 ? (
           <div style={{ padding: '0 20px' }} data-testid="deck-fallback">
             <article
               data-testid="fallback-card"
@@ -462,14 +467,14 @@ export function InsightsTab() {
               </p>
             </article>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* ── 5. More from Rufus ──
           Directly below the deck's dot indicator, above Portfolio Health.
           Only event-impact INFO-tier + milestone items; deck items excluded.
           Renders nothing when there is nothing to surface. */}
-      <MoreFromRufus items={noticedItems} />
+      <MoreFromRufus items={noticedItems} earnings={earningsRows} />
 
       {/* ── 6. Portfolio Health ──
           Gated on the same readiness flag: with no holdings yet the scorer
@@ -480,7 +485,9 @@ export function InsightsTab() {
         cash={accountData.cash || 0}
         totalPnlPercent={accountData.totalPnlPercent || 0}
         riskTolerance={riskTolerance}
-        pending={accountState !== 'ready'}
+        pending={accountState === 'pending'}
+        failed={accountState === 'unavailable'}
+        onRetry={() => { (isBrokerExpected ? brokerRefresh : liveRefresh)?.(); }}
       />
 
       {/* ── 6. Quick-links 2×2 ── */}

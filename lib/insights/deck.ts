@@ -123,3 +123,68 @@ export function buildDeck({ items, dailyBrief, weeklySnapshot }: BuildDeckInput)
 
   return cards;
 }
+
+// ─── "More from Rufus" earnings rows (PART 5) ────────────────
+// A lightweight, info-tier row for the secondary notices list — same shape as
+// an event_impact info-tier row (icon + one line of copy), but NO action link.
+//
+// Deterministic by construction: it derives entirely from the held positions
+// and the SAME fundamentals source the Position Detail "Earnings" field uses
+// (yahooFundamentals → GET /api/stock/fundamentals → `nextEarningsDate`). No
+// new data source, no new API route. When no held position reports inside the
+// look-ahead window the builder returns [] and the caller renders nothing.
+
+export interface MoreFromRufusEarningsRow {
+  id: string;
+  icon: string;
+  /** One line, e.g. "NVDA reports earnings Sep 18.". */
+  text: string;
+}
+
+/** Days ahead a held position's earnings must fall within to be surfaced. */
+export const EARNINGS_WINDOW_DAYS = 14;
+
+/**
+ * Build the earnings-date rows for the "More from Rufus" list.
+ *
+ * @param positions       Held positions (only `.symbol` is read).
+ * @param earningsBySymbol Map of UPPER-cased symbol → ISO `YYYY-MM-DD` earnings
+ *                          date (or null when unknown).
+ * @param now             Injectable clock (deterministic tests).
+ * @param windowDays      Look-ahead window in days (default 14).
+ */
+export function buildEarningsRows(
+  positions: Array<{ symbol?: string | null }> | null | undefined,
+  earningsBySymbol: Record<string, string | null | undefined> | null | undefined,
+  now: Date = new Date(),
+  windowDays: number = EARNINGS_WINDOW_DAYS,
+): MoreFromRufusEarningsRow[] {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(today.getTime() + windowDays * 86_400_000);
+  const seen = new Set<string>();
+  const found: Array<{ date: Date; symbol: string }> = [];
+
+  for (const p of positions || []) {
+    const symbol = typeof p?.symbol === 'string' ? p.symbol.trim().toUpperCase() : '';
+    if (!symbol || seen.has(symbol)) continue;
+    seen.add(symbol);
+
+    const raw = earningsBySymbol?.[symbol];
+    if (!raw) continue;
+    const parsed = new Date(`${raw}T12:00:00`);
+    if (Number.isNaN(parsed.getTime())) continue;
+    const day = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+    if (day < today || day > end) continue;
+    found.push({ date: day, symbol });
+  }
+
+  found.sort(
+    (a, b) => a.date.getTime() - b.date.getTime() || a.symbol.localeCompare(b.symbol),
+  );
+
+  return found.map(({ date, symbol }) => ({
+    id: `earnings_${symbol}`,
+    icon: '📅',
+    text: `${symbol} reports earnings ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.`,
+  }));
+}
