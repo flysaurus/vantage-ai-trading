@@ -2,11 +2,12 @@
 
 import { apiGet, apiPost } from '@/lib/api-client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, TrendingUp, AlertTriangle, Activity, Layers } from 'lucide-react';
+import { ArrowLeft, TrendingUp, AlertTriangle, Activity, Layers, Download } from 'lucide-react';
 import { usePortfolioStore, useTabStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { getStyleContent } from '@/lib/content/investor-styles';
 import { getDemoSymbols, getDemoAccount, DEMO_PORTFOLIOS } from '@/lib/demo-data';
 import type { AccountSummary } from '@/types';
 import { SymbolSearch } from '@/components/trade/SymbolSearch';
@@ -111,8 +112,16 @@ export default function RebalancingPage() {
     let cancelled = false;
 
     async function load() {
-      // Check broker status (fire and forget — doesn't block)
-apiGet('/api/broker/status')
+      // Check broker status (fire and forget — doesn't block).
+      // Scope to the ACTIVE connection: with 2+ connected brokers the unscoped
+      // call returns `ambiguous` → trading_enabled:false, which would wrongly
+      // disable Execute on a tradeable account. Same scoping as BrokerProvider.
+      let activeConnId = '';
+      try {
+        const stored = localStorage.getItem('vantage:activeAccount') || '';
+        activeConnId = stored.startsWith('snaptrade:') ? stored.slice('snaptrade:'.length) : '';
+      } catch { /* ignore — unscoped fallback */ }
+apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(activeConnId)}` : '/api/broker/status')
         .then(r => r.ok ? r.json() : null)
         .then(data => {
           if (cancelled) return;
@@ -691,6 +700,139 @@ apiGet('/api/broker/status')
       setSubmitting(false);
     }
   };
+
+  // ─── Excel export (plan download) ────────────────────────
+  // Available in BOTH access modes: a read-only (view-only) connection can't
+  // place orders from Vantage, so downloading the plan is the only way to act
+  // on it. Execute stays the gated action; download never is.
+  const [downloading, setDownloading] = useState(false);
+  const [exportAccount, setExportAccount] = useState<{
+    name: string;
+    broker: string;
+    environment: 'demo' | 'paper' | 'live';
+    tradingEnabled: boolean;
+  } | null>(null);
+  // The account list includes LIVE balances, so it can take several seconds. Keep
+  // the in-flight promise so the export can WAIT for identity instead of silently
+  // labelling a real account's plan "Demo Portfolio".
+  const accountMetaRef = useRef<Promise<typeof exportAccount> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Read the active account id ONCE, synchronously, before the request — so a
+    // later write can't change which account this plan belongs to.
+    let stored = '';
+    try { stored = localStorage.getItem('vantage:activeAccount') || ''; } catch { /* ignore */ }
+    const stripped = stored.startsWith('snaptrade:') ? stored.slice('snaptrade:'.length) : stored;
+    const p = apiGet('/api/accounts')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        const list: any[] = Array.isArray(data?.accounts) ? data.accounts : [];
+        if (list.length === 0) return null;
+        const match =
+          (stored ? list.find(a => a.id === stored) : null) ||
+          list.find(a => a.id === `snaptrade:${stripped}`) ||
+          list.find(a => a.connectionId && a.connectionId === stripped) ||
+          (stripped && stripped !== 'demo' ? list.find(a => !a.isDemo) : null) ||
+          list.find(a => a.isDemo) ||
+          list[0];
+        return {
+          name: match?.name || (match?.isDemo ? 'Demo Portfolio' : 'Portfolio'),
+          broker: match?.broker || match?.brokerageSlug || '',
+          environment: (match?.environment || (match?.isDemo ? 'demo' : 'live')) as 'demo' | 'paper' | 'live',
+          tradingEnabled: match?.tradingEnabled !== false,
+        };
+      })
+      .catch(() => null) as Promise<typeof exportAccount>;
+    accountMetaRef.current = p;
+    p.then(m => { if (!cancelled && m) setExportAccount(m); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const downloadPlan = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      // The account list carries live balances and can resolve slowly; waiting a
+      // few seconds beats shipping a workbook labelled "Demo Portfolio" for a
+      // real connected account.
+      let meta = exportAccount;
+      if (!meta && accountMetaRef.current) {
+        meta = await Promise.race([
+          accountMetaRef.current,
+          new Promise<null>(r => setTimeout(() => r(null), 8000)),
+        ]).catch(() => null);
+      }
+      const metaReadOnly = isReadOnly || (meta ? meta.tradingEnabled === false : false);
+
+      const source: Array<Trade & { orderType?: string; limitPrice?: number }> =
+        autoMode === 'auto' && editedOrders.length > 0 ? editedOrders : trades;
+      const orders = source.map(o => ({
+        symbol: o.symbol,
+        name: o.name ?? null,
+        action: o.action, // 'BUY' | 'SELL'
+        shares: o.shares,
+        price: o.currentPrice ?? 0,
+        estimatedValue: o.estimatedValue,
+        orderType: o.orderType || 'market',
+        limitPrice: typeof o.limitPrice === 'number' ? o.limitPrice : null,
+      }));
+
+      const res = await apiPost('/api/strategies/rebalancing/export', {
+        accountName: meta?.name || (isConnected ? 'Connected account' : 'Demo Portfolio'),
+        broker: meta?.broker || null,
+        environment: meta?.environment || (isConnected ? null : 'demo'),
+        access: metaReadOnly ? 'read-only' : 'trading',
+        isDemo: meta ? meta.environment === 'demo' : !isConnected,
+        styleName: getStyleContent(investorStyle).shortLabel,
+        totalValue,
+        cash: typeof account?.cash === 'number' ? account.cash : null,
+        buyingPower: typeof account?.buyingPower === 'number' ? account.buyingPower : null,
+        driftThreshold,
+        driftAlertEnabled: alertOnDrift,
+        positions: positions.map(p => ({
+          symbol: p.symbol,
+          name: p.name ?? null,
+          qty: p.qty,
+          price: p.currentPrice ?? 0,
+          marketValue: p.marketValue ?? 0,
+        })),
+        targets,
+        orders,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        setToast(err?.error || 'Download failed');
+        return;
+      }
+
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = /filename="?([^";]+)"?/.exec(disposition);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = match?.[1] || 'vantage-rebalance-plan.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setToast('✓ Plan downloaded (.xlsx)');
+    } catch {
+      setToast('Network error');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // Execute is the ONLY gated action: read-only connections can't place orders.
+  // Belt-and-braces — the account list's tradingEnabled flag also counts, so the
+  // gate is correct even while the (slow, live-balance) status call is in flight.
+  const effectiveReadOnly = isReadOnly || (exportAccount ? exportAccount.tradingEnabled === false : false);
+  const executeBlocked = submitting || effectiveReadOnly;
+  const executeLabel = effectiveReadOnly ? 'Read-only — cannot execute' : 'Execute Rebalance';
+  const executeHint = effectiveReadOnly ? 'Read-only account — orders cannot be placed' : undefined;
 
   // ─── Render ──────────────────────────────────────────────
   return (
@@ -1361,7 +1503,7 @@ apiGet('/api/broker/status')
       </Section>
 
       {/* ─── Bottom Bar ────────────────────────────── */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'linear-gradient(to top, var(--v-canvas) 80%, transparent)', padding: '12px 16px 84px', borderTop: '1px solid var(--v-card)' }}>
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'var(--v-canvas)', padding: '12px 16px 84px', borderTop: '1px solid var(--v-card-border)', boxShadow: '0 -8px 20px rgba(0,0,0,0.06)' }}>
         {/* Demo mode warning */}
         {!isConnected && (
           <div style={{ fontSize: 10, color: 'var(--v-warn)', textAlign: 'center', marginBottom: 8, fontWeight: 500 }}>
@@ -1374,22 +1516,26 @@ apiGet('/api/broker/status')
             ⚠️ Read-only account — orders can't be placed
           </div>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* Primary action row — Execute (disabled on read-only connections) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {sessionId ? (
             <>
               <button
                 onClick={handleSubmit}
-                disabled={submitting}
+                data-testid="rebalance-execute"
+                disabled={executeBlocked}
+                title={executeHint}
                 style={{
                   flex: 1, padding: 14, borderRadius: 10, border: 'none',
-                  background: !submitting ? 'linear-gradient(135deg, var(--v-accent), var(--v-accent))' : 'var(--v-disabled-bg)',
-                  color: !submitting ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
+                  background: !executeBlocked ? 'linear-gradient(135deg, var(--v-accent), var(--v-accent))' : 'var(--v-disabled-bg)',
+                  color: !executeBlocked ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
                   fontSize: 15, fontWeight: 700,
-                  cursor: !submitting ? 'pointer' : 'not-allowed',
+                  cursor: submitting ? 'wait' : executeBlocked ? 'not-allowed' : 'pointer',
                   fontFamily: 'inherit', transition: 'all 0.2s ease',
                 }}
               >
-                {submitting ? 'Executing...' : 'Execute Rebalance'}
+                {submitting ? 'Executing...' : executeLabel}
               </button>
               <button
                 onClick={() => {
@@ -1406,37 +1552,62 @@ apiGet('/api/broker/status')
           ) : autoMode === 'auto' && editedOrders.length > 0 ? (
             <button
               onClick={handleSubmit}
-              disabled={submitting}
+              data-testid="rebalance-execute"
+              disabled={executeBlocked}
+              title={executeHint}
               style={{
                 flex: 1, padding: 14, borderRadius: 10, border: 'none',
-                background: !submitting ? 'linear-gradient(135deg, var(--v-accent), var(--v-accent))' : 'var(--v-disabled-bg)',
-                color: !submitting ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
+                background: !executeBlocked ? 'linear-gradient(135deg, var(--v-accent), var(--v-accent))' : 'var(--v-disabled-bg)',
+                color: !executeBlocked ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
                 fontSize: 15, fontWeight: 700,
-                cursor: !submitting ? 'pointer' : 'not-allowed',
+                cursor: submitting ? 'wait' : executeBlocked ? 'not-allowed' : 'pointer',
                 fontFamily: 'inherit', transition: 'all 0.2s ease',
               }}
             >
-              {submitting ? 'Executing...' : 'Execute Rebalance'}
+              {submitting ? 'Executing...' : executeLabel}
             </button>
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={!isBalanced || !hasAnyTrade || submitting}
+              disabled={!isBalanced || !hasAnyTrade || executeBlocked}
+              data-testid="rebalance-execute"
+              title={executeHint}
               style={{
                 flex: 1, padding: 14, borderRadius: 10, border: 'none',
-                background: isBalanced && hasAnyTrade && !submitting ? 'linear-gradient(135deg, var(--v-accent), var(--v-accent))' : 'var(--v-disabled-bg)',
-                color: isBalanced && hasAnyTrade && !submitting ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
+                background: isBalanced && hasAnyTrade && !executeBlocked ? 'linear-gradient(135deg, var(--v-accent), var(--v-accent))' : 'var(--v-disabled-bg)',
+                color: isBalanced && hasAnyTrade && !executeBlocked ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
                 fontSize: 15, fontWeight: 700,
-                cursor: isBalanced && hasAnyTrade && !submitting ? 'pointer' : 'not-allowed',
+                cursor: submitting ? 'wait' : isBalanced && hasAnyTrade && !executeBlocked ? 'pointer' : 'not-allowed',
                 fontFamily: 'inherit', transition: 'all 0.2s ease',
               }}
             >
-              {submitting ? 'Executing...' : 'Execute Rebalance'}
+              {submitting ? 'Executing...' : executeLabel}
             </button>
           )}
+          </div>
+          {/* Secondary row — the plan download is available in BOTH access modes
+              (read-only accounts get the plan, they just can't execute it). */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            onClick={downloadPlan}
+            disabled={downloading}
+            data-testid="rebalance-download-xlsx"
+            title="Download this plan as Excel (.xlsx)"
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '12px 14px', fontSize: 13, fontWeight: 700,
+              background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 10,
+              color: downloading ? 'var(--v-text-muted)' : 'var(--v-accent-label)',
+              cursor: downloading ? 'wait' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+            }}
+          >
+            <Download size={15} strokeWidth={2.2} aria-hidden />
+            {downloading ? 'Preparing…' : 'Download .xlsx'}
+          </button>
           <button onClick={() => router.back()} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             Cancel
           </button>
+          </div>
         </div>
       </div>
 
