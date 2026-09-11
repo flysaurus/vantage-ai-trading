@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
+import { usePageScrollLock, SCROLL_SCOPE_ATTR } from '@/lib/ui/scroll-lock';
 
 interface StrategySheetProps {
   strategy: string | null;
@@ -108,39 +109,11 @@ const ROUTE_SLUGS: Record<string, string> = {
 
 export default function StrategySheet({ strategy, onClose, onExecute }: StrategySheetProps) {
   const router = useRouter();
-  const scrollY = useRef(0);
 
-  // Lock body scroll when sheet opens, restore on close
-  useEffect(() => {
-    if (!strategy) return;
-
-    scrollY.current = window.scrollY;
-    const root = document.documentElement;
-    const body = document.body;
-
-    // Save current styles
-    const prevBodyPos = body.style.position;
-    const prevBodyTop = body.style.top;
-    const prevBodyWidth = body.style.width;
-    const prevBodyOverflow = body.style.overflow;
-    const prevRootOverflow = root.style.overflow;
-
-    // Lock scroll
-    body.style.position = 'fixed';
-    body.style.top = `-${scrollY.current}px`;
-    body.style.width = '100%';
-    body.style.overflow = 'hidden';
-    root.style.overflow = 'hidden';
-
-    return () => {
-      body.style.position = prevBodyPos;
-      body.style.top = prevBodyTop;
-      body.style.width = prevBodyWidth;
-      body.style.overflow = prevBodyOverflow;
-      root.style.overflow = prevRootOverflow;
-      window.scrollTo(0, scrollY.current);
-    };
-  }, [strategy]);
+  // Lock the app's real scrollers while the sheet is open. The old
+  // body-position:fixed dance locked nothing here (this app scrolls inside
+  // .content-area, not <body>) — see lib/ui/scroll-lock.ts.
+  usePageScrollLock(!!strategy);
 
   if (!strategy) return null;
 
@@ -151,6 +124,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
     <>
       {/* Backdrop */}
       <div
+        data-testid="strategy-sheet-backdrop"
         onClick={onClose}
         style={{
           position: 'fixed',
@@ -159,12 +133,12 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
           background: 'rgba(0,0,0,0.6)',
           backdropFilter: 'blur(2px)',
           animation: 'strategyFadeIn 0.2s ease-out',
-          touchAction: 'none',
         }}
       />
 
       {/* Sheet */}
       <div
+        data-testid="strategy-sheet"
         style={{
           position: 'fixed',
           bottom: 0,
@@ -257,9 +231,12 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
 
         {/* ─── Content (scrollable) ──────────────────────── */}
         <div
+          {...{ [SCROLL_SCOPE_ATTR]: 'strategy-sheet' }}
+          data-testid="strategy-sheet-body"
           style={{
             flex: 1,
             overflowY: 'auto',
+            touchAction: 'pan-y',
             WebkitOverflowScrolling: 'touch',
             overscrollBehavior: 'contain',
             padding: '16px 16px 24px',

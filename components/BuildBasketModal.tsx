@@ -4,6 +4,7 @@ import { apiGet, apiPost } from '@/lib/api-client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import CompassIcon from '@/components/CompassIcon';
+import { usePageScrollLock, SCROLL_SCOPE_ATTR } from '@/lib/ui/scroll-lock';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import { useTradingCapability } from '@/hooks/useTradingCapability';
@@ -492,25 +493,9 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
   const orderEstBuffer = (Math.round(parseFloat(budget)) || 0) - orderEstTotal;
 
   // ── Scroll trap: prevent background scroll when modal is open ──
-  useEffect(() => {
-    if (!isOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    const originalPosition = document.body.style.position;
-    const originalWidth = document.body.style.width;
-    const originalTop = document.body.style.top;
-    const scrollY = window.scrollY;
-    document.body.style.overflow = 'hidden';
-    document.body.style.position = 'fixed';
-    document.body.style.width = '100%';
-    document.body.style.top = `-${scrollY}px`;
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.position = originalPosition;
-      document.body.style.width = originalWidth;
-      document.body.style.top = originalTop;
-      window.scrollTo(0, scrollY);
-    };
-  }, [isOpen]);
+  // Lock the app's REAL scrollers (.content-area / [data-page-scroller]). The
+  // old body-position:fixed trap locked nothing on this app and shifted layout.
+  usePageScrollLock(isOpen);
 
   // ── Basket review budget validation (must be above early return) ──
   useEffect(() => {
@@ -647,20 +632,20 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)',
+        padding: '14px 16px', borderBottom: '1px solid var(--v-rule)',
         flexShrink: 0,
       }}>
         {isFirstStep ? (
           <div style={{ width: '70px' }} />
         ) : (
           <button onClick={onBack} style={{
-            color: '#22d3ee', background: 'none', border: 'none',
+            color: 'var(--v-accent)', background: 'none', border: 'none',
             fontSize: '14px', cursor: 'pointer', padding: '4px', minWidth: '70px', textAlign: 'left',
           }}>{backLabel}</button>
         )}
-        <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>{title}</span>
+        <span style={{ color: 'var(--v-text-primary)', fontWeight: '600', fontSize: '15px' }}>{title}</span>
         <button onClick={onClose} style={{
-          color: '#94a3b8', background: 'none', border: 'none',
+          color: 'var(--v-text-muted)', background: 'none', border: 'none',
           fontSize: '22px', cursor: 'pointer', lineHeight: 1, minWidth: '70px', textAlign: 'right',
         }}>×</button>
       </div>
@@ -697,10 +682,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       >
         {/* Subtitle row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-          <span style={{ fontSize: '11px', color: '#cbd5e1' }}>
+          <span style={{ fontSize: '11px', color: 'var(--v-text-secondary)' }}>
             AI-curated · Updated {formatLastUpdated(lastUpdated)}
           </span>
-          <span style={{ fontSize: '11px', color: '#cbd5e1' }}>
+          <span style={{ fontSize: '11px', color: 'var(--v-text-secondary)' }}>
             Next refresh {formatNextRefresh(nextRefresh)}
           </span>
         </div>
@@ -711,19 +696,19 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             <button
               onClick={() => setChangelogExpanded(!changelogExpanded)}
               style={{
-                background: 'rgba(34,211,238,0.06)', border: '1px solid rgba(34,211,238,0.15)',
+                background: 'var(--v-accent-dim)', border: '1px solid var(--v-accent-dim)',
                 borderRadius: '8px', padding: '8px 12px', width: '100%',
-                color: '#94a3b8', fontSize: '12px', cursor: 'pointer',
+                color: 'var(--v-text-muted)', fontSize: '12px', cursor: 'pointer',
                 textAlign: 'left', display: 'flex', justifyContent: 'space-between',
               }}
             >
               <span>📝 What changed ↓</span>
-              <span style={{ color: '#22d3ee' }}>{changelogExpanded ? '▲' : '▼'}</span>
+              <span style={{ color: 'var(--v-accent)' }}>{changelogExpanded ? '▲' : '▼'}</span>
             </button>
             {changelogExpanded && (
               <div style={{
-                background: 'rgba(255,255,255,0.03)', borderRadius: '8px',
-                padding: '10px 12px', marginTop: '4px', fontSize: '11px', color: '#cbd5e1',
+                background: 'var(--v-rule)', borderRadius: '8px',
+                padding: '10px 12px', marginTop: '4px', fontSize: '11px', color: 'var(--v-text-secondary)',
                 lineHeight: '1.5', fontStyle: 'italic',
               }}>{changelog}</div>
             )}
@@ -736,20 +721,20 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             display: 'flex', flexDirection: 'column', alignItems: 'center',
             justifyContent: 'center', padding: '48px 0', gap: '12px',
           }}>
-            <CompassIcon size={48} color="#22d3ee" animated={true} />
-            <p style={{ fontSize: '13px', color: '#cbd5e1' }}>Loading curated baskets...</p>
+            <CompassIcon size={48} color="var(--v-accent)" animated={true} />
+            <p style={{ fontSize: '13px', color: 'var(--v-text-secondary)' }}>Loading curated baskets...</p>
           </div>
         )}
 
         {/* Error state */}
         {curatedError && !curatedLoading && (
           <div style={{ textAlign: 'center', padding: '32px 0' }}>
-            <p style={{ fontSize: '13px', color: '#ef4444', marginBottom: '8px' }}>
+            <p style={{ fontSize: '13px', color: 'var(--v-loss)', marginBottom: '8px' }}>
               Could not load baskets: {curatedError}
             </p>
             <button onClick={() => setStep('custom_theme')} style={{
-              background: '#22d3ee', border: 'none', borderRadius: '8px',
-              color: '#000', fontSize: '12px', fontWeight: '600', padding: '8px 16px', cursor: 'pointer',
+              background: 'var(--v-accent)', border: 'none', borderRadius: '8px',
+              color: 'var(--v-accent-text)', fontSize: '12px', fontWeight: '600', padding: '8px 16px', cursor: 'pointer',
             }}>Build Custom Instead</button>
           </div>
         )}
@@ -760,17 +745,17 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             display: 'flex', flexDirection: 'column', alignItems: 'center',
             justifyContent: 'center', padding: '48px 0', gap: '12px',
           }}>
-            <CompassIcon size={48} color="#22d3ee" animated={true} />
-            <p style={{ fontSize: '14px', color: '#ffffff', fontWeight: '600' }}>
+            <CompassIcon size={48} color="var(--v-accent)" animated={true} />
+            <p style={{ fontSize: '14px', color: 'var(--v-text-primary)', fontWeight: '600' }}>
               No baskets yet
             </p>
-            <p style={{ fontSize: '12px', color: '#cbd5e1', textAlign: 'center' }}>
+            <p style={{ fontSize: '12px', color: 'var(--v-text-secondary)', textAlign: 'center' }}>
               AI-curated baskets are generated weekly.<br />
               Build a custom basket instead.
             </p>
             <button onClick={() => setStep('custom_theme')} style={{
-              background: '#22d3ee', border: 'none', borderRadius: '8px',
-              color: '#000', fontSize: '13px', fontWeight: '600', padding: '10px 20px', cursor: 'pointer', marginTop: '8px',
+              background: 'var(--v-accent)', border: 'none', borderRadius: '8px',
+              color: 'var(--v-accent-text)', fontSize: '13px', fontWeight: '600', padding: '10px 20px', cursor: 'pointer', marginTop: '8px',
             }}>✏️ Build Custom Basket</button>
           </div>
         )}
@@ -783,25 +768,25 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
           return (
             <div key={basket.id} style={{
-              background: '#1a2235', border: '1px solid rgba(255,255,255,0.08)',
+              background: 'var(--v-hero-card)', border: '1px solid var(--v-hero-card-border)',
               borderRadius: '16px', padding: '16px', marginBottom: '12px',
             }}>
               {/* Header row: name + perf badge */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px' }}>{basket.name}</span>
+                  <span style={{ color: 'var(--v-hero-text)', fontWeight: '600', fontSize: '14px' }}>{basket.name}</span>
                 </div>
                 {/* Performance badge */}
                 <div onClick={() => cycleTimeframe(basket.id)} style={{ textAlign: 'right', cursor: 'pointer' }}>
                   <span style={{
                     fontSize: '14px', fontWeight: '700',
-                    color: isPositive ? '#34d399' : '#f87171',
+                    color: isPositive ? 'var(--v-hero-gain)' : 'var(--v-hero-loss)',
                   }}>
                     {isPositive ? '+' : ''}{perf.value.toFixed(1)}%
                   </span>
                   <span style={{
                     display: 'block', fontSize: '10px',
-                    color: '#e2e8f0', textTransform: 'uppercase',
+                    color: 'var(--v-hero-text-2)', textTransform: 'uppercase',
                   }}>
                     {perf.label.toUpperCase()} · tap to cycle
                   </span>
@@ -809,7 +794,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               </div>
 
               {/* Thesis */}
-              <p style={{ fontSize: '12px', color: '#cbd5e1', margin: '0 0 8px 0', lineHeight: '1.4' }}>
+              <p style={{ fontSize: '12px', color: 'var(--v-hero-text-2)', margin: '0 0 8px 0', lineHeight: '1.4' }}>
                 {basket.thesis}
               </p>
 
@@ -817,21 +802,21 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
                 {(basket.stocks || []).slice(0, 8).map((s: any) => (
                   <span key={s.symbol} style={{
-                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '20px', padding: '2px 8px', fontSize: '11px', color: '#cbd5e1',
+                    background: 'var(--v-hero-muted-rule)', border: '1px solid var(--v-hero-muted-rule)',
+                    borderRadius: '20px', padding: '2px 8px', fontSize: '11px', color: 'var(--v-hero-text-2)',
                   }}>{s.symbol}</span>
                 ))}
               </div>
 
               {/* Risk note */}
-              <p style={{ fontSize: '11px', color: '#cbd5e1', fontStyle: 'italic', margin: '0 0 10px 0' }}>
+              <p style={{ fontSize: '11px', color: 'var(--v-hero-text-2)', fontStyle: 'italic', margin: '0 0 10px 0' }}>
                 ⚠️ {basket.risk_note}
               </p>
 
               {/* Expanded preview */}
               {isExpanded && (
                 <div style={{
-                  borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', marginBottom: '10px',
+                  borderTop: '1px solid var(--v-hero-muted-rule)', paddingTop: '10px', marginBottom: '10px',
                 }}>
                   {(basket.stocks || []).map((s: any, i: number) => (
                     <div key={s.symbol}>
@@ -840,19 +825,19 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                         alignItems: 'center', padding: '6px 0',
                       }}>
                         <div>
-                          <span style={{ fontSize: '12px', fontWeight: '600', color: '#ffffff' }}>
+                          <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--v-hero-text)' }}>
                             {s.symbol}
                           </span>
-                          <span style={{ fontSize: '10px', color: '#cbd5e1', marginLeft: '6px' }}>
+                          <span style={{ fontSize: '10px', color: 'var(--v-hero-text-2)', marginLeft: '6px' }}>
                             {s.name}
                           </span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '11px', color: '#22d3ee' }}>{s.allocation.toFixed(2)}%</span>
+                          <span style={{ fontSize: '11px', color: 'var(--v-hero-accent)' }}>{s.allocation.toFixed(2)}%</span>
                           {s.performance && (
                             <span style={{
                               fontSize: '10px', fontWeight: '600',
-                              color: (s.performance['1y'] || 0) >= 0 ? '#34d399' : '#f87171',
+                              color: (s.performance['1y'] || 0) >= 0 ? 'var(--v-hero-gain)' : 'var(--v-hero-loss)',
                             }}>
                               {(s.performance['1y'] || 0) >= 0 ? '+' : ''}{(s.performance['1y'] || 0).toFixed(1)}% 1Y
                             </span>
@@ -860,12 +845,12 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                         </div>
                       </div>
                       {s.rationale && (
-                        <p style={{ fontSize: '10px', color: '#cbd5e1', margin: '0 0 4px 0', lineHeight: '1.3' }}>
+                        <p style={{ fontSize: '10px', color: 'var(--v-hero-text-2)', margin: '0 0 4px 0', lineHeight: '1.3' }}>
                           {s.rationale}
                         </p>
                       )}
                       {i < (basket.stocks || []).length - 1 && (
-                        <div style={{ height: '1px', background: 'rgba(255,255,255,0.04)' }} />
+                        <div style={{ height: '1px', background: 'var(--v-hero-muted-rule)' }} />
                       )}
                     </div>
                   ))}
@@ -878,8 +863,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                   onClick={(e) => { console.log('[BuildBasketModal] Preview button clicked', { basketId: basket.id, currentExpanded: expandedPreview }); e.stopPropagation(); setExpandedPreview(isExpanded ? null : basket.id); }}
                   style={{
                     flex: 1, background: 'transparent',
-                    border: '1px solid #22d3ee', borderRadius: '8px',
-                    padding: '8px 0', color: '#22d3ee', fontSize: '12px',
+                    border: '1px solid var(--v-hero-accent)', borderRadius: '8px',
+                    padding: '8px 0', color: 'var(--v-hero-accent)', fontSize: '12px',
                     fontWeight: '500', cursor: 'pointer',
                   }}
                 >
@@ -888,8 +873,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                 <button
                   onClick={(e) => { console.log('[BuildBasketModal] Invest button clicked', { basketId: basket.id, basketName: basket.name }); e.stopPropagation(); investCurated(basket); }}
                   style={{
-                    flex: 1, background: '#22d3ee', border: 'none',
-                    borderRadius: '8px', padding: '8px 0', color: '#000000',
+                    flex: 1, background: 'var(--v-hero-accent)', border: 'none',
+                    borderRadius: '8px', padding: '8px 0', color: 'var(--v-hero-on-accent)',
                     fontSize: '12px', fontWeight: '600', cursor: 'pointer',
                   }}
                 >
@@ -903,12 +888,12 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         {/* Build custom divider */}
         {!curatedLoading && (
           <div style={{ padding: '16px 0', textAlign: 'center' }}>
-            <span style={{ color: '#94a3b8', fontSize: '12px' }}>─── or ───</span>
+            <span style={{ color: 'var(--v-text-muted)', fontSize: '12px' }}>─── or ───</span>
             <br />
             <button onClick={() => setStep('custom_theme')} style={{
               marginTop: '12px', width: '100%', background: 'transparent',
-              border: '1px dashed #22d3ee', borderRadius: '10px',
-              padding: '14px 0', color: '#22d3ee', fontSize: '14px',
+              border: '1px dashed var(--v-accent)', borderRadius: '10px',
+              padding: '14px 0', color: 'var(--v-accent)', fontSize: '14px',
               fontWeight: '500', cursor: 'pointer',
             }}>
               ✏️ Build Custom Basket
@@ -924,8 +909,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         left: 0,
         right: 0,
         zIndex: 10001,
-        background: '#0a0f1e',
-        borderTop: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--v-canvas)',
+        borderTop: '1px solid var(--v-rule)',
         padding: '12px 16px',
         paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
       }}>
@@ -940,10 +925,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             width: '100%',
             padding: '14px',
             background: 'none',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid var(--v-rule)',
             borderRadius: '12px',
             fontSize: '14px',
-            color: '#6b7280',
+            color: 'var(--v-text-muted)',
             cursor: 'pointer',
           }}
         >
@@ -963,7 +948,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         onWheel={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
       >
-        <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '16px' }}>
+        <p style={{ fontSize: '13px', color: 'var(--v-text-secondary)', marginBottom: '16px' }}>
           Describe the basket you want
         </p>
         <textarea
@@ -973,21 +958,21 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           autoFocus
           rows={3}
           style={{
-            width: '100%', background: '#1a2235', border: '1px solid rgba(34,211,238,0.2)',
-            borderRadius: '10px', padding: '12px', color: '#ffffff', fontSize: '14px',
+            width: '100%', background: 'var(--v-card)', border: '1px solid var(--v-disabled-bg)',
+            borderRadius: '10px', padding: '12px', color: 'var(--v-text-primary)', fontSize: '14px',
             outline: 'none', boxSizing: 'border-box', resize: 'none',
             fontFamily: 'inherit',
           }}
         />
         {/* Inspirations */}
-        <p style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '16px', marginBottom: '8px' }}>
+        <p style={{ fontSize: '11px', color: 'var(--v-text-secondary)', marginTop: '16px', marginBottom: '8px' }}>
           Need inspiration? Try:
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
           {['Robotics & automation', 'Crypto mining stocks', 'Space economy', 'Water infrastructure'].map(tag => (
             <button key={tag} onClick={() => { setCustomName(tag); }} style={{
-              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '16px', padding: '6px 12px', fontSize: '11px', color: '#cbd5e1',
+              background: 'var(--v-rule)', border: '1px solid var(--v-rule)',
+              borderRadius: '16px', padding: '6px 12px', fontSize: '11px', color: 'var(--v-text-secondary)',
               cursor: 'pointer',
             }}>{tag}</button>
           ))}
@@ -1001,8 +986,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         left: 0,
         right: 0,
         zIndex: 10000,
-        background: '#0a0f1e',
-        borderTop: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--v-canvas)',
+        borderTop: '1px solid var(--v-rule)',
         padding: '12px 16px',
         paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
         display: 'flex',
@@ -1015,8 +1000,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           style={{
             width: '100%',
             padding: '16px',
-            background: customName.trim() ? '#22d3ee' : 'rgba(34,211,238,0.2)',
-            color: customName.trim() ? '#0a0f1e' : '#6b7280',
+            background: customName.trim() ? 'var(--v-accent)' : 'var(--v-disabled-bg)',
+            color: customName.trim() ? 'var(--v-canvas)' : 'var(--v-text-muted)',
             border: 'none',
             borderRadius: '12px',
             fontSize: '16px',
@@ -1032,10 +1017,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             width: '100%',
             padding: '14px',
             background: 'none',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid var(--v-rule)',
             borderRadius: '12px',
             fontSize: '14px',
-            color: '#6b7280',
+            color: 'var(--v-text-muted)',
             cursor: 'pointer',
           }}
         >
@@ -1052,22 +1037,22 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
     <>
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)',
+        padding: '14px 16px', borderBottom: '1px solid var(--v-rule)',
         flexShrink: 0,
       }}>
         <button
           onClick={() => selectedCurated ? setStep('curated') : setStep('custom_theme')}
           style={{
-            color: '#22d3ee', background: 'none', border: 'none',
+            color: 'var(--v-accent)', background: 'none', border: 'none',
             fontSize: '14px', cursor: 'pointer', padding: '4px 8px',
             minWidth: '70px',
           }}
         >
           {selectedCurated ? '← Baskets' : '← Back'}
         </button>
-        <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>Set Budget</span>
+        <span style={{ color: 'var(--v-text-primary)', fontWeight: '600', fontSize: '15px' }}>Set Budget</span>
         <button onClick={onClose} style={{
-          color: '#94a3b8', background: 'none', border: 'none',
+          color: 'var(--v-text-muted)', background: 'none', border: 'none',
           fontSize: '22px', cursor: 'pointer', minWidth: '70px', textAlign: 'right',
         }}>×</button>
       </div>
@@ -1078,26 +1063,26 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       >
         {selectedCurated && (
           <div style={{
-            background: '#1a2235', borderRadius: '8px', padding: '10px 12px', marginBottom: '16px',
+            background: 'var(--v-card)', borderRadius: '8px', padding: '10px 12px', marginBottom: '16px',
           }}>
-            <span style={{ fontSize: '11px', color: '#cbd5e1' }}>Basket: </span>
-            <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '600' }}>{selectedCurated.name}</span>
+            <span style={{ fontSize: '11px', color: 'var(--v-text-secondary)' }}>Basket: </span>
+            <span style={{ fontSize: '13px', color: 'var(--v-text-primary)', fontWeight: '600' }}>{selectedCurated.name}</span>
           </div>
         )}
-        <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '24px' }}>
+        <p style={{ fontSize: '13px', color: 'var(--v-text-secondary)', marginBottom: '24px' }}>
           How much do you want to invest?
         </p>
 
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          marginBottom: '24px', padding: '8px 0', borderBottom: '1px solid #22d3ee',
+          marginBottom: '24px', padding: '8px 0', borderBottom: '1px solid var(--v-accent)',
         }}>
-          <span style={{ fontSize: '28px', color: '#94a3b8', fontWeight: '300', marginRight: '4px' }}>$</span>
+          <span style={{ fontSize: '28px', color: 'var(--v-text-muted)', fontWeight: '300', marginRight: '4px' }}>$</span>
           <input type="number" value={budget}
             onChange={e => setBudget(e.target.value)}
             placeholder="0" inputMode="numeric" autoFocus
             style={{
-              background: 'transparent', border: 'none', color: '#ffffff',
+              background: 'transparent', border: 'none', color: 'var(--v-text-primary)',
               fontSize: '28px', fontWeight: '700', width: '120px',
               textAlign: 'center', outline: 'none',
             }}
@@ -1110,9 +1095,9 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             const overCash = amt > cashBalance;
             return (
             <button key={amt} onClick={() => setBudget(String(amt))} style={{
-              background: budget === String(amt) ? (overCash ? 'rgba(239,68,68,0.15)' : 'rgba(34,211,238,0.1)') : 'transparent',
-              border: budget === String(amt) ? (overCash ? '1px solid #ef4444' : '1px solid #22d3ee') : '1px solid rgba(255,255,255,0.2)',
-              borderRadius: '20px', padding: '8px 16px', color: budget === String(amt) ? (overCash ? '#ef4444' : '#22d3ee') : (overCash ? '#6b7280' : '#94a3b8'),
+              background: budget === String(amt) ? (overCash ? 'var(--v-loss-dim)' : 'var(--v-accent-dim)') : 'transparent',
+              border: budget === String(amt) ? (overCash ? '1px solid var(--v-loss)' : '1px solid var(--v-accent)') : '1px solid var(--v-rule)',
+              borderRadius: '20px', padding: '8px 16px', color: budget === String(amt) ? (overCash ? 'var(--v-loss)' : 'var(--v-accent)') : (overCash ? 'var(--v-text-muted)' : 'var(--v-text-muted)'),
               fontSize: '13px', cursor: 'pointer',
               opacity: overCash && budget !== String(amt) ? 0.5 : 1,
             }}>${amt.toLocaleString()}</button>
@@ -1123,10 +1108,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         {budget && Math.round(parseFloat(budget)) > cashBalance && (
           <div style={{
             padding: '10px 12px',
-            background: 'rgba(239,68,68,0.08)',
-            border: '1px solid rgba(239,68,68,0.25)',
+            background: 'var(--v-loss-dim)',
+            border: '1px solid var(--v-loss-dim)',
             borderRadius: '8px',
-            color: '#ef4444',
+            color: 'var(--v-loss)',
             fontSize: '12px',
             lineHeight: '1.5',
             marginBottom: '24px',
@@ -1143,8 +1128,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         left: 0,
         right: 0,
         zIndex: 10000,
-        background: '#0a0f1e',
-        borderTop: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--v-canvas)',
+        borderTop: '1px solid var(--v-rule)',
         padding: '12px 16px',
         paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
         display: 'flex',
@@ -1157,9 +1142,9 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           style={{
             width: '100%',
             padding: '16px',
-            background: budget && Math.round(parseFloat(budget)) > 0 && Math.round(parseFloat(budget)) <= cashBalance ? '#22d3ee' : (Math.round(parseFloat(budget)) > cashBalance ? 'rgba(239,68,68,0.15)' : 'rgba(34,211,238,0.2)'),
-            color: budget && Math.round(parseFloat(budget)) > 0 && Math.round(parseFloat(budget)) <= cashBalance ? '#0a0f1e' : (Math.round(parseFloat(budget)) > cashBalance ? '#ef4444' : '#6b7280'),
-            border: Math.round(parseFloat(budget)) > cashBalance ? '1px solid rgba(239,68,68,0.3)' : 'none',
+            background: budget && Math.round(parseFloat(budget)) > 0 && Math.round(parseFloat(budget)) <= cashBalance ? 'var(--v-accent)' : (Math.round(parseFloat(budget)) > cashBalance ? 'var(--v-loss-dim)' : 'var(--v-disabled-bg)'),
+            color: budget && Math.round(parseFloat(budget)) > 0 && Math.round(parseFloat(budget)) <= cashBalance ? 'var(--v-canvas)' : (Math.round(parseFloat(budget)) > cashBalance ? 'var(--v-loss)' : 'var(--v-text-muted)'),
+            border: Math.round(parseFloat(budget)) > cashBalance ? '1px solid var(--v-loss-dim)' : 'none',
             borderRadius: '12px',
             fontSize: '16px',
             fontWeight: '600',
@@ -1174,10 +1159,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             width: '100%',
             padding: '14px',
             background: 'none',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid var(--v-rule)',
             borderRadius: '12px',
             fontSize: '14px',
-            color: '#6b7280',
+            color: 'var(--v-text-muted)',
             cursor: 'pointer',
           }}
         >
@@ -1195,11 +1180,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       flex: 1, display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center', padding: '32px', gap: '16px',
     }}>
-      <CompassIcon size={64} color="#22d3ee" animated={true} />
-      <p style={{ fontSize: '16px', fontWeight: '600', color: '#ffffff', textAlign: 'center' }}>
+      <CompassIcon size={64} color="var(--v-accent)" animated={true} />
+      <p style={{ fontSize: '16px', fontWeight: '600', color: 'var(--v-text-primary)', textAlign: 'center' }}>
         Rufus is building your basket...
       </p>
-      <p style={{ fontSize: '13px', color: '#cbd5e1', textAlign: 'center' }}>
+      <p style={{ fontSize: '13px', color: 'var(--v-text-secondary)', textAlign: 'center' }}>
         Selecting top stocks for {displayTheme}
       </p>
     </div>
@@ -1217,24 +1202,24 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       >
         {error ? (
           <div style={{ textAlign: 'center', padding: '32px 0' }}>
-            <p style={{ fontSize: '14px', color: '#ef4444', marginBottom: '12px' }}>{error}</p>
+            <p style={{ fontSize: '14px', color: 'var(--v-loss)', marginBottom: '12px' }}>{error}</p>
             <button onClick={generateBasket} style={{
-              background: '#22d3ee', border: 'none', borderRadius: '10px',
-              color: '#000', fontSize: '14px', fontWeight: '600', padding: '12px 24px', cursor: 'pointer',
+              background: 'var(--v-accent)', border: 'none', borderRadius: '10px',
+              color: 'var(--v-accent-text)', fontSize: '14px', fontWeight: '600', padding: '12px 24px', cursor: 'pointer',
             }}>Try Again</button>
           </div>
         ) : basketData ? (
           <>
             {/* Header */}
-            <p style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff', marginBottom: '4px' }}>
+            <p style={{ fontSize: '14px', fontWeight: '600', color: 'var(--v-text-primary)', marginBottom: '4px' }}>
               {basketData.theme} Basket · ${budgetNum.toLocaleString()}
             </p>
-            <p style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: '1.5', marginBottom: '16px' }}>
+            <p style={{ fontSize: '12px', color: 'var(--v-text-secondary)', lineHeight: '1.5', marginBottom: '16px' }}>
               {basketData.rationale}
             </p>
 
             {removeFlash && (
-              <p style={{ fontSize: '11px', color: '#cbd5e1', textAlign: 'center', marginBottom: '8px' }}>
+              <p style={{ fontSize: '11px', color: 'var(--v-text-secondary)', textAlign: 'center', marginBottom: '8px' }}>
                 Allocation adjusted
               </p>
             )}
@@ -1246,34 +1231,34 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '2px' }}>
                       <div>
-                        <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>{stock.symbol}</span>
-                        <span style={{ fontSize: '11px', color: '#cbd5e1', marginLeft: '6px' }}>{stock.name}</span>
+                        <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--v-text-primary)' }}>{stock.symbol}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--v-text-secondary)', marginLeft: '6px' }}>{stock.name}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '12px', color: '#22d3ee', fontWeight: '500' }}>{stock.allocation.toFixed(2)}%</span>
-                        <span style={{ fontSize: '12px', color: '#ffffff', fontWeight: '500' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--v-accent)', fontWeight: '500' }}>{stock.allocation.toFixed(2)}%</span>
+                        <span style={{ fontSize: '12px', color: 'var(--v-text-primary)', fontWeight: '500' }}>
                           ${(stock.dollarAmount || 0).toFixed(2)}
                         </span>
                         {basketData.stocks.length > 2 && (
                           <button onClick={() => removeStock(stock.symbol)} style={{
-                            background: 'none', border: 'none', color: '#ef4444',
+                            background: 'none', border: 'none', color: 'var(--v-loss)',
                             fontSize: '16px', cursor: 'pointer', padding: '0 4px', lineHeight: 1,
                           }}>×</button>
                         )}
                       </div>
                     </div>
-                    <p style={{ fontSize: '11px', color: '#cbd5e1', margin: 0 }}>
+                    <p style={{ fontSize: '11px', color: 'var(--v-text-secondary)', margin: 0 }}>
                       {(stock.shares ?? 0).toFixed(4)}sh @ ${(stock.price || 0).toFixed(2)}
                     </p>
                     {stock.rationale && (
-                      <p style={{ fontSize: '11px', color: '#cbd5e1', fontStyle: 'italic', margin: '2px 0 0 0', lineHeight: '1.4' }}>
+                      <p style={{ fontSize: '11px', color: 'var(--v-text-secondary)', fontStyle: 'italic', margin: '2px 0 0 0', lineHeight: '1.4' }}>
                         💡 {stock.rationale}
                       </p>
                     )}
                   </div>
                 </div>
                 {i < basketData.stocks.length - 1 && (
-                  <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)' }} />
+                  <div style={{ height: '1px', background: 'var(--v-rule)' }} />
                 )}
               </div>
             ))}
@@ -1281,10 +1266,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             {/* Total */}
             <div style={{
               display: 'flex', justifyContent: 'space-between', padding: '12px 0',
-              marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.1)',
+              marginTop: '8px', borderTop: '1px solid var(--v-rule)',
             }}>
-              <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>Total</span>
-              <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--v-text-primary)' }}>Total</span>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--v-text-primary)' }}>
                 ${basketData.stocks.reduce((sum, s) => sum + (s.dollarAmount || 0), 0).toFixed(2)}
               </span>
             </div>
@@ -1294,8 +1279,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               <button onClick={() => setShowAddStock(true)}
                 disabled={basketData.stocks.length >= 8}
                 style={{
-                  width: '100%', padding: '12px', border: '1px dashed rgba(34,211,238,0.3)',
-                  borderRadius: '8px', color: basketData.stocks.length >= 8 ? '#4b5563' : '#22d3ee',
+                  width: '100%', padding: '12px', border: '1px dashed var(--v-accent-dim)',
+                  borderRadius: '8px', color: basketData.stocks.length >= 8 ? 'var(--v-text-muted)' : 'var(--v-accent)',
                   background: 'none', cursor: basketData.stocks.length >= 8 ? 'not-allowed' : 'pointer',
                   fontSize: '13px', marginTop: '12px',
                 }}
@@ -1309,8 +1294,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                     if (e.key === 'Escape') { setShowAddStock(false); setAddStockSymbol(''); setStockSearchResults([]); }
                   }} autoFocus disabled={isAddingStock}
                   style={{
-                    width: '100%', background: '#1a2235', border: '1px solid rgba(34,211,238,0.3)',
-                    borderRadius: '8px', padding: '10px 12px', color: '#ffffff', fontSize: '13px',
+                    width: '100%', background: 'var(--v-card)', border: '1px solid var(--v-accent-dim)',
+                    borderRadius: '8px', padding: '10px 12px', color: 'var(--v-text-primary)', fontSize: '13px',
                     outline: 'none', boxSizing: 'border-box',
                   }}
                 />
@@ -1318,12 +1303,12 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                 {stockSearchResults.length > 0 && (
                   <div style={{
                     position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                    marginTop: 4, background: '#1e293b', border: '1px solid #334155',
+                    marginTop: 4, background: 'var(--v-card)', border: '1px solid var(--v-card-border)',
                     borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
                     maxHeight: '200px', overflow: 'auto',
                   }}>
                     {stockSearchLoading && (
-                      <div style={{ padding: '8px 12px', fontSize: '11px', color: '#cbd5e1' }}>Searching…</div>
+                      <div style={{ padding: '8px 12px', fontSize: '11px', color: 'var(--v-text-secondary)' }}>Searching…</div>
                     )}
                     {stockSearchResults.map((r: any, i: number) => (
                       <button
@@ -1337,31 +1322,31 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                           width: '100%', display: 'flex', justifyContent: 'space-between',
                           alignItems: 'center', padding: '8px 12px',
                           background: 'transparent', border: 'none',
-                          borderBottom: i < stockSearchResults.length - 1 ? '1px solid #33415550' : 'none',
+                          borderBottom: i < stockSearchResults.length - 1 ? '1px solid var(--v-card-border)' : 'none',
                           cursor: 'pointer', textAlign: 'left',
                         }}
                       >
                         <div>
-                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#f1f5f9' }}>{r.symbol}</div>
-                          {r.description && <div style={{ fontSize: '10px', color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px' }}>{r.description}</div>}
+                          <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--v-text-primary)' }}>{r.symbol}</div>
+                          {r.description && <div style={{ fontSize: '10px', color: 'var(--v-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px' }}>{r.description}</div>}
                         </div>
-                        <span style={{ fontSize: '10px', color: '#cbd5e1', flexShrink: 0, marginLeft: '8px' }}>{r.type}</span>
+                        <span style={{ fontSize: '10px', color: 'var(--v-text-secondary)', flexShrink: 0, marginLeft: '8px' }}>{r.type}</span>
                       </button>
                     ))}
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                   <button onClick={() => { setShowAddStock(false); setAddStockSymbol(''); setStockSearchResults([]); }} style={{
-                    flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '6px', padding: '8px 0', color: '#94a3b8', fontSize: '12px', cursor: 'pointer',
+                    flex: 1, background: 'var(--v-rule)', border: '1px solid var(--v-rule)',
+                    borderRadius: '6px', padding: '8px 0', color: 'var(--v-text-muted)', fontSize: '12px', cursor: 'pointer',
                   }}>Cancel</button>
                 </div>
               </div>
             )}
-            {error && <p style={{ fontSize: '11px', color: '#ef4444', marginTop: '6px' }}>{error}</p>}
+            {error && <p style={{ fontSize: '11px', color: 'var(--v-loss)', marginTop: '6px' }}>{error}</p>}
           </>
         ) : (
-          <p style={{ fontSize: '13px', color: '#cbd5e1', textAlign: 'center', padding: '24px 0' }}>
+          <p style={{ fontSize: '13px', color: 'var(--v-text-secondary)', textAlign: 'center', padding: '24px 0' }}>
             No basket data available
           </p>
         )}
@@ -1374,12 +1359,12 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '10px',
         }}>
           <button onClick={addToPortfolio} style={{
-            width: '100%', background: '#22d3ee', border: 'none', borderRadius: '10px',
-            color: '#000', fontSize: '14px', fontWeight: '600', padding: '14px 0', cursor: 'pointer',
+            width: '100%', background: 'var(--v-accent)', border: 'none', borderRadius: '10px',
+            color: 'var(--v-accent-text)', fontSize: '14px', fontWeight: '600', padding: '14px 0', cursor: 'pointer',
           }}>Add to Portfolio</button>
           <button onClick={generateBasket} style={{
-            width: '100%', background: 'transparent', border: '1px solid #22d3ee',
-            borderRadius: '10px', color: '#22d3ee', fontSize: '14px', fontWeight: '500',
+            width: '100%', background: 'transparent', border: '1px solid var(--v-accent)',
+            borderRadius: '10px', color: 'var(--v-accent)', fontSize: '14px', fontWeight: '500',
             padding: '14px 0', cursor: 'pointer',
           }}>Regenerate</button>
         </div>
@@ -1582,25 +1567,25 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       >
         {/* Basket summary */}
         <div style={{
-          padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)',
-          background: 'rgba(34,211,238,0.04)',
+          padding: '12px 16px', borderBottom: '1px solid var(--v-rule)',
+          background: 'var(--v-accent-dim)',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: '#ffffff', fontWeight: '600' }}>
+            <span style={{ color: 'var(--v-text-primary)', fontWeight: '600' }}>
               {selectedCurated?.name}
             </span>
-            <span style={{ color: '#22d3ee' }}>${Math.round(parseFloat(budget) || 0).toLocaleString()} budget</span>
+            <span style={{ color: 'var(--v-accent)' }}>${Math.round(parseFloat(budget) || 0).toLocaleString()} budget</span>
           </div>
-          <div style={{ color: '#94a3b8', fontSize: '11px', marginTop: '4px' }}>
-            Effective: <span style={{ color: '#22d3ee' }}>${Math.round((parseFloat(budget) || 0) * 0.95).toLocaleString()}</span> · 5% buffer held (~${Math.round((parseFloat(budget) || 0) * 0.05).toLocaleString()})
+          <div style={{ color: 'var(--v-text-muted)', fontSize: '11px', marginTop: '4px' }}>
+            Effective: <span style={{ color: 'var(--v-accent)' }}>${Math.round((parseFloat(budget) || 0) * 0.95).toLocaleString()}</span> · 5% buffer held (~${Math.round((parseFloat(budget) || 0) * 0.05).toLocaleString()})
           </div>
         </div>
 
         {/* Loading state */}
         {loadingPrices && (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', padding: '48px 0' }}>
-            <CompassIcon size={48} color="#22d3ee" animated={true} />
-            <span style={{ color: '#94a3b8', fontSize: '13px' }}>Fetching live prices...</span>
+            <CompassIcon size={48} color="var(--v-accent)" animated={true} />
+            <span style={{ color: 'var(--v-text-muted)', fontSize: '13px' }}>Fetching live prices...</span>
           </div>
         )}
 
@@ -1616,7 +1601,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               marginBottom: '4px',
             }}>
               <span style={{
-                color: '#ffffff',
+                color: 'var(--v-text-primary)',
                 fontSize: '15px',
                 fontWeight: '600',
                 letterSpacing: '-0.01em',
@@ -1627,14 +1612,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                 onClick={() => setIsEditMode(!isEditMode)}
                 style={{
                   background: isEditMode
-                    ? 'rgba(34,211,238,0.15)'
-                    : 'rgba(255,255,255,0.06)',
+                    ? 'var(--v-accent-dim)'
+                    : 'var(--v-rule)',
                   border: isEditMode
-                    ? '1px solid rgba(34,211,238,0.5)'
-                    : '1px solid rgba(255,255,255,0.15)',
+                    ? '1px solid var(--v-accent-dim)'
+                    : '1px solid var(--v-rule)',
                   borderRadius: '8px',
                   padding: '7px 16px',
-                  color: isEditMode ? '#22d3ee' : '#e2e8f0',
+                  color: isEditMode ? 'var(--v-accent)' : 'var(--v-text-secondary)',
                   fontSize: '13px',
                   fontWeight: '500',
                   cursor: 'pointer',
@@ -1647,7 +1632,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
             {/* Global quantity note */}
             <div style={{
-              color: '#94a3b8',
+              color: 'var(--v-text-muted)',
               fontSize: '11px',
               fontStyle: 'italic',
               marginBottom: '12px',
@@ -1659,7 +1644,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             {reviewStocks.map((stock, i) => (
               <div key={stock.symbol} style={{
                 display: 'flex', alignItems: 'flex-start',
-                padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)', gap: '8px',
+                padding: '12px 16px', borderBottom: '1px solid var(--v-rule)', gap: '8px',
               }}>
                 {/* Remove button — only in edit mode */}
                 {isEditMode && (
@@ -1667,7 +1652,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                     onClick={() => onRemoveStock(stock.symbol)}
                     disabled={reviewStocks.length <= 2}
                     style={{
-                      color: reviewStocks.length <= 2 ? '#1f2937' : '#ef4444',
+                      color: reviewStocks.length <= 2 ? 'var(--v-text-faint)' : 'var(--v-loss)',
                       background: 'none', border: 'none', fontSize: '20px',
                       cursor: reviewStocks.length <= 2 ? 'not-allowed' : 'pointer',
                       flexShrink: 0, lineHeight: 1, width: '28px', textAlign: 'center',
@@ -1680,13 +1665,13 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '14px' }}>{stock.symbol}</span>
-                      <span style={{ color: '#94a3b8', fontSize: '11px' }}>{stock.name}</span>
+                      <span style={{ color: 'var(--v-text-primary)', fontWeight: '700', fontSize: '14px' }}>{stock.symbol}</span>
+                      <span style={{ color: 'var(--v-text-muted)', fontSize: '11px' }}>{stock.name}</span>
                       {stock.isCustomAdded && (
-                        <span style={{ fontSize: '9px', color: '#22d3ee', background: 'rgba(34,211,238,0.1)', borderRadius: '4px', padding: '1px 5px' }}>CUSTOM</span>
+                        <span style={{ fontSize: '9px', color: 'var(--v-accent)', background: 'var(--v-accent-dim)', borderRadius: '4px', padding: '1px 5px' }}>CUSTOM</span>
                       )}
                     </div>
-                    <span style={{ color: '#22d3ee', fontWeight: '600', fontSize: '13px' }}>{stock.allocation.toFixed(2)}%</span>
+                    <span style={{ color: 'var(--v-accent)', fontWeight: '600', fontSize: '13px' }}>{stock.allocation.toFixed(2)}%</span>
                   </div>
 
                   {/* Row 2: Controls + amount + qty (same line) */}
@@ -1696,8 +1681,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                       onClick={() => updateDollarAmount(stock.symbol, Math.max(0.01, stock.dollarAmount - 10))}
                       style={{
                         width: '34px', height: '34px', borderRadius: '50%',
-                        background: 'rgba(255,255,255,0.08)', border: 'none',
-                        color: '#e2e8f0', fontSize: '20px', cursor: 'pointer',
+                        background: 'var(--v-rule)', border: 'none',
+                        color: 'var(--v-text-secondary)', fontSize: '20px', cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         flexShrink: 0, lineHeight: 1,
                       }}
@@ -1723,11 +1708,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                         }}
                         style={{
                           width: '100px',
-                          background: '#0a0f1e',
-                          border: '1px solid #22d3ee',
+                          background: 'var(--v-canvas)',
+                          border: '1px solid var(--v-accent)',
                           borderRadius: '8px',
                           padding: '7px 10px',
-                          color: '#ffffff',
+                          color: 'var(--v-text-primary)',
                           fontSize: '14px',
                           fontWeight: '600',
                           textAlign: 'center',
@@ -1741,11 +1726,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                         onClick={() => { setEditingSymbol(stock.symbol); setEditValue(stock.dollarAmount.toFixed(2)); }}
                         style={{
                           width: '100px',
-                          background: 'rgba(255,255,255,0.06)',
-                          border: '1px solid rgba(255,255,255,0.12)',
+                          background: 'var(--v-rule)',
+                          border: '1px solid var(--v-rule)',
                           borderRadius: '8px',
                           padding: '7px 10px',
-                          color: '#ffffff',
+                          color: 'var(--v-text-primary)',
                           fontSize: '14px',
                           fontWeight: '600',
                           textAlign: 'center',
@@ -1764,8 +1749,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                           onClick={() => { if (!wouldExceed) updateDollarAmount(stock.symbol, stock.dollarAmount + 10); }}
                           style={{
                             width: '34px', height: '34px', borderRadius: '50%',
-                            background: 'rgba(255,255,255,0.08)', border: 'none',
-                            color: '#e2e8f0', fontSize: '20px',
+                            background: 'var(--v-rule)', border: 'none',
+                            color: 'var(--v-text-secondary)', fontSize: '20px',
                             cursor: wouldExceed ? 'not-allowed' : 'pointer',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             flexShrink: 0, lineHeight: 1,
@@ -1778,10 +1763,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
                     {/* Est. shares — same line, right side */}
                     <div style={{ marginLeft: 'auto', textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ color: '#94a3b8', fontSize: '11px', fontStyle: 'italic' }}>
+                      <div style={{ color: 'var(--v-text-muted)', fontSize: '11px', fontStyle: 'italic' }}>
                         ~{(stock.dollarAmount / stock.price).toFixed(4)}sh
                       </div>
-                      <div style={{ color: '#94a3b8', fontSize: '10px' }}>
+                      <div style={{ color: 'var(--v-text-muted)', fontSize: '10px' }}>
                         @ ${stock.price.toFixed(2)}
                       </div>
                     </div>
@@ -1802,24 +1787,24 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                           if (e.key === 'Escape') { setShowAddInput(false); setAddSymbolInput(''); setReviewSearchResults([]); }
                         }}
                         style={{
-                          flex: 1, background: '#0a0f1e', border: '1px solid rgba(34,211,238,0.3)',
-                          borderRadius: '8px', padding: '8px 12px', color: '#ffffff', fontSize: '13px',
+                          flex: 1, background: 'var(--v-canvas)', border: '1px solid var(--v-accent-dim)',
+                          borderRadius: '8px', padding: '8px 12px', color: 'var(--v-text-primary)', fontSize: '13px',
                         }}
                       />
                       <button onClick={() => { setShowAddInput(false); setAddSymbolInput(''); setReviewSearchResults([]); }} style={{
-                        background: 'none', border: 'none', color: '#6b7280', fontSize: '20px',
+                        background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: '20px',
                         cursor: 'pointer', flexShrink: 0,
                       }}>×</button>
                     </div>
                     {/* Auto-complete dropdown */}
                     {reviewSearchResults.length > 0 && (
                       <div style={{
-                        background: '#1e293b', border: '1px solid #334155',
+                        background: 'var(--v-card)', border: '1px solid var(--v-card-border)',
                         borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
                         maxHeight: '200px', overflow: 'auto', zIndex: 50,
                       }}>
                         {reviewSearchLoading && (
-                          <div style={{ padding: '8px 12px', fontSize: '11px', color: '#cbd5e1' }}>Searching…</div>
+                          <div style={{ padding: '8px 12px', fontSize: '11px', color: 'var(--v-text-secondary)' }}>Searching…</div>
                         )}
                         {reviewSearchResults.map((r: any, i: number) => (
                           <button
@@ -1833,15 +1818,15 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                               width: '100%', display: 'flex', justifyContent: 'space-between',
                               alignItems: 'center', padding: '8px 12px',
                               background: 'transparent', border: 'none',
-                              borderBottom: i < reviewSearchResults.length - 1 ? '1px solid #33415550' : 'none',
+                              borderBottom: i < reviewSearchResults.length - 1 ? '1px solid var(--v-card-border)' : 'none',
                               cursor: 'pointer', textAlign: 'left',
                             }}
                           >
                             <div>
-                              <div style={{ fontSize: '13px', fontWeight: '700', color: '#f1f5f9' }}>{r.symbol}</div>
-                              {r.description && <div style={{ fontSize: '10px', color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px' }}>{r.description}</div>}
+                              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--v-text-primary)' }}>{r.symbol}</div>
+                              {r.description && <div style={{ fontSize: '10px', color: 'var(--v-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px' }}>{r.description}</div>}
                             </div>
-                            <span style={{ fontSize: '10px', color: '#cbd5e1', flexShrink: 0, marginLeft: '8px' }}>{r.type}</span>
+                            <span style={{ fontSize: '10px', color: 'var(--v-text-secondary)', flexShrink: 0, marginLeft: '8px' }}>{r.type}</span>
                           </button>
                         ))}
                       </div>
@@ -1850,15 +1835,15 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                 ) : (
                   <button onClick={() => setShowAddInput(true)} style={{
                     width: '100%', padding: '10px', background: 'none',
-                    border: '1px dashed rgba(34,211,238,0.25)', borderRadius: '8px',
-                    color: '#22d3ee', fontSize: '13px', cursor: 'pointer',
+                    border: '1px dashed var(--v-accent-dim)', borderRadius: '8px',
+                    color: 'var(--v-accent)', fontSize: '13px', cursor: 'pointer',
                   }}>+ Add Stock or ETF</button>
                 )}
               </div>
             )}
 
             {/* Error */}
-            {error && <p style={{ fontSize: '11px', color: '#ef4444', padding: '8px 16px' }}>{error}</p>}
+            {error && <p style={{ fontSize: '11px', color: 'var(--v-loss)', padding: '8px 16px' }}>{error}</p>}
 
             {/* ── Running Total + Estimated Total ── */}
             {(() => {
@@ -1869,8 +1854,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                 <>
                   <div style={{
                     margin: '12px 16px 0',
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--v-rule)',
+                    border: '1px solid var(--v-rule)',
                     borderRadius: '12px',
                     overflow: 'hidden',
                   }}>
@@ -1880,34 +1865,34 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       padding: '14px 16px',
-                      borderBottom: '1px solid rgba(255,255,255,0.06)',
+                      borderBottom: '1px solid var(--v-rule)',
                     }}>
                       <div>
                         <div style={{
-                          color: '#ffffff',
+                          color: 'var(--v-text-primary)',
                           fontSize: '15px',
                           fontWeight: '600',
                         }}>
                           Running Total
                         </div>
-                        <div style={{ color: '#94a3b8', fontSize: '11px', marginTop: '2px' }}>
+                        <div style={{ color: 'var(--v-text-muted)', fontSize: '11px', marginTop: '2px' }}>
                           Updates as you adjust amounts
                         </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{
                           color: budgetStatus === 'over'
-                            ? '#ef4444'
+                            ? 'var(--v-loss)'
                             : budgetStatus === 'buffer'
-                            ? '#f59e0b'
-                            : '#10b981',
+                            ? 'var(--v-warn)'
+                            : 'var(--v-gain)',
                           fontSize: '18px',
                           fontWeight: '700',
                         }}>
                           ${runningTotal.toFixed(2)}
                         </div>
                         <div style={{
-                          color: '#94a3b8',
+                          color: 'var(--v-text-muted)',
                           fontSize: '11px',
                           marginTop: '2px',
                         }}>
@@ -1925,14 +1910,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                     }}>
                       <div>
                         <div style={{
-                          color: '#ffffff',
+                          color: 'var(--v-text-primary)',
                           fontSize: '15px',
                           fontWeight: '600',
                         }}>
                           Estimated Total
                         </div>
                         <div style={{
-                          color: '#94a3b8',
+                          color: 'var(--v-text-muted)',
                           fontSize: '11px',
                           marginTop: '2px',
                           fontStyle: 'italic',
@@ -1942,14 +1927,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{
-                          color: '#ffffff',
+                          color: 'var(--v-text-primary)',
                           fontSize: '18px',
                           fontWeight: '700',
                         }}>
                           ~${runningTotal.toFixed(2)}
                         </div>
                         <div style={{
-                          color: '#94a3b8',
+                          color: 'var(--v-text-muted)',
                           fontSize: '11px',
                           marginTop: '2px',
                         }}>
@@ -1964,10 +1949,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                     <div style={{
                       margin: '8px 16px 0',
                       padding: '10px 14px',
-                      background: 'rgba(239,68,68,0.1)',
-                      border: '1px solid rgba(239,68,68,0.3)',
+                      background: 'var(--v-loss-dim)',
+                      border: '1px solid var(--v-loss-dim)',
                       borderRadius: '8px',
-                      color: '#f87171',
+                      color: 'var(--v-loss)',
                       fontSize: '12px',
                     }}>
                       ❌ ${(runningTotal - bNum).toFixed(2)} over budget · Reduce to proceed
@@ -1978,10 +1963,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                     <div style={{
                       margin: '8px 16px 0',
                       padding: '10px 14px',
-                      background: 'rgba(245,158,11,0.08)',
-                      border: '1px solid rgba(245,158,11,0.2)',
+                      background: 'var(--v-warn-dim)',
+                      border: '1px solid var(--v-warn-dim)',
                       borderRadius: '8px',
-                      color: '#fbbf24',
+                      color: 'var(--v-warn)',
                       fontSize: '12px',
                     }}>
                       ⚠️ Using price buffer · {((runningTotal / bNum) * 100).toFixed(1)}% of budget
@@ -1992,10 +1977,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                     <div style={{
                       margin: '8px 16px 0',
                       padding: '10px 14px',
-                      background: 'rgba(16,185,129,0.06)',
-                      border: '1px solid rgba(16,185,129,0.15)',
+                      background: 'var(--v-gain-dim)',
+                      border: '1px solid var(--v-gain-dim)',
                       borderRadius: '8px',
-                      color: '#34d399',
+                      color: 'var(--v-gain)',
                       fontSize: '12px',
                     }}>
                       ✓ Within budget · ${(effBudget - runningTotal).toFixed(2)} remaining
@@ -2008,8 +1993,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             {/* Warning */}
             <div style={{
               margin: '0 16px 12px', padding: '10px 12px',
-              background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)',
-              borderRadius: '8px', color: '#f59e0b', fontSize: '11px', lineHeight: '1.5',
+              background: 'var(--v-warn-dim)', border: '1px solid var(--v-warn-dim)',
+              borderRadius: '8px', color: 'var(--v-warn)', fontSize: '11px', lineHeight: '1.5',
             }}>
               ⚠️ Market orders execute at live prices. Final amounts may vary slightly.
             </div>
@@ -2024,8 +2009,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         left: 0,
         right: 0,
         zIndex: 10000,
-        background: '#0a0f1e',
-        borderTop: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--v-canvas)',
+        borderTop: '1px solid var(--v-rule)',
         padding: '12px 16px',
         paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
         display: 'flex',
@@ -2036,10 +2021,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         {editLocked && (
           <div style={{
             padding: '10px 12px',
-            background: 'rgba(239,68,68,0.1)',
-            border: '1px solid rgba(239,68,68,0.3)',
+            background: 'var(--v-loss-dim)',
+            border: '1px solid var(--v-loss-dim)',
             borderRadius: '8px',
-            color: '#f87171',
+            color: 'var(--v-loss)',
             fontSize: '12px',
             textAlign: 'center',
           }}>
@@ -2051,9 +2036,9 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           disabled={editLocked || budgetStatus === 'over' || reviewStocks.length < 2 || loadingPrices}
           style={{
             width: '100%', padding: '16px',
-            background: editLocked ? 'rgba(239,68,68,0.15)' : budgetStatus === 'over' ? 'rgba(239,68,68,0.2)' : '#22d3ee',
-            color: editLocked ? '#ef4444' : budgetStatus === 'over' ? '#ef4444' : '#0a0f1e',
-            border: (editLocked || budgetStatus === 'over') ? '1px solid rgba(239,68,68,0.4)' : 'none',
+            background: editLocked ? 'var(--v-loss-dim)' : budgetStatus === 'over' ? 'var(--v-loss-dim)' : 'var(--v-accent)',
+            color: editLocked ? 'var(--v-loss)' : budgetStatus === 'over' ? 'var(--v-loss)' : 'var(--v-canvas)',
+            border: (editLocked || budgetStatus === 'over') ? '1px solid var(--v-loss-dim)' : 'none',
             borderRadius: '12px', fontSize: '16px', fontWeight: '600',
             cursor: (editLocked || budgetStatus === 'over') ? 'not-allowed' : 'pointer',
             transition: 'all 0.2s ease',
@@ -2066,10 +2051,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             width: '100%',
             padding: '14px',
             background: 'none',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid var(--v-rule)',
             borderRadius: '12px',
             fontSize: '14px',
-            color: '#6b7280',
+            color: 'var(--v-text-muted)',
             cursor: 'pointer',
           }}
         >
@@ -2093,39 +2078,39 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         {executionResult ? (
           <div style={{ textAlign: 'center', padding: '32px 0' }}>
             <div style={{ fontSize: '48px', marginBottom: '16px' }}>{executionResult.success ? '✅' : '⚠️'}</div>
-            <p style={{ fontSize: '16px', fontWeight: '600', color: '#ffffff', marginBottom: '8px' }}>
+            <p style={{ fontSize: '16px', fontWeight: '600', color: 'var(--v-text-primary)', marginBottom: '8px' }}>
               {executionResult.success
                 ? (executionResult.failed > 0 ? 'Partial Execution' : 'Order Complete!')
                 : 'Order Failed'}
             </p>
             {executionResult.success && (
               <>
-                <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '16px' }}>
+                <p style={{ fontSize: '13px', color: 'var(--v-text-secondary)', marginBottom: '16px' }}>
                   {executionResult.executed} positions filled · ${executionResult.totalSpent.toFixed(2)} spent
                 </p>
                 {executionResult.failed > 0 && (
-                  <p style={{ fontSize: '12px', color: '#f59e0b', marginBottom: '16px' }}>
+                  <p style={{ fontSize: '12px', color: 'var(--v-warn)', marginBottom: '16px' }}>
                     {executionResult.failed} position{executionResult.failed > 1 ? 's' : ''} could not be filled
                   </p>
                 )}
               </>
             )}
             {!executionResult.success && (
-              <p style={{ fontSize: '13px', color: '#ef4444', marginBottom: '16px' }}>
+              <p style={{ fontSize: '13px', color: 'var(--v-loss)', marginBottom: '16px' }}>
                 {executionResult.error || 'Unknown error'}
               </p>
             )}
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '16px' }}>
               {executionResult.success && (
                 <button onClick={() => onClose()} style={{
-                  background: '#22d3ee', border: 'none', borderRadius: '10px',
-                  color: '#000', fontSize: '14px', fontWeight: '600', padding: '12px 24px', cursor: 'pointer',
+                  background: 'var(--v-accent)', border: 'none', borderRadius: '10px',
+                  color: 'var(--v-accent-text)', fontSize: '14px', fontWeight: '600', padding: '12px 24px', cursor: 'pointer',
                 }}>View Portfolio</button>
               )}
               {!executionResult.success && (
                 <button onClick={handleConfirmOrder} style={{
-                  background: '#22d3ee', border: 'none', borderRadius: '10px',
-                  color: '#000', fontSize: '14px', fontWeight: '600', padding: '12px 24px', cursor: 'pointer',
+                  background: 'var(--v-accent)', border: 'none', borderRadius: '10px',
+                  color: 'var(--v-accent-text)', fontSize: '14px', fontWeight: '600', padding: '12px 24px', cursor: 'pointer',
                 }}>Try Again</button>
               )}
             </div>
@@ -2135,11 +2120,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             {/* System-generated basket name (read-only) */}
             <div style={{
               padding: '16px',
-              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              borderBottom: '1px solid var(--v-rule)',
               marginBottom: '12px',
             }}>
               <div style={{
-                color: '#6b7280',
+                color: 'var(--v-text-muted)',
                 fontSize: '11px',
                 fontWeight: '600',
                 textTransform: 'uppercase',
@@ -2150,18 +2135,18 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               </div>
               <div style={{
                 width: '100%',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'var(--v-rule)',
+                border: '1px solid var(--v-rule)',
                 borderRadius: '10px',
                 padding: '12px 14px',
-                color: '#ffffff',
+                color: 'var(--v-text-primary)',
                 fontSize: '15px',
                 fontWeight: '500',
               }}>
                 {basketDisplayName || `${selectedCurated.name} - ${formatSystemBasketDate(new Date())}`}
               </div>
               <div style={{
-                color: '#94a3b8',
+                color: 'var(--v-text-muted)',
                 fontSize: '10px',
                 marginTop: '4px',
               }}>
@@ -2171,23 +2156,23 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
             {/* Order summary card */}
             <div style={{
-              background: '#1a2235', borderRadius: '16px', padding: '20px', marginBottom: '16px',
+              background: 'var(--v-card)', borderRadius: '16px', padding: '20px', marginBottom: '16px',
             }}>
-              <div style={{ color: '#ffffff', fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>
+              <div style={{ color: 'var(--v-text-primary)', fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>
                 {basketDisplayName || selectedCurated.name}
               </div>
-              <div style={{ color: '#cbd5e1', fontSize: '13px', marginBottom: '20px' }}>
+              <div style={{ color: 'var(--v-text-secondary)', fontSize: '13px', marginBottom: '20px' }}>
                 {reviewStocks.length} positions · Market order · Day
               </div>
 
               {[
-                { label: 'Budget', value: `$${(Math.round(parseFloat(budget)) || 0).toFixed(2)}`, color: '#ffffff' },
-                { label: 'Effective (5% buffer)', value: `$${((Math.round(parseFloat(budget)) || 0) * 0.95).toFixed(2)}`, color: '#22d3ee' },
-                { label: 'Est. buffer held', value: `~$${((Math.round(parseFloat(budget)) || 0) * 0.05).toFixed(2)}`, color: '#cbd5e1' },
-                { label: 'Est. Total', value: `$${reviewStocks.reduce((s, r) => s + r.dollarAmount, 0).toFixed(2)}`, color: '#ffffff', bold: true },
+                { label: 'Budget', value: `$${(Math.round(parseFloat(budget)) || 0).toFixed(2)}`, color: 'var(--v-text-primary)' },
+                { label: 'Effective (5% buffer)', value: `$${((Math.round(parseFloat(budget)) || 0) * 0.95).toFixed(2)}`, color: 'var(--v-accent)' },
+                { label: 'Est. buffer held', value: `~$${((Math.round(parseFloat(budget)) || 0) * 0.05).toFixed(2)}`, color: 'var(--v-text-secondary)' },
+                { label: 'Est. Total', value: `$${reviewStocks.reduce((s, r) => s + r.dollarAmount, 0).toFixed(2)}`, color: 'var(--v-text-primary)', bold: true },
               ].map(row => (
                 <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <span style={{ color: '#6b7280', fontSize: '13px' }}>{row.label}</span>
+                  <span style={{ color: 'var(--v-text-muted)', fontSize: '13px' }}>{row.label}</span>
                   <span style={{ color: row.color, fontSize: '13px', fontWeight: row.bold ? '700' : '400' }}>{row.value}</span>
                 </div>
               ))}
@@ -2196,8 +2181,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             {/* Warning */}
             <div style={{
               padding: '10px 12px',
-              background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)',
-              borderRadius: '8px', color: '#f59e0b', fontSize: '11px', lineHeight: '1.5',
+              background: 'var(--v-warn-dim)', border: '1px solid var(--v-warn-dim)',
+              borderRadius: '8px', color: 'var(--v-warn)', fontSize: '11px', lineHeight: '1.5',
               marginBottom: '12px',
             }}>
               ⚠️ Market orders execute at live prices. Final amounts may vary slightly.
@@ -2214,8 +2199,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           left: 0,
           right: 0,
           zIndex: 10000,
-          background: '#0a0f1e',
-          borderTop: '1px solid rgba(255,255,255,0.1)',
+          background: 'var(--v-canvas)',
+          borderTop: '1px solid var(--v-rule)',
           padding: '12px 16px',
           paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
           display: 'flex',
@@ -2225,10 +2210,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           {(Math.round(parseFloat(budget)) || 0) > cashBalance && (
             <div style={{
               padding: '10px 12px',
-              background: 'rgba(239,68,68,0.08)',
-              border: '1px solid rgba(239,68,68,0.25)',
+              background: 'var(--v-loss-dim)',
+              border: '1px solid var(--v-loss-dim)',
               borderRadius: '8px',
-              color: '#ef4444',
+              color: 'var(--v-loss)',
               fontSize: '12px',
               lineHeight: '1.5',
               textAlign: 'left',
@@ -2239,10 +2224,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           {isReadOnly && (
             <div style={{
               padding: '10px 12px',
-              background: 'rgba(251,191,36,0.08)',
-              border: '1px solid rgba(251,191,36,0.25)',
+              background: 'var(--v-warn-dim)',
+              border: '1px solid var(--v-warn-dim)',
               borderRadius: '8px',
-              color: '#f59e0b',
+              color: 'var(--v-warn)',
               fontSize: '12px',
               lineHeight: '1.5',
               textAlign: 'left',
@@ -2254,8 +2239,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             disabled={executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance || isReadOnly}
             style={{
               width: '100%', padding: '16px',
-              background: (executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance || isReadOnly) ? 'rgba(34,211,238,0.4)' : '#22d3ee',
-              color: (executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance || isReadOnly) ? 'rgba(34,211,238,0.6)' : '#0a0f1e',
+              background: (executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance || isReadOnly) ? 'var(--v-disabled-bg)' : 'var(--v-accent)',
+              color: (executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance || isReadOnly) ? 'var(--v-disabled-text)' : 'var(--v-canvas)',
               border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: '600',
               cursor: (executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance || isReadOnly) ? 'not-allowed' : 'pointer',
             }}
@@ -2267,10 +2252,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               width: '100%',
               padding: '14px',
               background: 'none',
-              border: '1px solid rgba(239,68,68,0.3)',
+              border: '1px solid var(--v-loss-dim)',
               borderRadius: '12px',
               fontSize: '15px',
-              color: '#ef4444',
+              color: 'var(--v-loss)',
               cursor: 'pointer',
               fontWeight: '500',
             }}
@@ -2284,6 +2269,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
   return (
     <div
+      {...{ [SCROLL_SCOPE_ATTR]: 'build-basket-modal' }}
+      data-testid="build-basket-modal"
       style={{
         position: 'fixed',
         top: 0,
@@ -2291,7 +2278,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         right: 0,
         bottom: 0,
         zIndex: 9999,
-        background: '#0a0f1e',
+        background: 'var(--v-canvas)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -2331,13 +2318,13 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                 width: '64px',
                 height: '64px',
                 borderRadius: '50%',
-                background: 'rgba(16,185,129,0.15)',
-                border: '2px solid rgba(16,185,129,0.4)',
+                background: 'var(--v-gain-dim)',
+                border: '2px solid var(--v-gain-dim)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontSize: '28px',
-                color: '#10b981',
+                color: 'var(--v-gain)',
                 marginBottom: '16px',
               }}>
                 ✓
@@ -2345,7 +2332,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             )}
 
             {/* Title */}
-            <div style={{ color: '#ffffff', fontSize: '26px', fontWeight: '800', marginBottom: '4px' }}>
+            <div style={{ color: 'var(--v-text-primary)', fontSize: '26px', fontWeight: '800', marginBottom: '4px' }}>
               {(basketResult as any).status === 'OPEN' ? 'Order Submitted' : 'Basket Purchased'}
             </div>
             
@@ -2354,10 +2341,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               <div style={{
                 width: '100%',
                 padding: '10px 14px',
-                background: 'rgba(34,211,238,0.1)',
-                border: '1px solid rgba(34,211,238,0.2)',
+                background: 'var(--v-accent-dim)',
+                border: '1px solid var(--v-disabled-bg)',
                 borderRadius: '10px',
-                color: '#22d3ee',
+                color: 'var(--v-accent)',
                 fontSize: '13px',
                 textAlign: 'center',
                 marginBottom: '16px',
@@ -2368,15 +2355,15 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
             {/* Subtitle */}
             {(basketResult as any).status === 'OPEN' ? (
-              <div style={{ color: '#94a3b8', fontSize: '15px', marginBottom: '24px', textAlign: 'center' }}>
+              <div style={{ color: 'var(--v-text-muted)', fontSize: '15px', marginBottom: '24px', textAlign: 'center' }}>
                 {(basketResult as any).marketLabel || 'Opens at market open'}
-              <div style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.6', marginTop: '4px' }}>
+              <div style={{ color: 'var(--v-text-muted)', fontSize: '13px', lineHeight: '1.6', marginTop: '4px' }}>
                 Cash reserved · Can cancel anytime
                 <br />till order is executed
               </div>
               </div>
             ) : (
-              <div style={{ color: '#94a3b8', fontSize: '15px', marginBottom: '24px' }}>
+              <div style={{ color: 'var(--v-text-muted)', fontSize: '15px', marginBottom: '24px' }}>
                 {basketResult.executed} positions filled immediately
                 {basketResult.failed > 0 && ` · ${basketResult.failed} failed`}
               </div>
@@ -2384,8 +2371,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
             {/* Basket name card */}
             <div style={{
-              background: '#1a2235',
-              border: '1px solid rgba(34,211,238,0.2)',
+              background: 'var(--v-card)',
+              border: '1px solid var(--v-disabled-bg)',
               borderRadius: '16px',
               padding: '16px',
               width: '100%',
@@ -2397,17 +2384,17 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                 gap: '10px',
                 marginBottom: '16px',
                 paddingBottom: '12px',
-                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                borderBottom: '1px solid var(--v-rule)',
               }}>
-                <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '18px' }}>{basketResult.basketName}</span>
+                <span style={{ color: 'var(--v-text-primary)', fontWeight: '700', fontSize: '18px' }}>{basketResult.basketName}</span>
                 {(basketResult as any).status === 'OPEN' && (
                   <span style={{
-                    background: 'rgba(245,158,11,0.15)',
-                    border: '1px solid rgba(245,158,11,0.3)',
+                    background: 'var(--v-warn-dim)',
+                    border: '1px solid var(--v-warn-dim)',
                     borderRadius: '6px',
                     padding: '2px 8px',
                     fontSize: '11px',
-                    color: '#f59e0b',
+                    color: 'var(--v-warn)',
                   }}>Pending</span>
                 )}
               </div>
@@ -2420,15 +2407,15 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                   alignItems: 'center',
                   paddingBottom: '10px',
                   marginBottom: '10px',
-                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  borderBottom: '1px solid var(--v-rule)',
                 }}>
                   <div>
-                    <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '15px' }}>{stock.symbol}</span>
-                    <span style={{ color: '#94a3b8', fontSize: '13px', marginLeft: '8px' }}>
+                    <span style={{ color: 'var(--v-text-primary)', fontWeight: '700', fontSize: '15px' }}>{stock.symbol}</span>
+                    <span style={{ color: 'var(--v-text-muted)', fontSize: '13px', marginLeft: '8px' }}>
                       {stock.shares.toFixed(4)}sh @ ${stock.price.toFixed(2)}
                     </span>
                   </div>
-                  <span style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '500' }}>
+                  <span style={{ color: 'var(--v-text-secondary)', fontSize: '14px', fontWeight: '500' }}>
                     ${stock.totalCost.toFixed(2)}
                   </span>
                 </div>
@@ -2436,17 +2423,17 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
               {/* Totals */}
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px' }}>
-                <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                <span style={{ color: 'var(--v-text-muted)', fontSize: '12px' }}>
                   {(basketResult as any).status === 'OPEN' ? 'Reserved' : 'Total spent'}
                 </span>
-                <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '13px' }}>
+                <span style={{ color: 'var(--v-text-primary)', fontWeight: '700', fontSize: '13px' }}>
                   ${basketResult.totalSpent.toFixed(2)}
                 </span>
               </div>
               {(basketResult as any).status !== 'OPEN' && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-                  <span style={{ color: '#6b7280', fontSize: '12px' }}>Cash remaining</span>
-                  <span style={{ color: '#22d3ee', fontSize: '12px' }}>
+                  <span style={{ color: 'var(--v-text-muted)', fontSize: '12px' }}>Cash remaining</span>
+                  <span style={{ color: 'var(--v-accent)', fontSize: '12px' }}>
                     ${basketResult.cashRemaining.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
@@ -2456,12 +2443,12 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             {/* Partial execution warning */}
             {basketResult.failed > 0 && (
               <div style={{
-                background: 'rgba(251,191,36,0.08)',
-                border: '1px solid rgba(251,191,36,0.2)',
+                background: 'var(--v-warn-dim)',
+                border: '1px solid var(--v-warn-dim)',
                 borderRadius: '10px',
                 padding: '10px 14px',
                 width: '100%',
-                color: '#f59e0b',
+                color: 'var(--v-warn)',
                 fontSize: '12px',
                 marginBottom: '16px',
               }}>
@@ -2473,8 +2460,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           {/* Bottom buttons */}
           <div style={{
             flexShrink: 0,
-            background: '#0a0f1e',
-            borderTop: '1px solid rgba(255,255,255,0.08)',
+            background: 'var(--v-canvas)',
+            borderTop: '1px solid var(--v-rule)',
             padding: '12px 16px',
             paddingBottom: 'calc(env(safe-area-inset-bottom, 24px) + 16px)',
             display: 'flex',
@@ -2501,8 +2488,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                   style={{
                     width: '100%',
                     padding: '16px',
-                    background: '#f59e0b',
-                    color: '#0a0f1e',
+                    background: 'var(--v-warn)',
+                    color: 'var(--v-canvas)',
                     border: 'none',
                     borderRadius: '12px',
                     fontSize: '16px',
@@ -2526,10 +2513,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                     width: '100%',
                     padding: '14px',
                     background: 'none',
-                    border: '1px solid rgba(255,255,255,0.12)',
+                    border: '1px solid var(--v-rule)',
                     borderRadius: '12px',
                     fontSize: '15px',
-                    color: '#cbd5e1',
+                    color: 'var(--v-text-secondary)',
                     cursor: 'pointer',
                   }}
                 >
@@ -2556,8 +2543,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                   style={{
                     width: '100%',
                     padding: '16px',
-                    background: '#22d3ee',
-                    color: '#0a0f1e',
+                    background: 'var(--v-accent)',
+                    color: 'var(--v-canvas)',
                     border: 'none',
                     borderRadius: '12px',
                     fontSize: '16px',
@@ -2581,10 +2568,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                     width: '100%',
                     padding: '14px',
                     background: 'none',
-                    border: '1px solid rgba(255,255,255,0.12)',
+                    border: '1px solid var(--v-rule)',
                     borderRadius: '12px',
                     fontSize: '15px',
-                    color: '#cbd5e1',
+                    color: 'var(--v-text-secondary)',
                     cursor: 'pointer',
                   }}
                 >

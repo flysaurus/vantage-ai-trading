@@ -165,14 +165,14 @@ export function OrderStepper({ order }: { order: Order }) {
       ))}
       <style jsx>{`
         .stepper { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; flex-wrap: wrap; }
-        .arrow { color: #5c6579; font-size: 11px; line-height: 1; }
+        .arrow { color: var(--v-text-secondary); font-size: 11px; line-height: 1; }
         .step { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.01em; }
         .step .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
         .step.done { color: #3ddc97; }
         .step.active { color: #f0b73f; }
         .step.active .dot { animation: pulse 1.6s ease-in-out infinite; }
-        .step.future { color: #5c6579; font-weight: 500; }
-        .step.cancelled { color: #8b96ab; }
+        .step.future { color: var(--v-text-secondary); font-weight: 500; }
+        .step.cancelled { color: var(--v-text-secondary); }
         .step.rejected { color: #f97316; font-weight: 800; }
         @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(240,183,63,0.4);} 50%{box-shadow:0 0 0 4px rgba(240,183,63,0);} }
       `}</style>
@@ -395,8 +395,8 @@ export function OrderCard({
 
       <style jsx>{`
         .order-card {
-          background: var(--card-bg, #1a2235);
-          border: 1px solid var(--card-border, rgba(255,255,255,0.08));
+          background: var(--v-card);
+          border: 1px solid var(--v-card-border);
           border-left-width: 3px;
           border-left-style: solid;
           border-radius: 12px;
@@ -405,15 +405,15 @@ export function OrderCard({
         }
         .row1 { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
         .head { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
-        .sym { font-size: 15px; font-weight: 700; color: #ffffff; line-height: 1.1; }
+        .sym { font-size: 15px; font-weight: 700; color: var(--v-text-primary); line-height: 1.1; }
         .name {
-          font-size: 11px; font-weight: 600; color: #94a3b8;
+          font-size: 11px; font-weight: 600; color: var(--v-text-secondary);
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
           max-width: 50ch;
         }
         .amount-col { display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding-top: 2px; }
         .amount {
-          font-size: 14px; font-weight: 700; color: #e2e8f0;
+          font-size: 14px; font-weight: 700; color: var(--v-text-primary);
           font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
           font-variant-numeric: tabular-nums; white-space: nowrap;
         }
@@ -423,7 +423,7 @@ export function OrderCard({
           text-transform: uppercase; white-space: nowrap;
         }
         .row2 { display: flex; justify-content: space-between; align-items: center; margin-top: 7px; }
-        .meta { font-size: 10.5px; color: var(--dim, #8b96ab); font-weight: 500; }
+        .meta { font-size: 10.5px; color: var(--v-text-secondary); font-weight: 500; }
         .side-badge {
           border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700;
           letter-spacing: 0.04em; text-transform: uppercase; flex-shrink: 0;
@@ -432,14 +432,14 @@ export function OrderCard({
         .side-badge.sell { background: rgba(239,68,68,0.18); color: #ef4444; }
         .row3 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
         .stepper-wrap { min-width: 0; flex: 1; }
-        .date { font-size: 10px; color: #94a3b8; white-space: nowrap; flex-shrink: 0; }
+        .date { font-size: 10px; color: var(--v-text-secondary); white-space: nowrap; flex-shrink: 0; }
         .bottom-row { display: flex; justify-content: space-between; align-items: center; margin-top: 9px; }
         .bottom-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
-        .ref { font-size: 10px; color: #5c6579; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-        .origin { font-size: 9.5px; color: #8b96ab; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .reason { font-size: 11px; color: #8b96ab; margin-top: 8px; line-height: 1.4; }
+        .ref { font-size: 10px; color: var(--v-text-secondary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .origin { font-size: 9.5px; color: var(--v-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .reason { font-size: 11px; color: var(--v-text-secondary); margin-top: 8px; line-height: 1.4; }
         .reason.rejected { color: #f97316; font-weight: 600; }
-        .bracket { font-size: 10px; color: #94a3b8; margin-top: 6px; }
+        .bracket { font-size: 10px; color: var(--v-text-secondary); margin-top: 6px; }
         .cancel-chip {
           background: none; border: 1px solid rgba(239,68,68,0.4); border-radius: 6px;
           color: #ef4444; font-size: 11px; padding: 4px 10px; cursor: pointer;
@@ -489,13 +489,13 @@ export function RequestedFilledBlocks({ order }: { order: Order }) {
       </div>
       <style jsx>{`
         .data-row { display: flex; gap: 10px; }
-        .data-block { flex: 1; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.1); border-radius: 11px; padding: 10px 12px; }
-        .data-block .k { font-size: 9.5px; color: #5c6579; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
-        .data-block .v { font-size: 14.5px; font-weight: 700; color: #eef2f7; }
-        .data-block .v.muted { color: #8b96ab; font-weight: 600; font-size: 12.5px; font-style: italic; }
+        .data-block { flex: 1; background: var(--v-panel); border: 1px solid var(--v-card-border); border-radius: 11px; padding: 10px 12px; }
+        .data-block .k { font-size: 9.5px; color: var(--v-text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
+        .data-block .v { font-size: 14.5px; font-weight: 700; color: var(--v-text-primary); }
+        .data-block .v.muted { color: var(--v-text-muted); font-weight: 600; font-size: 12.5px; font-style: italic; }
         .data-block.filled { border-color: rgba(61,220,151,0.3); background: rgba(61,220,151,0.04); }
         .data-block.filled .v { color: #3ddc97; }
-        .est-tag { font-size: 9px; color: #5c6579; font-weight: 500; margin-top: 2px; }
+        .est-tag { font-size: 9px; color: var(--v-text-secondary); font-weight: 500; margin-top: 2px; }
       `}</style>
     </div>
   );
@@ -505,8 +505,8 @@ export function RequestedFilledBlocks({ order }: { order: Order }) {
 export function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
-      <span style={{ color: '#e2e8f0' }}>{label}</span>
-      <span style={{ color: '#e2e8f0', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+      <span style={{ color: 'var(--v-text-primary)' }}>{label}</span>
+      <span style={{ color: 'var(--v-text-primary)', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
     </div>
   );
 }

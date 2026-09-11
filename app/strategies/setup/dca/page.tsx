@@ -343,30 +343,30 @@ export default function DcaSetupPage() {
   const canSubmit = selectedSymbol && ((isAmountMode && parseFloat(amount) >= 1 && !amountError) || (isSharesMode && parseFloat(quantity) >= 0.01 && !quantityError)) && frequency && startDate && endDate && !isReadOnly;
 
   const position = holdings.find(p => p.symbol === selectedSymbol);
-  const changeColor = (stockDetails?.changePercent ?? 0) >= 0 ? '#4ade80' : '#f87171';
+  const changeColor = (stockDetails?.changePercent ?? 0) >= 0 ? 'var(--v-gain)' : 'var(--v-loss)';
 
   // ─── Render ─────────────────────────────────────────────
   return (
-    <div style={{ height: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: '#0f172a', color: '#f1f5f9', padding: '16px 16px 180px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div className="strategy-page" style={{ height: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--v-canvas)', color: 'var(--v-text-primary)', padding: '16px 16px 180px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       {/* Toast */}
       {toast && (
         <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, animation: 'dcaToastIn 0.25s ease-out' }}>
-          <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 600, color: '#f1f5f9', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: '8px 18px', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}>{toast}</span>
+          <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 600, color: 'var(--v-text-primary)', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, padding: '8px 18px', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}>{toast}</span>
         </div>
       )}
 
       {/* ─── Header ───────────────────────────────── */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button onClick={() => router.back()} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
+          <button onClick={() => router.back()} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
             <ArrowLeft size={16} /> Back
           </button>
-          <button onClick={() => router.push('/strategies')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#06b6d4', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
+          <button onClick={() => router.push('/strategies')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--v-accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
             View strategies →
           </button>
         </div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#f1f5f9', margin: '0 0 6px' }}>Dollar Cost Averaging</h1>
-        <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>Automate recurring investments</p>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--v-text-primary)', margin: '0 0 6px' }}>Dollar Cost Averaging</h1>
+        <p style={{ fontSize: 13, color: 'var(--v-text-muted)', margin: 0 }}>Automate recurring investments</p>
       </div>
 
       {/* ─── Section 1: Stock/ETF Selection ─────────── */}
@@ -381,16 +381,16 @@ export default function DcaSetupPage() {
       <Section icon={<DollarSign size={12} />} label="How much per investment?">
         {/* Available cash readout */}
         {availableCash != null && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.22)', borderRadius: 8, marginBottom: 10 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>Available cash</span>
-            <span style={{ fontSize: 14, fontWeight: 800, color: '#06b6d4' }}>{fmtCurrency(availableCash)}</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--v-accent-dim)', border: '1px solid var(--v-accent-dim)', borderRadius: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-text-muted)' }}>Available cash</span>
+            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--v-accent)' }}>{fmtCurrency(availableCash)}</span>
           </div>
         )}
 
         {/* Amount vs Shares toggle */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
           {(['amount', 'shares'] as const).map(mode => (
-            <button key={mode} onClick={() => { setInvestBy(mode); setAmountError(''); setQuantityError(''); }} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid #334155', background: investBy === mode ? '#06b6d4' : '#1e293b', color: investBy === mode ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
+            <button key={mode} onClick={() => { setInvestBy(mode); setAmountError(''); setQuantityError(''); }} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid var(--v-card-border)', background: investBy === mode ? 'var(--v-accent)' : 'var(--v-card)', color: investBy === mode ? 'var(--v-canvas)' : 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit' }}>
               {mode === 'amount' ? '💵 Dollar Amount' : '📊 Shares'}
             </button>
           ))}
@@ -398,35 +398,35 @@ export default function DcaSetupPage() {
 
         {isAmountMode ? (
           <>
-            <input type="text" inputMode="decimal" value={amount} onChange={e => handleAmount(e.target.value)} placeholder="$0" style={{ width: '100%', padding: '12px 14px', background: '#1e293b', border: `1px solid ${amountError ? '#f87171' : '#334155'}`, borderRadius: 8, color: '#f1f5f9', fontSize: 16, fontWeight: 700, outline: 'none', fontFamily: 'inherit' }} />
-            {amountError && <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>{amountError}</div>}
+            <input type="text" inputMode="decimal" value={amount} onChange={e => handleAmount(e.target.value)} placeholder="$0" style={{ width: '100%', padding: '12px 14px', background: 'var(--v-card)', border: `1px solid ${amountError ? 'var(--v-loss)' : 'var(--v-card-border)'}`, borderRadius: 8, color: 'var(--v-text-primary)', fontSize: 16, fontWeight: 700, outline: 'none', fontFamily: 'inherit' }} />
+            {amountError && <div style={{ fontSize: 11, color: 'var(--v-loss)', marginTop: 4 }}>{amountError}</div>}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
               {AMOUNT_CHIPS.map(c => (
-                <button key={c} onClick={() => handleAmount(c.toString())} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid #334155', background: amount === c.toString() ? '#06b6d4' : '#1e293b', color: amount === c.toString() ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button key={c} onClick={() => handleAmount(c.toString())} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid var(--v-card-border)', background: amount === c.toString() ? 'var(--v-accent)' : 'var(--v-card)', color: amount === c.toString() ? 'var(--v-canvas)' : 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit' }}>
                   ${c}
                 </button>
               ))}
             </div>
             {price && parseFloat(amount) >= 1 && (
-              <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
-                ≈ <strong style={{ color: '#e2e8f0' }}>{(parseFloat(amount) / price).toFixed(4)}</strong> shares at {fmtCurrency(price)}
+              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--v-text-muted)' }}>
+                ≈ <strong style={{ color: 'var(--v-text-secondary)' }}>{(parseFloat(amount) / price).toFixed(4)}</strong> shares at {fmtCurrency(price)}
               </div>
             )}
           </>
         ) : (
           <>
-            <input type="text" inputMode="decimal" value={quantity} onChange={e => handleQuantity(e.target.value)} placeholder="0" style={{ width: '100%', padding: '12px 14px', background: '#1e293b', border: `1px solid ${quantityError ? '#f87171' : '#334155'}`, borderRadius: 8, color: '#f1f5f9', fontSize: 16, fontWeight: 700, outline: 'none', fontFamily: 'inherit' }} />
-            {quantityError && <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>{quantityError}</div>}
+            <input type="text" inputMode="decimal" value={quantity} onChange={e => handleQuantity(e.target.value)} placeholder="0" style={{ width: '100%', padding: '12px 14px', background: 'var(--v-card)', border: `1px solid ${quantityError ? 'var(--v-loss)' : 'var(--v-card-border)'}`, borderRadius: 8, color: 'var(--v-text-primary)', fontSize: 16, fontWeight: 700, outline: 'none', fontFamily: 'inherit' }} />
+            {quantityError && <div style={{ fontSize: 11, color: 'var(--v-loss)', marginTop: 4 }}>{quantityError}</div>}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
               {[1, 5, 10, 25, 50].map(n => (
-                <button key={n} onClick={() => handleQuantity(n.toString())} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid #334155', background: quantity === n.toString() ? '#06b6d4' : '#1e293b', color: quantity === n.toString() ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button key={n} onClick={() => handleQuantity(n.toString())} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid var(--v-card-border)', background: quantity === n.toString() ? 'var(--v-accent)' : 'var(--v-card)', color: quantity === n.toString() ? 'var(--v-canvas)' : 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit' }}>
                   {n} shares
                 </button>
               ))}
             </div>
             {price && parseFloat(quantity) >= 0.01 && (
-              <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
-                ≈ <strong style={{ color: '#e2e8f0' }}>{fmtCurrency(parseFloat(quantity) * price)}</strong> at {fmtCurrency(price)}/share
+              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--v-text-muted)' }}>
+                ≈ <strong style={{ color: 'var(--v-text-secondary)' }}>{fmtCurrency(parseFloat(quantity) * price)}</strong> at {fmtCurrency(price)}/share
               </div>
             )}
           </>
@@ -437,7 +437,7 @@ export default function DcaSetupPage() {
       <Section icon={<Repeat size={12} />} label="How often?">
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {FREQUENCIES.map(f => (
-            <button key={f.value} onClick={() => { setFrequency(f.value); setDayOfWeek(null); setDayOfMonth(null); }} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid #334155', background: frequency === f.value ? '#06b6d4' : '#1e293b', color: frequency === f.value ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
+            <button key={f.value} onClick={() => { setFrequency(f.value); setDayOfWeek(null); setDayOfMonth(null); }} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid var(--v-card-border)', background: frequency === f.value ? 'var(--v-accent)' : 'var(--v-card)', color: frequency === f.value ? 'var(--v-canvas)' : 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit' }}>
               {f.label}
             </button>
           ))}
@@ -446,10 +446,10 @@ export default function DcaSetupPage() {
         {/* Day of week selector */}
         {(frequency === 'weekly' || frequency === 'biweekly') && (
           <div style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 6, fontWeight: 600 }}>On which day?</div>
+            <div style={{ fontSize: 11, color: 'var(--v-text-secondary)', marginBottom: 6, fontWeight: 600 }}>On which day?</div>
             <div style={{ display: 'flex', gap: 6 }}>
               {DAYS.map(d => (
-                <button key={d} onClick={() => setDayOfWeek(d)} style={{ flex: 1, padding: '6px 4px', fontSize: 11, fontWeight: 600, borderRadius: 6, border: '1px solid #334155', background: dayOfWeek === d ? '#06b6d4' : '#1e293b', color: dayOfWeek === d ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button key={d} onClick={() => setDayOfWeek(d)} style={{ flex: 1, padding: '6px 4px', fontSize: 11, fontWeight: 600, borderRadius: 6, border: '1px solid var(--v-card-border)', background: dayOfWeek === d ? 'var(--v-accent)' : 'var(--v-card)', color: dayOfWeek === d ? 'var(--v-canvas)' : 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit' }}>
                   {DAY_LABELS[d]}
                 </button>
               ))}
@@ -460,10 +460,10 @@ export default function DcaSetupPage() {
         {/* Day of month selector */}
         {frequency === 'monthly' && (
           <div style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 6, fontWeight: 600 }}>On which day?</div>
+            <div style={{ fontSize: 11, color: 'var(--v-text-secondary)', marginBottom: 6, fontWeight: 600 }}>On which day?</div>
             <div style={{ display: 'flex', gap: 6 }}>
               {DATES.map(d => (
-                <button key={d} onClick={() => setDayOfMonth(d)} style={{ flex: 1, padding: '6px 4px', fontSize: 11, fontWeight: 600, borderRadius: 6, border: '1px solid #334155', background: dayOfMonth === d ? '#06b6d4' : '#1e293b', color: dayOfMonth === d ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button key={d} onClick={() => setDayOfMonth(d)} style={{ flex: 1, padding: '6px 4px', fontSize: 11, fontWeight: 600, borderRadius: 6, border: '1px solid var(--v-card-border)', background: dayOfMonth === d ? 'var(--v-accent)' : 'var(--v-card)', color: dayOfMonth === d ? 'var(--v-canvas)' : 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit' }}>
                   {DATE_LABELS[d]}
                 </button>
               ))}
@@ -475,16 +475,16 @@ export default function DcaSetupPage() {
       {/* ─── Section 4: Schedule ─────────────────────── */}
       <Section icon={<Calendar size={12} />} label="Schedule">
         <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 4, fontWeight: 600 }}>Start date</div>
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} min={todayStr()} style={{ width: '100%', padding: '10px 12px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9', fontSize: 13, outline: 'none', fontFamily: 'inherit', colorScheme: 'dark' }} />
+          <div style={{ fontSize: 11, color: 'var(--v-text-secondary)', marginBottom: 4, fontWeight: 600 }}>Start date</div>
+          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} min={todayStr()} style={{ width: '100%', padding: '10px 12px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, color: 'var(--v-text-primary)', fontSize: 13, outline: 'none', fontFamily: 'inherit', colorScheme: 'dark' }} />
         </div>
 
         <div>
-          <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 4, fontWeight: 600 }}>End date <span style={{ color: '#06b6d4' }}>*</span></div>
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={startDate} style={{ width: '100%', padding: '10px 12px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9', fontSize: 13, outline: 'none', fontFamily: 'inherit', colorScheme: 'dark' }} />
+          <div style={{ fontSize: 11, color: 'var(--v-text-secondary)', marginBottom: 4, fontWeight: 600 }}>End date <span style={{ color: 'var(--v-accent)' }}>*</span></div>
+          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={startDate} style={{ width: '100%', padding: '10px 12px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, color: 'var(--v-text-primary)', fontSize: 13, outline: 'none', fontFamily: 'inherit', colorScheme: 'dark' }} />
           {endDate && estOrders > 0 && (
-            <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
-              Estimated orders: <strong style={{ color: '#e2e8f0' }}>{estOrders}</strong>
+            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--v-text-muted)' }}>
+              Estimated orders: <strong style={{ color: 'var(--v-text-secondary)' }}>{estOrders}</strong>
             </div>
           )}
         </div>
@@ -492,8 +492,8 @@ export default function DcaSetupPage() {
 
       {/* ─── Section 5: Preview ──────────────────────── */}
       {selectedSymbol && effectiveAmount > 0 && frequency && (
-        <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: 16, marginBottom: 20 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#06b6d4', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+        <div style={{ background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
             <Clock size={12} style={{ marginRight: 6, display: 'inline' }} />Preview
           </div>
           {isAmountMode && estShares && <PreviewRow label="Est. shares per order" value={`${estShares} @ ${fmtCurrency(price)}`} />}
@@ -501,7 +501,7 @@ export default function DcaSetupPage() {
           {totalInvested && <PreviewRow label={`Total invested (${monthsRunning}mo)`} value={totalInvested} />}
           {endDate && estOrders > 0 && <PreviewRow label="Orders scheduled" value={estOrders.toString()} />}
           {availableCash != null && isAmountMode && parseFloat(amount) > availableCash && (
-            <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, fontSize: 11, color: '#f87171', fontWeight: 600 }}>
+            <div style={{ marginTop: 8, padding: '6px 10px', background: 'var(--v-loss-dim)', border: '1px solid var(--v-loss-dim)', borderRadius: 6, fontSize: 11, color: 'var(--v-loss)', fontWeight: 600 }}>
               ⚠️ Amount exceeds available cash (${fmtCurrency(availableCash)})
             </div>
           )}
@@ -513,22 +513,22 @@ export default function DcaSetupPage() {
         {loadingSchedules ? (
           <Spinner label="Loading schedules..." />
         ) : existingSchedules.length === 0 ? (
-          <div style={{ fontSize: 12, color: '#e2e8f0' }}>No active DCA schedules.</div>
+          <div style={{ fontSize: 12, color: 'var(--v-text-secondary)' }}>No active DCA schedules.</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {existingSchedules.map(s => (
-              <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: '#0f172a', border: `1px solid ${editingSchedule?.id === s.id ? '#06b6d4' : '#334155'}`, borderRadius: 8 }}>
+              <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--v-canvas)', border: `1px solid ${editingSchedule?.id === s.id ? 'var(--v-accent)' : 'var(--v-card-border)'}`, borderRadius: 8 }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>{s.symbol}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--v-text-primary)' }}>{s.symbol}</div>
+                  <div style={{ fontSize: 11, color: 'var(--v-text-muted)' }}>
                     {s.config.investBy === 'shares' ? `${s.config.quantity || '?'} shares` : `$${s.config.amount}`} · {s.config.frequency}{s.config.dayOfWeek ? ` (${DAY_LABELS[s.config.dayOfWeek] || s.config.dayOfWeek})` : ''}{s.config.dayOfMonth ? ` (${DATE_LABELS[s.config.dayOfMonth] || s.config.dayOfMonth})` : ''}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={() => editSchedule(s)} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: editingSchedule?.id === s.id ? '#06b6d4' : 'none', border: `1px solid ${editingSchedule?.id === s.id ? '#06b6d4' : '#475569'}`, borderRadius: 6, color: editingSchedule?.id === s.id ? '#0f172a' : '#94a3b8', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <button onClick={() => editSchedule(s)} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: editingSchedule?.id === s.id ? 'var(--v-accent)' : 'none', border: `1px solid ${editingSchedule?.id === s.id ? 'var(--v-accent)' : 'var(--v-text-faint)'}`, borderRadius: 6, color: editingSchedule?.id === s.id ? 'var(--v-accent-text)' : 'var(--v-text-muted)', cursor: 'pointer', fontFamily: 'inherit' }}>
                     {editingSchedule?.id === s.id ? 'Editing' : 'Edit'}
                   </button>
-                  <button onClick={() => cancelSchedule(s.id)} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'none', border: '1px solid #475569', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <button onClick={() => cancelSchedule(s.id)} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'none', border: '1px solid var(--v-text-faint)', borderRadius: 6, color: 'var(--v-text-muted)', cursor: 'pointer', fontFamily: 'inherit' }}>
                     Cancel
                   </button>
                 </div>
@@ -539,17 +539,17 @@ export default function DcaSetupPage() {
       </Section>
 
       {/* ─── Bottom Bar ──────────────────────────────── */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'linear-gradient(to top, #0f172a 80%, rgba(15,23,42,0.95))', padding: '12px 16px 64px', borderTop: '1px solid #1e293b' }}>
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'linear-gradient(to top, var(--v-canvas) 80%, transparent)', padding: '12px 16px 64px', borderTop: '1px solid var(--v-card)' }}>
         {isReadOnly && (
-          <div style={{ padding: '8px 10px', marginBottom: 8, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 8, color: '#f59e0b', fontSize: 11, lineHeight: '1.4' }}>
+          <div style={{ padding: '8px 10px', marginBottom: 8, background: 'var(--v-warn-dim)', border: '1px solid var(--v-warn-dim)', borderRadius: 8, color: 'var(--v-warn)', fontSize: 11, lineHeight: '1.4' }}>
             👁️ This broker is read-only — re-authorize with trading access to schedule DCA.
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={handleSubmit} disabled={!canSubmit || submitting} style={{ flex: 1, padding: 14, borderRadius: 10, border: 'none', background: canSubmit && !submitting ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155', color: canSubmit && !submitting ? '#0f172a' : '#64748b', fontSize: 15, fontWeight: 700, cursor: canSubmit && !submitting ? 'pointer' : 'not-allowed', fontFamily: 'inherit', transition: 'all 0.2s ease' }}>
+          <button onClick={handleSubmit} disabled={!canSubmit || submitting} style={{ flex: 1, padding: 14, borderRadius: 10, border: 'none', background: canSubmit && !submitting ? 'linear-gradient(135deg, var(--v-accent), var(--v-accent))' : 'var(--v-disabled-bg)', color: canSubmit && !submitting ? 'var(--v-accent-text)' : 'var(--v-disabled-text)', fontSize: 15, fontWeight: 700, cursor: canSubmit && !submitting ? 'pointer' : 'not-allowed', fontFamily: 'inherit', transition: 'all 0.2s ease' }}>
             {isReadOnly ? 'Read-only — no trading' : (submitting ? 'Saving...' : editingSchedule ? 'Update DCA' : 'Schedule DCA')}
           </button>
-          <button onClick={() => { if (editingSchedule) { setEditingSchedule(null); setSelectedSymbol(''); setAmount(''); setQuantity(''); setFrequency(null); setDayOfWeek(null); setDayOfMonth(null); setStartDate(todayStr()); setEndDate(''); setStockDetails(null); } else { router.back(); } }} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+          <button onClick={() => { if (editingSchedule) { setEditingSchedule(null); setSelectedSymbol(''); setAmount(''); setQuantity(''); setFrequency(null); setDayOfWeek(null); setDayOfMonth(null); setStartDate(todayStr()); setEndDate(''); setStockDetails(null); } else { router.back(); } }} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             {editingSchedule ? 'Cancel Edit' : 'Cancel'}
           </button>
         </div>
@@ -564,7 +564,7 @@ export default function DcaSetupPage() {
 function Section({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 20 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#06b6d4', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
         {icon} {label}
       </div>
       {children}
@@ -574,7 +574,7 @@ function Section({ icon, label, children }: { icon: React.ReactNode; label: stri
 
 function Spinner({ label }: { label: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '20px 0', color: '#94a3b8', fontSize: 13 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '20px 0', color: 'var(--v-text-muted)', fontSize: 13 }}>
       <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> {label}
     </div>
   );
@@ -582,7 +582,7 @@ function Spinner({ label }: { label: string }) {
 
 function ErrorBox({ message }: { message: string }) {
   return (
-    <div style={{ padding: 12, background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 8, color: '#f87171', fontSize: 12, marginBottom: 16 }}>
+    <div style={{ padding: 12, background: 'var(--v-loss-dim)', border: '1px solid var(--v-loss-dim)', borderRadius: 8, color: 'var(--v-loss)', fontSize: 12, marginBottom: 16 }}>
       {message}
     </div>
   );
@@ -590,17 +590,17 @@ function ErrorBox({ message }: { message: string }) {
 
 function StockCard({ details, changeColor, position }: { details: StockDetails; changeColor: string; position: any }) {
   return (
-    <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: 16 }}>
+    <div style={{ background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 12, padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: '#f1f5f9' }}>{details.symbol}</div>
-          {details.name && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{details.name}</div>}
+          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--v-text-primary)' }}>{details.symbol}</div>
+          {details.name && <div style={{ fontSize: 12, color: 'var(--v-text-muted)', marginTop: 2 }}>{details.name}</div>}
         </div>
-        {details.sector && <span style={{ fontSize: 10, fontWeight: 600, color: '#06b6d4', background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.25)', borderRadius: 6, padding: '3px 10px' }}>{details.sector}</span>}
+        {details.sector && <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--v-accent)', background: 'var(--v-accent-dim)', border: '1px solid var(--v-accent-dim)', borderRadius: 6, padding: '3px 10px' }}>{details.sector}</span>}
       </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 14, padding: '10px 12px', background: '#0f172a', borderRadius: 8 }}>
-        <DollarSign size={14} style={{ color: '#06b6d4' }} />
-        <span style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9' }}>{fmtCurrency(details.price)}</span>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 14, padding: '10px 12px', background: 'var(--v-canvas)', borderRadius: 8 }}>
+        <DollarSign size={14} style={{ color: 'var(--v-accent)' }} />
+        <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--v-text-primary)' }}>{fmtCurrency(details.price)}</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 13, fontWeight: 700, color: changeColor }}>
           {details.changePercent != null && (details.changePercent >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />)}
           {details.change != null ? `${details.change >= 0 ? '+' : ''}${fmt(details.change)} (${details.changePercent != null && details.changePercent >= 0 ? '+' : ''}${fmt(details.changePercent)}%)` : '—'}
@@ -613,9 +613,9 @@ function StockCard({ details, changeColor, position }: { details: StockDetails; 
         <Detail label="52w Low" value={fmtCurrency(details.low52w)} />
       </div>
       {position && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.2)', borderRadius: 8 }}>
-          <Activity size={14} style={{ color: '#06b6d4' }} />
-          <span style={{ fontSize: 12, fontWeight: 600, color: '#06b6d4' }}>Already in portfolio: {position.qty != null ? `${position.qty} shares` : 'held'}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--v-accent-dim)', border: '1px solid var(--v-accent-dim)', borderRadius: 8 }}>
+          <Activity size={14} style={{ color: 'var(--v-accent)' }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-accent)' }}>Already in portfolio: {position.qty != null ? `${position.qty} shares` : 'held'}</span>
         </div>
       )}
     </div>
@@ -625,8 +625,8 @@ function StockCard({ details, changeColor, position }: { details: StockDetails; 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-      <span style={{ fontSize: 11, color: '#e2e8f0', fontWeight: 500 }}>{label}</span>
-      <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>{value}</span>
+      <span style={{ fontSize: 11, color: 'var(--v-text-secondary)', fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--v-text-secondary)' }}>{value}</span>
     </div>
   );
 }
@@ -634,8 +634,8 @@ function Detail({ label, value }: { label: string; value: string }) {
 function PreviewRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-      <span style={{ fontSize: 12, color: '#94a3b8' }}>{label}</span>
-      <span style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{value}</span>
+      <span style={{ fontSize: 12, color: 'var(--v-text-muted)' }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--v-text-secondary)' }}>{value}</span>
     </div>
   );
 }

@@ -12,13 +12,34 @@ import BasketActionPanel from '@/components/basket/BasketActionPanel';
 import { OrderCard } from '@/components/orders/OrderDisplay';
 import { isWorkingStatus } from '@/lib/order-format';
 import { computeBasketAggregateStatus } from '@/lib/basket-aggregate';
+import { Masthead } from '@/components/layout/Masthead';
+import { getStyleContent } from '@/lib/content/investor-styles';
 
 const statusBorder: Record<string, string> = {
-  filled_buy: '#10b981',
-  filled_sell: '#ef4444',
-  open: '#f59e0b',
-  cancelled: '#475569',
+  filled_buy: 'var(--v-gain)',
+  filled_sell: 'var(--v-loss)',
+  open: 'var(--v-warn)',
+  cancelled: 'var(--v-text-faint)',
 };
+
+// ── ALL STRATEGIES registry (Invest › Strategies) ──────────────
+// Rebalancing + Tax Loss Harvesting are REAL, live strategies with their own
+// setup pages (working "+"). Momentum Rotation + Mean Reversion are Soon.
+interface InvestStrategy {
+  key: string;
+  name: string;
+  desc: string;
+  icon: string;
+  path: string;
+  available: boolean;
+}
+const ALL_STRATEGIES: InvestStrategy[] = [
+  { key: 'dca', name: 'Dollar Cost Averaging', desc: 'Invest a fixed amount on a schedule', icon: '🔄', path: '/strategies/setup/dca', available: true },
+  { key: 'rebalancing', name: 'Portfolio Rebalancing', desc: 'Restore your target asset allocation', icon: '⚖️', path: '/strategies/setup/rebalancing', available: true },
+  { key: 'taxharvest', name: 'Tax Loss Harvesting', desc: 'Offset gains by realizing losses', icon: '🧾', path: '/strategies/setup/tax-harvesting', available: true },
+  { key: 'momentum', name: 'Momentum Rotation', desc: 'Rotate into the strongest trends', icon: '🚀', path: '#', available: false },
+  { key: 'meanreversion', name: 'Mean Reversion', desc: 'Buy oversold, sell overextended', icon: '📉', path: '#', available: false },
+];
 
 function formatQuoteDate(ts: number) {
   if (!ts) return '';
@@ -41,6 +62,10 @@ export function TradeTab() {
   const [stopPrice, setStopPrice] = useState('');
   const [tif, setTif] = useState<'day' | 'gtc'>('day');
   const [historyTab, setHistoryTab] = useState<'filled' | 'open' | 'cancelled' | 'all'>('all');
+  // PART 1 — Invest is now three genuinely separate views.
+  const [investView, setInvestView] = useState<'strategies' | 'tracking' | 'orders'>('strategies');
+  // PART 3 — cash-sweep rows are hidden from Order History by default.
+  const [showSweeps, setShowSweeps] = useState(false);
   const [showBuildBasket, setShowBuildBasket] = useState(false);
   const [activeSchedules, setActiveSchedules] = useState<any[]>([]);
   const [confirmCancel, setConfirmCancel] = useState<{ orderId: string; symbol: string; side: string; shares: number; price: number } | null>(null);
@@ -84,6 +109,13 @@ export function TradeTab() {
   const { activeAccount } = useAccounts();
   const isShowingDemo = activeAccount?.isDemo ?? false;
   const isReadOnly = !isShowingDemo && !!brokerMeta && !brokerMeta.tradingEnabled;
+  // Masthead labels — same derivation as the shared Holdings/Insights masthead.
+  const accountName = isShowingDemo ? 'Demo' : brokerMeta?.name || activeAccount?.name || 'Broker';
+  const brokerLabel = (
+    isShowingDemo ? 'Demo' : brokerMeta?.broker || brokerMeta?.name || activeAccount?.name || 'Broker'
+  ).toUpperCase();
+  const mastheadDotColor = isShowingDemo ? 'var(--v-accent)' : 'var(--v-gain)';
+  const styleLabel = getStyleContent((user?.investorStyle as string | undefined) || 'buffett').shortLabel;
 
   // Fetch quote when symbol selected
   useEffect(() => {
@@ -317,7 +349,26 @@ export function TradeTab() {
     companyName: o.companyName ?? o.company_name ?? null,
   }));
 
+  // ── PART 3 — cash-sweep detection ───────────────────────────
+  // Broker cash sweeps (SPAXX / FCASH-style money-market "buys" and "sells")
+  // are account plumbing (sweeping idle cash), not user trades. Default view
+  // hides them; the "Show all" link reveals them. Real trades NEVER filtered.
+  const SWEEP_SYMBOLS = new Set([
+    'SPAXX', 'FCASH', 'FDRXX', 'SPRXX', 'FZFXX', 'FGXX', 'JEPXX',
+    'VMFXX', 'SWVXX', 'SNOXX', 'FNSXX', 'FZEXX', 'FISXX',
+  ]);
+  const isCashSweep = (o: any): boolean => {
+    const sym = String(o?.symbol || '').toUpperCase().replace(/\*+/g, '').trim();
+    if (!SWEEP_SYMBOLS.has(sym)) return false;
+    const notional = Math.abs(
+      Number(o.totalCost || o.reservedCost || (o.shares * (o.fillPrice || o.submittedPrice || 0))) || 0,
+    );
+    return notional < 25;
+  };
+  const hiddenSweepCount = showSweeps ? 0 : normalizedOrders.filter(isCashSweep).length;
+
   const filteredOrders = normalizedOrders.filter((o: any) => {
+    if (!showSweeps && isCashSweep(o)) return false;
     if (historyTab === 'all') return true;
     if (historyTab === 'open') return isWorkingStatus(o.status);
     return o.status === historyTab;
@@ -349,64 +400,122 @@ export function TradeTab() {
   }, [normalizedOrders, companyNames]);
 
   return (
-    <div style={{ paddingBottom: '120px' }} onClick={() => setShowResults(false)}>
+    <div style={{ paddingBottom: '120px', background: 'var(--v-canvas)', minHeight: '100%' }} onClick={() => setShowResults(false)}>
+      {/* ── PART 2 — Invest shares the canonical Masthead (same as Holdings/Insights) ── */}
+      <Masthead
+        accountName={accountName}
+        brokerLabel={brokerLabel}
+        dotColor={mastheadDotColor}
+        isReadOnly={isReadOnly}
+        styleLabel={styleLabel}
+        onStyleClick={() => setActiveTab('settings')}
+        testIds={{
+          masthead: 'invest-masthead',
+          rule: 'masthead-rule',
+          header: 'invest-header',
+          wordmark: 'masthead-wordmark',
+          account: 'masthead-account',
+        }}
+      />
 
-      {/* ── Real-broker trade warning (only when broker can't execute trades) ── */}
+      {/* ── PART 1 — Invest sub-nav: three genuinely separate views ── */}
+      <div role="tablist" aria-label="Invest sections" style={{
+        display: 'flex', gap: '4px', padding: '0 16px', marginBottom: '16px',
+        borderBottom: '1px solid var(--v-rule)',
+      }}>
+        {([
+          { key: 'strategies', label: 'Strategies' },
+          { key: 'tracking', label: 'Tracking' },
+          { key: 'orders', label: 'Orders' },
+        ] as const).map(t => {
+          const on = investView === t.key;
+          return (
+            <button
+              key={t.key}
+              role="tab"
+              aria-selected={on}
+              data-testid={`invest-tab-${t.key}`}
+              onClick={() => setInvestView(t.key)}
+              style={{
+                flex: 1,
+                padding: '10px 4px',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: on ? 700 : 500,
+                color: on ? 'var(--v-accent)' : 'var(--v-text-secondary)',
+                borderBottom: on ? '2px solid var(--v-accent)' : '2px solid transparent',
+                marginBottom: '-1px',
+                transition: 'color 0.15s ease',
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {investView === 'strategies' && (<>
+
+      {/* ── Paper-trading notice — informational, not alarmist ── */}
       {!isShowingDemo && brokerMeta && !brokerMeta.tradingEnabled && (
         <div style={{
           margin: '0 16px 16px 16px',
           padding: '10px 14px',
-          background: 'rgba(245,158,11,0.08)',
-          border: '1px solid rgba(245,158,11,0.2)',
+          background: 'var(--v-panel)',
+          border: '1px solid var(--v-card-border)',
           borderRadius: '10px',
           fontSize: '12px',
-          color: '#f59e0b',
+          color: 'var(--v-text-secondary)',
           textAlign: 'center',
-          lineHeight: 1.4,
+          lineHeight: 1.45,
         }}>
-          ⚠️ Real order execution not yet available for connected brokers.<br/>
-          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>Orders from this panel run paper-only demo simulations — no orders are sent to your broker.</span>
+          Paper-trading mode — orders here are simulated.<br/>
+          <span style={{ color: 'var(--v-text-muted)', fontSize: '11px' }}>Nothing is sent to your broker; live trading isn't enabled for this connection yet.</span>
         </div>
       )}
 
       <div data-testid="strategies-section" style={{ margin: '0 16px 16px 16px' }} id="strategies-section">
-        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '12px' }}>
+        <div style={{ fontSize: '11px', color: 'var(--v-text-secondary)', letterSpacing: '0.1em', marginBottom: '12px' }}>
           STRATEGIES
         </div>
         {/* AVAILABLE */}
         <div style={{ marginBottom: '16px' }}>
-          <div style={{ fontSize: '10px', color: '#94a3b8', letterSpacing: '0.08em', marginBottom: '10px', padding: '0 16px' }}>
+          <div style={{ fontSize: '10px', color: 'var(--v-text-secondary)', letterSpacing: '0.08em', marginBottom: '10px', padding: '0 16px' }}>
             AVAILABLE
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: isReadOnly ? '1fr' : '1fr 1fr', gap: '8px', padding: '0 16px' }}>
             <button
+              data-testid="strategy-build-basket"
               onClick={() => setShowBuildBasket(true)}
               style={{
-                background: '#1a2235',
-                border: '1px solid rgba(34,211,238,0.3)',
+                background: 'var(--v-hero-card)',
+                border: '1px solid var(--v-hero-card-border)',
                 borderRadius: '10px',
                 padding: '10px 8px',
                 cursor: 'pointer',
                 textAlign: 'center',
               }}
             >
-              <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: '600', marginBottom: '2px' }}>Build Basket</div>
-              <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.2' }}>AI-curated themed portfolios</div>
+              <div style={{ color: 'var(--v-hero-text)', fontSize: '12px', fontWeight: '600', marginBottom: '2px' }}>Build Basket</div>
+              <div style={{ color: 'var(--v-hero-text-2)', fontSize: '10px', lineHeight: '1.2' }}>AI-curated themed portfolios</div>
             </button>
             {!isReadOnly && (
               <button
+                data-testid="strategy-dca"
                 onClick={() => router.push('/strategies/setup/dca')}
                 style={{
-                  background: '#1a2235',
-                  border: '1px solid rgba(34,211,238,0.3)',
+                  background: 'var(--v-hero-card)',
+                  border: '1px solid var(--v-hero-card-border)',
                   borderRadius: '10px',
                   padding: '10px 8px',
                   cursor: 'pointer',
                   textAlign: 'center',
                 }}
               >
-                <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: '600', marginBottom: '2px' }}>DCA</div>
-                <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.2' }}>Dollar cost averaging</div>
+                <div style={{ color: 'var(--v-hero-text)', fontSize: '12px', fontWeight: '600', marginBottom: '2px' }}>DCA</div>
+                <div style={{ color: 'var(--v-hero-text-2)', fontSize: '10px', lineHeight: '1.2' }}>Dollar cost averaging</div>
               </button>
             )}
           </div>
@@ -414,7 +523,7 @@ export function TradeTab() {
         {/* ACTIVE — user's live DCA schedules (edit via the DCA setup page) */}
         {activeSchedules.length > 0 && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ fontSize: '10px', color: '#94a3b8', letterSpacing: '0.08em', marginBottom: '10px', padding: '0 16px' }}>
+            <div style={{ fontSize: '10px', color: 'var(--v-text-secondary)', letterSpacing: '0.08em', marginBottom: '10px', padding: '0 16px' }}>
               ACTIVE
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 16px' }}>
@@ -427,8 +536,8 @@ export function TradeTab() {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     gap: '8px',
-                    background: '#1a2235',
-                    border: '1px solid rgba(34,211,238,0.25)',
+                    background: 'var(--v-card)',
+                    border: '1px solid var(--v-card-border)',
                     borderRadius: '10px',
                     padding: '10px 12px',
                     cursor: 'pointer',
@@ -437,10 +546,10 @@ export function TradeTab() {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                    <span style={{ color: '#ffffff', fontSize: '13px', fontWeight: '700', whiteSpace: 'nowrap' }}>{s.symbol}</span>
-                    <span style={{ fontSize: '9px', fontWeight: '600', color: '#22d3ee', background: 'rgba(34,211,238,0.12)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>DCA</span>
+                    <span style={{ color: 'var(--v-text-primary)', fontSize: '13px', fontWeight: '700', whiteSpace: 'nowrap' }}>{s.symbol}</span>
+                    <span style={{ fontSize: '9px', fontWeight: '600', color: 'var(--v-accent)', background: 'var(--v-accent-dim)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>DCA</span>
                   </div>
-                  <span style={{ color: '#94a3b8', fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <span style={{ color: 'var(--v-text-secondary)', fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {s.config?.investBy === 'shares' ? `${s.config.quantity || '?'} sh` : `$${s.config?.amount ?? '?'}`} · {s.config?.frequency ?? 'weekly'}
                   </span>
                 </button>
@@ -448,30 +557,74 @@ export function TradeTab() {
             </div>
           </div>
         )}
-        {/* COMING SOON — collapsed to a single slim informational row */}
-        <div style={{ padding: '0 16px', marginBottom: '16px' }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 12px',
-            background: 'rgba(255,255,255,0.03)',
-            border: '1px solid rgba(255,255,255,0.06)',
-            borderRadius: '10px',
-            fontSize: '11px',
-            color: '#64748b',
-          }}>
-            <span style={{ fontSize: '10px', color: '#22d3ee', fontWeight: '600', letterSpacing: '0.08em', flexShrink: 0 }}>
-              COMING SOON
-            </span>
-            <span style={{ color: '#64748b' }}>Rebalance · Tax Harvest · Momentum · Mean Reversion</span>
+        {/* ALL STRATEGIES — Rebalancing + Tax Loss Harvesting are real/live;
+            Momentum Rotation + Mean Reversion remain "Soon". */}
+        <div style={{ padding: '0 16px', marginBottom: '16px' }} data-testid="all-strategies">
+          <div style={{ fontSize: '10px', color: 'var(--v-text-secondary)', letterSpacing: '0.08em', marginBottom: '10px' }}>
+            ALL STRATEGIES
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {ALL_STRATEGIES.filter(st => !(isReadOnly && st.key === 'dca')).map(st => (
+              <div
+                key={st.key}
+                data-testid={`strategy-${st.key}`}
+                onClick={() => { if (st.available) router.push(st.path); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '12px 14px',
+                  background: 'var(--v-card)',
+                  border: '1px solid var(--v-card-border)',
+                  borderRadius: '12px',
+                  cursor: st.available ? 'pointer' : 'default',
+                  opacity: st.available ? 1 : 0.6,
+                }}
+              >
+                <span style={{ fontSize: '18px' }}>{st.icon}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--v-text-primary)' }}>{st.name}</span>
+                    {!st.available && (
+                      <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--v-text-secondary)', background: 'var(--v-panel)', border: '1px solid var(--v-card-border)', padding: '1px 6px', borderRadius: '4px' }}>Soon</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--v-text-secondary)', marginTop: '2px' }}>{st.desc}</div>
+                </div>
+                {st.available && (
+                  <button
+                    aria-label={`Add ${st.name}`}
+                    data-testid={`add-${st.key}`}
+                    onClick={e => { e.stopPropagation(); router.push(st.path); }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '28px',
+                      height: '28px',
+                      flexShrink: 0,
+                      background: 'var(--v-accent-dim)',
+                      border: '1px solid var(--v-accent)',
+                      borderRadius: '50%',
+                      color: 'var(--v-accent)',
+                      fontSize: '16px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      lineHeight: 1,
+                    }}
+                  >
+                    +
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
       {/* ─── Symbol Search ─── */}
       <div style={{ margin: '0 16px 16px 16px', position: 'relative' }}>
-        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '8px' }}>
+        <div style={{ fontSize: '11px', color: 'var(--v-text-secondary)', letterSpacing: '0.1em', marginBottom: '8px' }}>
           SEARCH COMPANY TO BUY OR SELL
         </div>
         <input
@@ -481,11 +634,11 @@ export function TradeTab() {
           onFocus={() => { if (searchResults.length > 0) setShowResults(true); }}
           style={{
             width: '100%',
-            background: 'rgba(34,211,238,0.07)',
-            border: '1px solid rgba(34,211,238,0.45)',
+            background: 'var(--v-accent-dim)',
+            border: '1px solid var(--v-accent-dim)',
             borderRadius: '12px',
             padding: '12px 14px',
-            color: '#ffffff',
+            color: 'var(--v-text-primary)',
             fontSize: '14px',
             outline: 'none',
             boxSizing: 'border-box',
@@ -498,10 +651,10 @@ export function TradeTab() {
             left: 0,
             right: 0,
             marginTop: '4px',
-            background: '#0a0f1e',
+            background: 'var(--v-panel)',
             borderRadius: '10px',
             overflow: 'hidden',
-            border: '1px solid rgba(255,255,255,0.08)',
+            border: '1px solid var(--v-rule)',
             zIndex: 10,
           }}>
             {searchResults.map((r, i) => (
@@ -517,14 +670,14 @@ export function TradeTab() {
                 }}
                 style={{
                   padding: '10px 14px',
-                  borderBottom: i < searchResults.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                  borderBottom: i < searchResults.length - 1 ? '1px solid var(--v-rule)' : 'none',
                   cursor: 'pointer',
                 }}
               >
-                <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px' }}>
+                <span style={{ color: 'var(--v-text-primary)', fontWeight: '600', fontSize: '14px' }}>
                   {r.symbol}
                 </span>
-                <span style={{ color: '#cbd5e1', fontSize: '12px', marginLeft: '8px' }}>
+                <span style={{ color: 'var(--v-text-secondary)', fontSize: '12px', marginLeft: '8px' }}>
                   {r.description}
                 </span>
               </div>
@@ -536,8 +689,8 @@ export function TradeTab() {
       {/* ─── Quote + Order ─── */}
       {selectedSymbol && selectedResult && symbolQuote && (
         <div style={{
-          background: '#1a2235',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--v-card)',
+          border: '1px solid var(--v-rule)',
           borderRadius: '16px',
           overflow: 'hidden',
           margin: '0 16px 16px',
@@ -546,32 +699,32 @@ export function TradeTab() {
           <div style={{ padding: '16px' }}>
           {/* Symbol name + type badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-            <span style={{ fontSize: '18px', fontWeight: '700', color: '#ffffff' }}>
+            <span style={{ fontSize: '18px', fontWeight: '700', color: 'var(--v-text-primary)' }}>
               {selectedSymbol}
             </span>
             <span style={{
               fontSize: '10px',
-              color: '#334155',
-              background: '#0f1829',
+              color: 'var(--v-text-faint)',
+              background: 'var(--v-panel)',
               padding: '2px 6px',
               borderRadius: '4px'
             }}>
               {symbolQuote.type === 'ETP' ? 'ETF' : 'Stock'}
             </span>
           </div>
-          <div style={{ fontSize: '11px', color: '#e2e8f0', marginBottom: '8px' }}>
+          <div style={{ fontSize: '11px', color: 'var(--v-text-secondary)', marginBottom: '8px' }}>
             {symbolQuote.description}
           </div>
 
           {/* Price + Change */}
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-            <span style={{ fontSize: '28px', fontWeight: '700', color: '#ffffff' }}>
+            <span style={{ fontSize: '28px', fontWeight: '700', color: 'var(--v-text-primary)' }}>
               ${symbolQuote.price.toFixed(2)}
             </span>
             <span style={{
               fontSize: '14px',
               fontWeight: '600',
-              color: symbolQuote.change >= 0 ? '#10b981' : '#ef4444'
+              color: symbolQuote.change >= 0 ? 'var(--v-gain)' : 'var(--v-loss)'
             }}>
               {symbolQuote.change >= 0 ? '+' : ''}{symbolQuote.change.toFixed(2)}
               {' '}({symbolQuote.changePct >= 0 ? '+' : ''}{symbolQuote.changePct.toFixed(2)}%)
@@ -585,12 +738,12 @@ export function TradeTab() {
             alignItems: 'center',
             marginTop: '12px',
             paddingTop: '12px',
-            borderTop: '1px solid #2a3448'
+            borderTop: '1px solid var(--v-rule)'
           }}>
-            <span style={{ fontSize: '11px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <span style={{ fontSize: '11px', color: 'var(--v-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Day Range
             </span>
-            <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
+            <span style={{ fontSize: '13px', color: 'var(--v-text-primary)', fontWeight: '500' }}>
               ${symbolQuote.dayLow.toFixed(2)} — ${symbolQuote.dayHigh.toFixed(2)}
             </span>
           </div>
@@ -600,14 +753,14 @@ export function TradeTab() {
             <div style={{
               position: 'relative',
               height: '4px',
-              background: '#0f1829',
+              background: 'var(--v-panel)',
               borderRadius: '2px'
             }}>
               <div style={{
                 position: 'absolute',
                 height: '8px',
                 width: '8px',
-                background: '#22d3ee',
+                background: 'var(--v-accent)',
                 borderRadius: '50%',
                 top: '-2px',
                 left: `${Math.min(98, Math.max(2,
@@ -628,10 +781,10 @@ export function TradeTab() {
                 alignItems: 'center',
                 marginTop: '10px'
               }}>
-                <span style={{ fontSize: '11px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span style={{ fontSize: '11px', color: 'var(--v-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   52-Wk Range
                 </span>
-                <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
+                <span style={{ fontSize: '13px', color: 'var(--v-text-primary)', fontWeight: '500' }}>
                   ${symbolQuote.weekLow52.toFixed(2)} — ${symbolQuote.weekHigh52.toFixed(2)}
                 </span>
               </div>
@@ -639,14 +792,14 @@ export function TradeTab() {
                 <div style={{
                   position: 'relative',
                   height: '4px',
-                  background: '#0f1829',
+                  background: 'var(--v-panel)',
                   borderRadius: '2px'
                 }}>
                   <div style={{
                     position: 'absolute',
                     height: '8px',
                     width: '8px',
-                    background: '#ffffff',
+                    background: 'var(--v-hero-text)',
                     borderRadius: '50%',
                     top: '-2px',
                     left: `${Math.min(98, Math.max(2,
@@ -667,10 +820,10 @@ export function TradeTab() {
             alignItems: 'center',
             marginTop: '10px'
           }}>
-            <span style={{ fontSize: '11px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <span style={{ fontSize: '11px', color: 'var(--v-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               OPEN ({symbolQuote.lastTradeTime ? formatQuoteDate(symbolQuote.lastTradeTime) : ''})
             </span>
-            <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
+            <span style={{ fontSize: '13px', color: 'var(--v-text-primary)', fontWeight: '500' }}>
               {symbolQuote.open > 0 ? `$${symbolQuote.open.toFixed(2)}` : '—'}
             </span>
           </div>
@@ -682,27 +835,27 @@ export function TradeTab() {
             alignItems: 'center',
             marginTop: '8px'
           }}>
-            <span style={{ fontSize: '11px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <span style={{ fontSize: '11px', color: 'var(--v-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               PREV CLOSE ({symbolQuote.lastTradeTime ? formatQuoteDate(symbolQuote.lastTradeTime - 86400) : ''})
             </span>
-            <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
+            <span style={{ fontSize: '13px', color: 'var(--v-text-primary)', fontWeight: '500' }}>
               {symbolQuote.prevClose > 0
                 ? `$${symbolQuote.prevClose.toFixed(2)}` : '—'}
             </span>
           </div>
 
           {quoteLoading && (
-            <div style={{ marginTop: '8px', fontSize: '11px', color: '#e2e8f0', textAlign: 'center' }}>
+            <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--v-text-secondary)', textAlign: 'center' }}>
               Loading quote...
             </div>
           )}
         </div>
 
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }} />
+        <div style={{ borderTop: '1px solid var(--v-rule)' }} />
 
         {/* Order Form */}
         <div style={{ padding: '16px' }}>
-        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '16px' }}>
+        <div style={{ fontSize: '11px', color: 'var(--v-text-secondary)', letterSpacing: '0.1em', marginBottom: '16px' }}>
           PLACE ORDER
         </div>
 
@@ -716,9 +869,9 @@ export function TradeTab() {
                 flex: 1,
                 padding: '10px 0',
                 borderRadius: '8px',
-                border: side === s ? 'none' : '1px solid #2a3448',
-                background: side === s ? (s === 'buy' ? '#10b981' : '#ef4444') : '#0f1829',
-                color: side === s ? '#ffffff' : '#94a3b8',
+                border: side === s ? 'none' : '1px solid var(--v-rule)',
+                background: side === s ? (s === 'buy' ? 'var(--v-gain)' : 'var(--v-loss)') : 'var(--v-panel)',
+                color: side === s ? 'var(--v-hero-text)' : 'var(--v-text-muted)',
                 fontSize: '14px',
                 fontWeight: '600',
                 cursor: 'pointer'
@@ -730,7 +883,7 @@ export function TradeTab() {
         </div>
 
         {/* ORDER TYPE */}
-        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '8px' }}>
+        <div style={{ fontSize: '11px', color: 'var(--v-text-secondary)', letterSpacing: '0.1em', marginBottom: '8px' }}>
           ORDER TYPE
         </div>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
@@ -742,9 +895,9 @@ export function TradeTab() {
                 flex: 1,
                 padding: '10px 0',
                 borderRadius: '8px',
-                border: orderType === t ? '1px solid #22d3ee' : '1px solid #2a3448',
-                background: orderType === t ? '#1e3a5f' : '#0f1829',
-                color: orderType === t ? '#22d3ee' : '#94a3b8',
+                border: orderType === t ? '1px solid var(--v-accent)' : '1px solid var(--v-rule)',
+                background: orderType === t ? 'var(--v-accent-dim)' : 'var(--v-panel)',
+                color: orderType === t ? 'var(--v-accent)' : 'var(--v-text-muted)',
                 fontSize: '13px',
                 fontWeight: '500',
                 cursor: 'pointer'
@@ -756,7 +909,7 @@ export function TradeTab() {
         </div>
 
         {/* QUANTITY */}
-        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '8px' }}>
+        <div style={{ fontSize: '11px', color: 'var(--v-text-secondary)', letterSpacing: '0.1em', marginBottom: '8px' }}>
           QUANTITY
         </div>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
@@ -768,9 +921,9 @@ export function TradeTab() {
                 flex: 1,
                 padding: '10px 0',
                 borderRadius: '8px',
-                border: qtyType === qt ? '1px solid #22d3ee' : '1px solid #2a3448',
-                background: qtyType === qt ? '#1e3a5f' : '#0f1829',
-                color: qtyType === qt ? '#22d3ee' : '#94a3b8',
+                border: qtyType === qt ? '1px solid var(--v-accent)' : '1px solid var(--v-rule)',
+                background: qtyType === qt ? 'var(--v-accent-dim)' : 'var(--v-panel)',
+                color: qtyType === qt ? 'var(--v-accent)' : 'var(--v-text-muted)',
                 fontSize: '13px',
                 fontWeight: '500',
                 cursor: 'pointer'
@@ -787,11 +940,11 @@ export function TradeTab() {
           onChange={e => setQty(e.target.value)}
           style={{
             width: '100%',
-            background: '#0f1829',
-            border: '1px solid #2a3448',
+            background: 'var(--v-panel)',
+            border: '1px solid var(--v-rule)',
             borderRadius: '8px',
             padding: '14px 16px',
-            color: '#ffffff',
+            color: 'var(--v-text-primary)',
             fontSize: '24px',
             fontWeight: '600',
             outline: 'none',
@@ -803,7 +956,7 @@ export function TradeTab() {
         {/* STOP PRICE */}
         {(orderType === 'stop' || orderType === 'stop_limit') && (
           <>
-            <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '8px' }}>
+            <div style={{ fontSize: '11px', color: 'var(--v-text-secondary)', letterSpacing: '0.1em', marginBottom: '8px' }}>
               STOP PRICE
             </div>
             <input
@@ -813,11 +966,11 @@ export function TradeTab() {
               onChange={e => setStopPrice(e.target.value)}
               style={{
                 width: '100%',
-                background: '#0f1829',
-                border: '1px solid #2a3448',
+                background: 'var(--v-panel)',
+                border: '1px solid var(--v-rule)',
                 borderRadius: '8px',
                 padding: '14px 16px',
-                color: '#ffffff',
+                color: 'var(--v-text-primary)',
                 fontSize: '18px',
                 fontWeight: '600',
                 outline: 'none',
@@ -831,7 +984,7 @@ export function TradeTab() {
         {/* LIMIT PRICE */}
         {(orderType === 'limit' || orderType === 'stop_limit') && (
           <>
-            <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '8px' }}>
+            <div style={{ fontSize: '11px', color: 'var(--v-text-secondary)', letterSpacing: '0.1em', marginBottom: '8px' }}>
               LIMIT PRICE
             </div>
             <input
@@ -841,11 +994,11 @@ export function TradeTab() {
               onChange={e => setLimitPrice(e.target.value)}
               style={{
                 width: '100%',
-                background: '#0f1829',
-                border: '1px solid #2a3448',
+                background: 'var(--v-panel)',
+                border: '1px solid var(--v-rule)',
                 borderRadius: '8px',
                 padding: '14px 16px',
-                color: '#ffffff',
+                color: 'var(--v-text-primary)',
                 fontSize: '18px',
                 fontWeight: '600',
                 outline: 'none',
@@ -857,7 +1010,7 @@ export function TradeTab() {
         )}
 
         {/* TIME IN FORCE */}
-        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '8px' }}>
+        <div style={{ fontSize: '11px', color: 'var(--v-text-secondary)', letterSpacing: '0.1em', marginBottom: '8px' }}>
           TIME IN FORCE
         </div>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
@@ -869,9 +1022,9 @@ export function TradeTab() {
                 flex: 1,
                 padding: '10px 0',
                 borderRadius: '8px',
-                border: tif === t ? '1px solid #22d3ee' : '1px solid #2a3448',
-                background: tif === t ? '#1e3a5f' : '#0f1829',
-                color: tif === t ? '#22d3ee' : '#94a3b8',
+                border: tif === t ? '1px solid var(--v-accent)' : '1px solid var(--v-rule)',
+                background: tif === t ? 'var(--v-accent-dim)' : 'var(--v-panel)',
+                color: tif === t ? 'var(--v-accent)' : 'var(--v-text-muted)',
                 fontSize: '13px',
                 fontWeight: '500',
                 cursor: 'pointer'
@@ -884,8 +1037,8 @@ export function TradeTab() {
 
         {/* Est. value */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <span style={{ color: '#e2e8f0', fontSize: '13px' }}>Est. value</span>
-          <span style={{ color: '#ffffff', fontSize: '13px', fontWeight: '600' }}>
+          <span style={{ color: 'var(--v-text-secondary)', fontSize: '13px' }}>Est. value</span>
+          <span style={{ color: 'var(--v-text-primary)', fontSize: '13px', fontWeight: '600' }}>
             {(() => {
               const price = (orderType === 'limit' || orderType === 'stop_limit') && limitPrice
                 ? parseFloat(limitPrice)
@@ -902,20 +1055,20 @@ export function TradeTab() {
 
         {/* Buying Power */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-          <span style={{ color: '#e2e8f0', fontSize: '13px' }}>Buying Power</span>
+          <span style={{ color: 'var(--v-text-secondary)', fontSize: '13px' }}>Buying Power</span>
           <span style={{
             color: (() => {
               const price = (orderType === 'limit' || orderType === 'stop_limit') && limitPrice
                 ? parseFloat(limitPrice)
                 : symbolQuote?.price;
-              if (!price || !qty || isNaN(price)) return '#94a3b8';
+              if (!price || !qty || isNaN(price)) return 'var(--v-text-muted)';
               const shares = qtyType === 'dollars' && price > 0
                 ? parseFloat(qty) / price
                 : parseFloat(qty);
               const estCost = shares * price;
               const bp = account?.buyingPower ?? account?.cash ?? 0;
-              if (side === 'buy' && estCost > bp) return '#ef4444';
-              return '#94a3b8';
+              if (side === 'buy' && estCost > bp) return 'var(--v-loss)';
+              return 'var(--v-text-muted)';
             })(),
             fontSize: '13px'
           }}>
@@ -937,13 +1090,13 @@ export function TradeTab() {
           if (estCost > bp) {
             return (
               <div style={{
-                background: 'rgba(239,68,68,0.08)',
-                border: '1px solid rgba(239,68,68,0.25)',
+                background: 'var(--v-loss-dim)',
+                border: '1px solid var(--v-loss-dim)',
                 borderRadius: '8px',
                 padding: '10px 12px',
                 marginBottom: '16px',
                 fontSize: '12px',
-                color: '#ef4444',
+                color: 'var(--v-loss)',
                 lineHeight: '1.5',
               }}>
                 ⚠️ Insufficient buying power. You need ${estCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} but only have ${bp.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} available.
@@ -975,13 +1128,13 @@ export function TradeTab() {
                 : `Insufficient shares. You want to sell ${shares.toLocaleString()} but only own ${owned.toLocaleString()}`;
             return (
               <div style={{
-                background: 'rgba(239,68,68,0.08)',
-                border: '1px solid rgba(239,68,68,0.25)',
+                background: 'var(--v-loss-dim)',
+                border: '1px solid var(--v-loss-dim)',
                 borderRadius: '8px',
                 padding: '10px 12px',
                 marginBottom: '16px',
                 fontSize: '12px',
-                color: '#ef4444',
+                color: 'var(--v-loss)',
                 lineHeight: '1.5',
               }}>
                 ⚠️ {msg}
@@ -994,13 +1147,13 @@ export function TradeTab() {
         {/* Limit/Stop advisory */}
         {(orderType === 'limit' || orderType === 'stop' || orderType === 'stop_limit') && (
           <div style={{
-            background: 'rgba(34,211,238,0.08)',
-            border: '1px solid rgba(34,211,238,0.2)',
+            background: 'var(--v-accent-dim)',
+            border: '1px solid var(--v-accent-dim)',
             borderRadius: '8px',
             padding: '12px',
             marginBottom: '16px'
           }}>
-            <div style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.5' }}>
+            <div style={{ color: 'var(--v-text-muted)', fontSize: '13px', lineHeight: '1.5' }}>
               ℹ️ For advanced limit and stop orders, review your order carefully before submitting.
             </div>
           </div>
@@ -1076,10 +1229,10 @@ export function TradeTab() {
           style={{
             flex: 1,
             padding: '16px',
-            background: side === 'buy' ? '#10b981' : '#ef4444',
+            background: side === 'buy' ? 'var(--v-gain)' : 'var(--v-loss)',
             border: 'none',
             borderRadius: '10px',
-            color: '#ffffff',
+            color: 'var(--v-hero-text)',
             fontSize: '16px',
             fontWeight: '700',
             cursor: (() => {
@@ -1134,9 +1287,9 @@ export function TradeTab() {
           style={{
             padding: '16px 24px',
             background: 'transparent',
-            border: '1px solid rgba(255,255,255,0.15)',
+            border: '1px solid var(--v-rule)',
             borderRadius: '10px',
-            color: '#cbd5e1',
+            color: 'var(--v-text-secondary)',
             fontSize: '14px',
             fontWeight: '600',
             cursor: 'pointer',
@@ -1149,38 +1302,139 @@ export function TradeTab() {
       </div>
       )}
 
-      {/* ─── 2. STRATEGIES SECTION ─── */}
-      {/* ─── 4. ORDER HISTORY ─── */}
+      </>)}
+
+      {/* ── PART 1 — TRACKING view (separate from Strategies) ── */}
+      {investView === 'tracking' && (
+        <div style={{ margin: '0 16px' }} data-testid="tracking-section">
+          <div style={{ fontSize: '11px', color: 'var(--v-text-secondary)', letterSpacing: '0.1em', marginBottom: '12px' }}>
+            TRACKING
+          </div>
+
+          {/* Working (open) orders */}
+          {(() => {
+            const working = normalizedOrders.filter((o: any) => isWorkingStatus(o.status));
+            return (
+              <>
+                <div style={{ fontSize: '10px', color: 'var(--v-text-secondary)', letterSpacing: '0.08em', marginBottom: '10px' }}>
+                  WORKING ORDERS
+                </div>
+                {working.length === 0 ? (
+                  <div style={{ padding: '18px', textAlign: 'center', fontSize: '12px', color: 'var(--v-text-muted)', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: '12px', marginBottom: '18px' }}>
+                    No working orders
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '18px' }}>
+                    {working.map((o: any) => (
+                      <div key={o.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--v-text-primary)' }}>{o.symbol}</span>
+                          <span style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.06em', color: o.side === 'BUY' ? 'var(--v-gain)' : 'var(--v-loss)' }}>{o.side}</span>
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--v-text-secondary)', whiteSpace: 'nowrap' }}>
+                          {o.shares} sh{o.submittedPrice ? ` @ $${Number(o.submittedPrice).toFixed(2)}` : ''}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+
+          {/* Active recurring strategies */}
+          <div style={{ fontSize: '10px', color: 'var(--v-text-secondary)', letterSpacing: '0.08em', marginBottom: '10px' }}>
+            ACTIVE RECURRING
+          </div>
+          {activeSchedules.length === 0 ? (
+            <div style={{ padding: '18px', textAlign: 'center', fontSize: '12px', color: 'var(--v-text-muted)', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: '12px' }}>
+              No recurring strategies yet
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {activeSchedules.map((s: any) => (
+                <button
+                  key={s.id}
+                  onClick={() => router.push('/strategies/setup/dca')}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer', textAlign: 'left', width: '100%' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                    <span style={{ color: 'var(--v-text-primary)', fontSize: '13px', fontWeight: 700 }}>{s.symbol}</span>
+                    <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--v-accent)', background: 'var(--v-accent-dim)', padding: '2px 6px', borderRadius: '4px' }}>DCA</span>
+                  </div>
+                  <span style={{ color: 'var(--v-text-secondary)', fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {s.config?.investBy === 'shares' ? `${s.config.quantity || '?'} sh` : `$${s.config?.amount ?? '?'}`} · {s.config?.frequency ?? 'weekly'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── PART 1 — ORDERS view (Order History) ── */}
+      {investView === 'orders' && (
+      <>
       <div id="order-history" style={{ margin: '0 14px' }}>
-        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '12px' }}>
+        <div style={{ fontSize: '11px', color: 'var(--v-text-secondary)', letterSpacing: '0.1em', marginBottom: '12px' }}>
           ORDER HISTORY
         </div>
 
-        {/* History tabs */}
-        <div style={{ display: 'flex', marginBottom: '12px' }}>
+        {/* History filter chips — teal (adaptive accent), NOT the old blue underline */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', overflowX: 'auto' }}>
           {([
             { key: 'open', label: 'Open' },
             { key: 'filled', label: 'Filled ✓' },
             { key: 'cancelled', label: 'Cancelled' },
             { key: 'all', label: 'All' },
-          ] as const).map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setHistoryTab(tab.key)}
-              style={{
-                fontSize: '13px',
-                padding: '8px 12px',
-                cursor: 'pointer',
-                background: 'none',
-                border: 'none',
-                borderBottom: historyTab === tab.key ? '2px solid #22d3ee' : '2px solid transparent',
-                color: historyTab === tab.key ? '#22d3ee' : '#94a3b8'
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
+          ] as const).map(tab => {
+            const on = historyTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                data-testid={`order-filter-${tab.key}`}
+                onClick={() => setHistoryTab(tab.key)}
+                style={{
+                  fontSize: '12px',
+                  fontWeight: on ? 700 : 500,
+                  padding: '7px 14px',
+                  cursor: 'pointer',
+                  borderRadius: '9999px',
+                  whiteSpace: 'nowrap',
+                  background: on ? 'var(--v-accent)' : 'var(--v-panel)',
+                  border: on ? '1px solid var(--v-accent)' : '1px solid var(--v-card-border)',
+                  color: on ? 'var(--v-accent-text)' : 'var(--v-text-secondary)',
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
+
+        {/* PART 3 — sweep filter affordance (only when sweeps were hidden) */}
+        {hiddenSweepCount > 0 && (
+          <div style={{ marginBottom: '12px' }}>
+            <button
+              data-testid="show-sweeps"
+              onClick={() => setShowSweeps(true)}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--v-accent)', fontSize: '12px', fontWeight: 600 }}
+            >
+              Show all ({hiddenSweepCount} cash-sweep {hiddenSweepCount === 1 ? 'entry' : 'entries'} hidden)
+            </button>
+          </div>
+        )}
+        {showSweeps && (
+          <div style={{ marginBottom: '12px' }}>
+            <button
+              data-testid="hide-sweeps"
+              onClick={() => setShowSweeps(false)}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--v-text-muted)', fontSize: '12px', fontWeight: 600 }}
+            >
+              Hide cash sweeps
+            </button>
+          </div>
+        )}
 
         {/* Filtered basket orders for current tab */}
         {(() => {
@@ -1283,10 +1537,10 @@ export function TradeTab() {
                 <div style={{
                   padding: '40px 24px',
                   textAlign: 'center',
-                  color: '#64748b',
+                  color: 'var(--v-text-muted)',
                 }}>
                   <div style={{ fontSize: '32px', marginBottom: '12px' }}>📋</div>
-                  <div style={{ fontSize: '16px', fontWeight: '600', color: '#94a3b8', marginBottom: '6px' }}>
+                  <div style={{ fontSize: '16px', fontWeight: '600', color: 'var(--v-text-muted)', marginBottom: '6px' }}>
                     {historyTab === 'all'
                       ? 'No orders yet'
                       : historyTab === 'open'
@@ -1295,7 +1549,7 @@ export function TradeTab() {
                           ? 'No filled orders'
                           : 'No cancelled orders'}
                   </div>
-                  <div style={{ fontSize: '13px', color: '#64748b' }}>
+                  <div style={{ fontSize: '13px', color: 'var(--v-text-muted)' }}>
                     Search a stock above to place your first trade
                   </div>
                 </div>
@@ -1314,23 +1568,23 @@ export function TradeTab() {
 
                 // Status badge style for broker-level basket orders
                 const boBadgeStyle = isOpen
-                  ? { bg: 'var(--amber-dim)', color: 'var(--amber)', label: 'Open' }
+                  ? { bg: 'var(--v-warn-dim)', color: 'var(--v-warn)', label: 'Open' }
                   : isFilled
-                    ? { bg: 'var(--emerald-dim)', color: 'var(--emerald)', label: 'Filled' }
+                    ? { bg: 'var(--v-gain-dim)', color: 'var(--v-gain)', label: 'Filled' }
                     : isPartial
-                      ? { bg: 'var(--violet-dim)', color: 'var(--violet)', label: 'Partial' }
-                      : { bg: 'var(--red-dim)', color: 'var(--red)', label: 'Cancelled' };
+                      ? { bg: 'var(--v-accent-dim)', color: 'var(--v-accent)', label: 'Partial' }
+                      : { bg: 'var(--v-loss-dim)', color: 'var(--v-loss)', label: 'Cancelled' };
 
                 const boCardBorder = isOpen
-                  ? 'rgba(240,183,63,0.25)'
+                  ? 'var(--v-warn-dim)'
                   : isPartial
-                    ? 'rgba(179,137,240,0.25)'
-                    : 'rgba(255,255,255,0.08)';
+                    ? 'var(--v-accent-dim)'
+                    : 'var(--v-rule)';
                   return (
                   <div
                     key={basket.id}
                     style={{
-                      background: 'var(--bg-card)',
+                      background: 'var(--v-card)',
                       border: `1px solid ${boCardBorder}`,
                       borderRadius: '12px',
                       marginBottom: '10px',
@@ -1401,7 +1655,7 @@ export function TradeTab() {
                       }}
                     >
                       <div>
-                        <div style={{ fontSize: 9, fontWeight: 700, color: '#8794a8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--v-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>
                           Basket
                         </div>
                         <div style={{
@@ -1411,7 +1665,7 @@ export function TradeTab() {
                           marginBottom: '4px',
                         }}>
                           <span style={{
-                            color: '#ffffff',
+                            color: 'var(--v-text-primary)',
                             fontWeight: '700',
                             fontSize: '15px',
                           }}>
@@ -1419,18 +1673,18 @@ export function TradeTab() {
                           </span>
                         </div>
                         <div style={{
-                          color: '#cbd5e1',
+                          color: 'var(--v-text-secondary)',
                           fontSize: '11px',
                         }}>
                           {basket.orders?.length || 0} positions ·
                           ${(basket.totalReserved || 0).toFixed(2)}
                           {isOpen && (
-                            <span style={{ color: 'var(--amber)' }}>
+                            <span style={{ color: 'var(--v-warn)' }}>
                               {' · '}⏳ {getMarketStatus().isOpen ? '⚡ Market Open — executing soon' : basket.nextOpenLabel || 'awaiting market open'}
                             </span>
                           )}
                           {isPartial && (
-                            <span style={{ color: 'var(--violet)' }}>
+                            <span style={{ color: 'var(--v-accent)' }}>
                               {' · '}{(basket.orders || []).filter((o: any) => o.status === 'FILLED').length}/{(basket.orders || []).length} filled
                             </span>
                           )}
@@ -1458,9 +1712,9 @@ export function TradeTab() {
                             }}
                             style={{
                               background: 'none',
-                              border: (basketSubmitting || isPlacingBasket) ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(239,68,68,0.4)',
+                              border: (basketSubmitting || isPlacingBasket) ? '1px solid var(--v-rule)' : '1px solid var(--v-loss-dim)',
                               borderRadius: '6px',
-                              color: (basketSubmitting || isPlacingBasket) ? '#64748b' : '#ef4444',
+                              color: (basketSubmitting || isPlacingBasket) ? 'var(--v-text-muted)' : 'var(--v-loss)',
                               fontSize: '11px',
                               padding: '4px 10px',
                               cursor: (basketSubmitting || isPlacingBasket) ? 'not-allowed' : 'pointer',
@@ -1481,15 +1735,15 @@ export function TradeTab() {
                           textTransform: 'uppercase',
                           letterSpacing: '0.04em',
                           background: isOpen
-                            ? 'var(--amber-dim)'
+                            ? 'var(--v-warn-dim)'
                             : basket.status === 'FILLED'
-                              ? 'var(--emerald-dim)'
-                              : 'var(--red-dim)',
+                              ? 'var(--v-gain-dim)'
+                              : 'var(--v-loss-dim)',
                           color: isOpen
-                            ? 'var(--amber)'
+                            ? 'var(--v-warn)'
                             : basket.status === 'FILLED'
-                              ? 'var(--emerald)'
-                              : 'var(--red)',
+                              ? 'var(--v-gain)'
+                              : 'var(--v-loss)',
                         }}>
                           <span style={{
                             width: '6px',
@@ -1502,7 +1756,7 @@ export function TradeTab() {
                         </span>
                         {!isOpen && (
                           <span style={{
-                            color: '#cbd5e1',
+                            color: 'var(--v-text-secondary)',
                             fontSize: '14px',
                             transform: isExpanded ? 'rotate(90deg)' : 'none',
                             transition: 'transform 0.2s',
@@ -1516,7 +1770,7 @@ export function TradeTab() {
                     {/* Expanded — individual orders (shared OrderCard) */}
                     {isExpanded && (
                       <div style={{
-                        borderTop: '1px solid rgba(255,255,255,0.06)',
+                        borderTop: '1px solid var(--v-rule)',
                       }}>
                         <div style={{ padding: '12px 16px 4px' }}>
                           {(basket.orders || []).map((order: any) => (
@@ -1548,9 +1802,9 @@ export function TradeTab() {
                                 width: '100%',
                                 padding: '10px',
                                 background: 'none',
-                                border: (basketSubmitting || isPlacingBasket) ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(239,68,68,0.3)',
+                                border: (basketSubmitting || isPlacingBasket) ? '1px solid var(--v-rule)' : '1px solid var(--v-loss-dim)',
                                 borderRadius: '8px',
-                                color: (basketSubmitting || isPlacingBasket) ? '#64748b' : '#ef4444',
+                                color: (basketSubmitting || isPlacingBasket) ? 'var(--v-text-muted)' : 'var(--v-loss)',
                                 fontSize: '13px',
                                 cursor: (basketSubmitting || isPlacingBasket) ? 'not-allowed' : 'pointer',
                               }}
@@ -1558,7 +1812,7 @@ export function TradeTab() {
                               {(basketSubmitting || isPlacingBasket) ? 'Order is still submitting, please wait…' : 'Cancel Basket Order'}
                             </button>
                             <div style={{
-                              color: '#cbd5e1',
+                              color: 'var(--v-text-secondary)',
                               fontSize: '10px',
                               textAlign: 'center',
                               marginTop: '6px',
@@ -1583,23 +1837,23 @@ export function TradeTab() {
                 
                 // Status badge style based on aggregate status
                 const badgeStyle = isPending
-                  ? { bg: 'var(--amber-dim)', color: 'var(--amber)', label: 'Open' }
+                  ? { bg: 'var(--v-warn-dim)', color: 'var(--v-warn)', label: 'Open' }
                   : group.aggregateStatus === 'FILLED'
-                    ? { bg: 'var(--emerald-dim)', color: 'var(--emerald)', label: 'Filled' }
+                    ? { bg: 'var(--v-gain-dim)', color: 'var(--v-gain)', label: 'Filled' }
                     : isPartial
-                      ? { bg: 'var(--violet-dim)', color: 'var(--violet)', label: 'Partial' }
-                      : { bg: 'var(--red-dim)', color: 'var(--red)', label: 'Cancelled' };
+                      ? { bg: 'var(--v-accent-dim)', color: 'var(--v-accent)', label: 'Partial' }
+                      : { bg: 'var(--v-loss-dim)', color: 'var(--v-loss)', label: 'Cancelled' };
 
                 // Border color for the card
                 const cardBorder = isPending
-                  ? 'rgba(240,183,63,0.25)'
+                  ? 'var(--v-warn-dim)'
                   : isPartial
-                    ? 'rgba(179,137,240,0.25)'
-                    : 'rgba(255,255,255,0.08)';
+                    ? 'var(--v-accent-dim)'
+                    : 'var(--v-rule)';
 
                 return (
                   <div key={group.id} style={{
-                    background: 'var(--bg-card)',
+                    background: 'var(--v-card)',
                     border: `1px solid ${cardBorder}`,
                     borderRadius: '12px',
                     marginBottom: '10px',
@@ -1645,28 +1899,28 @@ export function TradeTab() {
                       }}
                     >
                       <div>
-                        <div style={{ fontSize: 9, fontWeight: 700, color: '#8794a8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--v-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>
                           Basket
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                          <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '15px' }}>
+                          <span style={{ color: 'var(--v-text-primary)', fontWeight: '700', fontSize: '15px' }}>
                             {group.basketName}
                           </span>
                         </div>
-                        <div style={{ color: 'var(--dim)', fontSize: '11px' }}>
+                        <div style={{ color: 'var(--v-text-secondary)', fontSize: '11px' }}>
                           {group.orderCount} positions · ${group.totalCost.toFixed(2)}
                           {isPartial && (
-                            <span style={{ color: 'var(--violet)' }}>
+                            <span style={{ color: 'var(--v-accent)' }}>
                               {' · '}{group.filledCount}/{group.totalCount} filled
                             </span>
                           )}
                           {isPending && (
-                            <span style={{ color: 'var(--amber)' }}>
+                            <span style={{ color: 'var(--v-warn)' }}>
                               {' · '}⏳ {getMarketStatus().isOpen ? '⚡ Market Open — executing soon' : 'awaiting market open'}
                             </span>
                           )}
                           {groupSubmitting && (
-                            <span style={{ color: '#f0b73f' }}>
+                            <span style={{ color: 'var(--v-warn)' }}>
                               {' · '}⏳ Order is still submitting, please wait
                             </span>
                           )}
@@ -1688,9 +1942,9 @@ export function TradeTab() {
                             }}
                             style={{
                               background: 'none',
-                              border: (groupSubmitting || isPlacingBasket) ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(239,68,68,0.4)',
+                              border: (groupSubmitting || isPlacingBasket) ? '1px solid var(--v-rule)' : '1px solid var(--v-loss-dim)',
                               borderRadius: '6px',
-                              color: (groupSubmitting || isPlacingBasket) ? '#64748b' : '#ef4444',
+                              color: (groupSubmitting || isPlacingBasket) ? 'var(--v-text-muted)' : 'var(--v-loss)',
                               fontSize: '11px',
                               padding: '4px 10px',
                               cursor: (groupSubmitting || isPlacingBasket) ? 'not-allowed' : 'pointer',
@@ -1730,28 +1984,28 @@ export function TradeTab() {
                             fontWeight: '700',
                             padding: '3px 8px',
                             borderRadius: '6px',
-                            background: 'var(--violet-dim)',
-                            color: 'var(--violet)',
+                            background: 'var(--v-accent-dim)',
+                            color: 'var(--v-accent)',
                           }}>
                             {group.filledCount}/{group.totalCount} filled
                           </span>
                         )}
                         {!isPending && (
                           <span style={{
-                            color: 'var(--dim)', fontSize: '14px',
+                            color: 'var(--v-text-secondary)', fontSize: '14px',
                             transform: isExpanded ? 'rotate(90deg)' : 'none',
                             transition: 'transform 0.2s',
                           }}>›</span>
                         )}
                         {isPending && (
-                          <span style={{ color: 'var(--dim)', fontSize: '10px', opacity: 0.6 }}>✏️</span>
+                          <span style={{ color: 'var(--v-text-secondary)', fontSize: '10px', opacity: 0.6 }}>✏️</span>
                         )}
                       </div>
                     </div>
 
                     {/* Expanded — child orders (shared OrderCard) */}
                     {isExpanded && !isPending && (
-                      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div style={{ borderTop: '1px solid var(--v-rule)' }}>
                         <div style={{ padding: '12px 16px 4px' }}>
                           {group.orders.map((order: any) => (
                             <OrderCard
@@ -1796,9 +2050,9 @@ export function TradeTab() {
                     {/* Pending basket — tapping opens edit, no inline expand */}
                     {isPending && (
                       <div style={{
-                        borderTop: '1px solid rgba(255,255,255,0.06)',
+                        borderTop: '1px solid var(--v-rule)',
                         padding: '10px 16px',
-                        color: '#94a3b8', fontSize: '11px',
+                        color: 'var(--v-text-muted)', fontSize: '11px',
                         textAlign: 'center',
                       }}>
                         Tap to edit in Build Basket
@@ -1830,6 +2084,7 @@ export function TradeTab() {
           );
         })()}
       </div>
+      </>)}
 
       {/* ─── 5. Bottom spacer ─── */}
       <div style={{ height: '80px' }} />
@@ -1847,32 +2102,32 @@ export function TradeTab() {
           padding: '20px',
         }}>
           <div style={{
-            background: '#1a2235',
-            border: '1px solid rgba(239,68,68,0.3)',
+            background: 'var(--v-card)',
+            border: '1px solid var(--v-loss-dim)',
             borderRadius: '16px',
             padding: '24px',
             maxWidth: '320px',
             width: '100%',
           }}>
-            <div style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff', marginBottom: '16px' }}>
+            <div style={{ fontSize: '20px', fontWeight: '700', color: 'var(--v-text-primary)', marginBottom: '16px' }}>
               Cancel this order?
             </div>
             <div style={{
-              background: 'rgba(255,255,255,0.04)',
+              background: 'var(--v-rule)',
               borderRadius: '8px',
               padding: '12px',
               marginBottom: '12px',
             }}>
-              <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '600', marginBottom: '4px' }}>
+              <div style={{ fontSize: '14px', color: 'var(--v-text-primary)', fontWeight: '600', marginBottom: '4px' }}>
                 {confirmCancel.symbol} <span style={{
-                  color: confirmCancel.side?.toUpperCase() === 'BUY' ? '#10b981' : '#ef4444',
+                  color: confirmCancel.side?.toUpperCase() === 'BUY' ? 'var(--v-gain)' : 'var(--v-loss)',
                   fontSize: '12px',
                 }}>{confirmCancel.side}</span>
               </div>
-              <div style={{ fontSize: '12px', color: '#cbd5e1' }}>
+              <div style={{ fontSize: '12px', color: 'var(--v-text-secondary)' }}>
                 {confirmCancel.shares} shares{confirmCancel.price > 0 ? ` @ $${confirmCancel.price.toFixed(2)}` : ''}
               </div>
-              <div style={{ fontSize: '12px', color: '#f59e0b', marginTop: '4px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--v-warn)', marginTop: '4px' }}>
                 ⚠ Reserved cash will be returned to your buying power.
               </div>
             </div>
@@ -1882,10 +2137,10 @@ export function TradeTab() {
                 style={{
                   flex: 1,
                   padding: '12px',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'var(--v-rule)',
+                  border: '1px solid var(--v-rule)',
                   borderRadius: '10px',
-                  color: '#cbd5e1',
+                  color: 'var(--v-text-secondary)',
                   fontSize: '14px',
                   fontWeight: '600',
                   cursor: 'pointer',
@@ -1901,10 +2156,10 @@ export function TradeTab() {
                 style={{
                   flex: 1,
                   padding: '12px',
-                  background: 'rgba(239,68,68,0.15)',
-                  border: '1px solid rgba(239,68,68,0.4)',
+                  background: 'var(--v-loss-dim)',
+                  border: '1px solid var(--v-loss-dim)',
                   borderRadius: '10px',
-                  color: '#ef4444',
+                  color: 'var(--v-loss)',
                   fontSize: '14px',
                   fontWeight: '600',
                   cursor: 'pointer',
@@ -1930,37 +2185,37 @@ export function TradeTab() {
           padding: '20px',
         }}>
           <div style={{
-            background: '#1a2235',
-            border: '1px solid rgba(239,68,68,0.3)',
+            background: 'var(--v-card)',
+            border: '1px solid var(--v-loss-dim)',
             borderRadius: '16px',
             padding: '24px',
             maxWidth: '320px',
             width: '100%',
           }}>
-            <div style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff', marginBottom: '16px' }}>
+            <div style={{ fontSize: '20px', fontWeight: '700', color: 'var(--v-text-primary)', marginBottom: '16px' }}>
               Cancel basket order?
             </div>
             <div style={{
-              background: 'rgba(255,255,255,0.04)',
+              background: 'var(--v-rule)',
               borderRadius: '8px',
               padding: '12px',
               marginBottom: '12px',
             }}>
-              <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '600', marginBottom: '4px' }}>
+              <div style={{ fontSize: '14px', color: 'var(--v-text-primary)', fontWeight: '600', marginBottom: '4px' }}>
                 🔨 {confirmCancelBasket.basketDisplayName}
               </div>
-              <div style={{ fontSize: '12px', color: '#cbd5e1' }}>
+              <div style={{ fontSize: '12px', color: 'var(--v-text-secondary)' }}>
                 {confirmCancelBasket.orderCount} orders · ${confirmCancelBasket.totalReserved.toFixed(2)} reserved
               </div>
-              <div style={{ fontSize: '12px', color: '#cbd5e1', marginTop: '4px' }}>
-                <span style={{ color: '#10b981', fontWeight: '600' }}>{confirmCancelBasket.filledCount} filled</span>
-                <span style={{ color: '#64748b', margin: '0 6px' }}>·</span>
-                <span style={{ color: '#f59e0b', fontWeight: '600' }}>{confirmCancelBasket.pendingCount} pending</span>
+              <div style={{ fontSize: '12px', color: 'var(--v-text-secondary)', marginTop: '4px' }}>
+                <span style={{ color: 'var(--v-gain)', fontWeight: '600' }}>{confirmCancelBasket.filledCount} filled</span>
+                <span style={{ color: 'var(--v-text-muted)', margin: '0 6px' }}>·</span>
+                <span style={{ color: 'var(--v-warn)', fontWeight: '600' }}>{confirmCancelBasket.pendingCount} pending</span>
               </div>
-              <div style={{ fontSize: '12px', color: '#f59e0b', marginTop: '4px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--v-warn)', marginTop: '4px' }}>
                 Cash will be returned to your buying power immediately.
               </div>
-              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px', lineHeight: '1.4' }}>
+              <div style={{ fontSize: '12px', color: 'var(--v-text-muted)', marginTop: '6px', lineHeight: '1.4' }}>
                 Only the {confirmCancelBasket.pendingCount} pending order{confirmCancelBasket.pendingCount === 1 ? '' : 's'} can be cancelled — filled legs have already executed at the broker and must be sold separately.
               </div>
             </div>
@@ -1970,10 +2225,10 @@ export function TradeTab() {
                 style={{
                   flex: 1,
                   padding: '12px',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'var(--v-rule)',
+                  border: '1px solid var(--v-rule)',
                   borderRadius: '10px',
-                  color: '#cbd5e1',
+                  color: 'var(--v-text-secondary)',
                   fontSize: '14px',
                   fontWeight: '600',
                   cursor: 'pointer',
@@ -1989,10 +2244,10 @@ export function TradeTab() {
                 style={{
                   flex: 1,
                   padding: '12px',
-                  background: 'rgba(239,68,68,0.15)',
-                  border: '1px solid rgba(239,68,68,0.4)',
+                  background: 'var(--v-loss-dim)',
+                  border: '1px solid var(--v-loss-dim)',
                   borderRadius: '10px',
-                  color: '#ef4444',
+                  color: 'var(--v-loss)',
                   fontSize: '14px',
                   fontWeight: '600',
                   cursor: 'pointer',
@@ -2027,32 +2282,32 @@ export function TradeTab() {
             padding: '20px',
           }}>
             <div style={{
-              background: '#1a2235',
-              border: '1px solid rgba(239,68,68,0.3)',
+              background: 'var(--v-card)',
+              border: '1px solid var(--v-loss-dim)',
               borderRadius: '16px',
               padding: '24px',
               maxWidth: '320px',
               width: '100%',
             }}>
-              <div style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff', marginBottom: '16px' }}>
+              <div style={{ fontSize: '20px', fontWeight: '700', color: 'var(--v-text-primary)', marginBottom: '16px' }}>
                 Cancel entire basket?
               </div>
               <div style={{
-                background: 'rgba(255,255,255,0.04)',
+                background: 'var(--v-rule)',
                 borderRadius: '8px',
                 padding: '12px',
                 marginBottom: '12px',
               }}>
-                <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '600', marginBottom: '4px' }}>
+                <div style={{ fontSize: '14px', color: 'var(--v-text-primary)', fontWeight: '600', marginBottom: '4px' }}>
                   {t.basketName}
                 </div>
-                <div style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                <div style={{ fontSize: '12px', color: 'var(--v-text-secondary)' }}>
                   {t.orders?.length || 0} orders · ${totalReserved.toFixed(2)} reserved
                 </div>
-                <div style={{ fontSize: '12px', color: '#f59e0b', marginTop: '4px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--v-warn)', marginTop: '4px' }}>
                   {pendingCount} pending order{pendingCount === 1 ? '' : 's'} will be cancelled.
                 </div>
-                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px', lineHeight: '1.4' }}>
+                <div style={{ fontSize: '12px', color: 'var(--v-text-muted)', marginTop: '6px', lineHeight: '1.4' }}>
                   Cash will be returned to your buying power immediately.
                 </div>
               </div>
@@ -2062,10 +2317,10 @@ export function TradeTab() {
                   style={{
                     flex: 1,
                     padding: '12px',
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--v-rule)',
+                    border: '1px solid var(--v-rule)',
                     borderRadius: '10px',
-                    color: '#cbd5e1',
+                    color: 'var(--v-text-secondary)',
                     fontSize: '14px',
                     fontWeight: '600',
                     cursor: 'pointer',
@@ -2085,10 +2340,10 @@ export function TradeTab() {
                   style={{
                     flex: 1,
                     padding: '12px',
-                    background: 'rgba(239,68,68,0.15)',
-                    border: '1px solid rgba(239,68,68,0.4)',
+                    background: 'var(--v-loss-dim)',
+                    border: '1px solid var(--v-loss-dim)',
                     borderRadius: '10px',
-                    color: '#ef4444',
+                    color: 'var(--v-loss)',
                     fontSize: '14px',
                     fontWeight: '600',
                     cursor: 'pointer',
@@ -2130,8 +2385,8 @@ export function TradeTab() {
           left: '16px',
           right: '16px',
           zIndex: 10001,
-          background: '#1a2235',
-          border: `1px solid ${toast.type === 'error' ? '#ef4444' : '#22d3ee'}`,
+          background: 'var(--v-card)',
+          border: `1px solid ${toast.type === 'error' ? 'var(--v-loss)' : 'var(--v-accent)'}`,
           borderRadius: '12px',
           padding: '14px 18px',
           display: 'flex',
@@ -2140,10 +2395,10 @@ export function TradeTab() {
           boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
           animation: 'slideDown 0.25s ease',
         }}>
-          <span style={{ fontSize: '13px', color: '#ffffff', flex: 1 }}>{toast.message}</span>
+          <span style={{ fontSize: '13px', color: 'var(--v-text-primary)', flex: 1 }}>{toast.message}</span>
           <button
             onClick={dismissToast}
-            style={{ color: '#cbd5e1', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', marginLeft: '8px' }}
+            style={{ color: 'var(--v-text-secondary)', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', marginLeft: '8px' }}
           >×</button>
         </div>
       )}
