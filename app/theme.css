@@ -59,7 +59,7 @@
   /* text */
   --v-text-primary: #10182b;
   --v-text-secondary: #5b6472;
-  --v-text-muted: #8891a6;
+  --v-text-muted: #636c7d;
   --v-text-faint: #8891a6;
 
   /* semantic */
@@ -67,6 +67,15 @@
   --v-accent-text: #ffffff;
   --v-gain: #1e9e5a;
   --v-loss: #d64545;
+  /* SMALL-LABEL variants — for TEXT under ~11px on light surfaces, where WCAG
+     AA requires 4.5:1 (the base --v-gain 3.45:1 / --v-loss 4.38:1 / --v-accent
+     4.02:1 only clear the 3:1 bar that applies to large text and graphics).
+     Keep the base tokens full-brightness for bars, chart lines and big numbers;
+     use these *_label tokens for 9-11px category labels, chips and legend text.
+     Dark theme aliases them to the base values (all ≥6.6:1 there). */
+  --v-gain-label: #15794a; /* 5.43:1 on white */
+  --v-loss-label: #b93030; /* 5.95:1 on white */
+  --v-accent-label: #0a6b75; /* 6.23:1 on white */
   /* EARNINGS tag on the daily brief (WATCH reuses --v-hero-warn,
      MARKET --v-accent, PORTFOLIO --v-gain) */
   --v-tag-earnings: #5b4bc4;
@@ -76,11 +85,11 @@
   --v-tag-watch: #8a6d1e;
 
   /* view-only / admin */
-  --v-view-only-text: #8a6d1e;
+  --v-view-only-text: #7d6118;
   --v-view-only-bg: rgba(217, 169, 74, 0.15);
   --v-admin-bg: #fdf6e9;
   --v-admin-border: #e8c976;
-  --v-admin-label: #8a6d1e;
+  --v-admin-label: #7d6118;
 
   /* orb + glow */
   --v-orb: radial-gradient(circle at 32% 30%, #9ff0f4 0%, #0e8c99 55%, #0a5a62 100%);
@@ -142,6 +151,9 @@
   --v-accent-text: #00272b;
   --v-gain: #3ddc84;
   --v-loss: #f0716b;
+  --v-gain-label: #3ddc84;
+  --v-loss-label: #f0716b;
+  --v-accent-label: #5fd8de;
   /* EARNINGS tag on the daily brief (dark-set value) */
   --v-tag-earnings: #a78bfa;
   --v-tag-watch: #d9a94a;
@@ -312,7 +324,7 @@
   --v-accent-dim: rgba(14, 140, 153, 0.10);
   --v-gain-dim: rgba(30, 158, 90, 0.10);
   --v-loss-dim: rgba(214, 69, 69, 0.10);
-  --v-warn: #a9741f;
+  --v-warn: #8a5f19;
   --v-warn-dim: rgba(169, 116, 31, 0.12);
   --v-disabled-bg: #e7eae4;
   --v-disabled-text: #98a2b3;

@@ -52,7 +52,9 @@ export function BottomNav() {
             <span
               className="text-[11px] mt-1"
               style={{
-                color: isActive ? 'var(--v-accent)' : 'var(--v-nav-idle)',
+                /* 11px label text → the AA small-label accent; the icon above keeps
+                   the full-brightness accent (graphics only need 3:1). */
+                color: isActive ? 'var(--v-accent-label)' : 'var(--v-nav-idle)',
                 fontWeight: isActive ? 600 : 500,
               }}
             >

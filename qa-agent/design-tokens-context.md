@@ -22,13 +22,34 @@ Both palettes are first-class; neither is "legacy." Light is the default theme; 
 - "Your Portfolio" card fill: `#EAF1F0` (soft teal tint — scoped to the Your Portfolio card ONLY; this does not change the general white-card token, which stays `#FFFFFF` for Health Score, quick-links, More from Rufus, and Holdings rows)
 - Hero/AI-attributed card fill (Rufus hero-deck cards — concentration risk, event-impact, bounce-back, idle-cash, Daily Brief teaser, Weekly Snapshot teaser — plus Build Basket and chat responses with embedded cards): `#17323B` (teal-tinted charcoal, replaces the earlier near-black `#10182B`; deliberate: Rufus's cards stay dark "islands" even in light theme, and this is the visual signature that makes AI-authored content identifiable at a glance). **One unified value: every hero-deck card type uses this same fill — there is no per-card-type variation.**
 - Border/hairline: `#E7EAE4`
-- Text primary: `#10182B` · Text secondary: `#5B6472` · Text tertiary: `#8891A6`
+- Text primary: `#10182B` · Text secondary: `#5B6472` · Text tertiary: `#636C7D` (darkened from `#8891A6`, which only reached 2.93:1 on the canvas — see the small-text rule below)
 - Text-on-hero-card primary: `#FFFFFF` · Text-on-hero-card secondary: `#C9D8D6` (slightly warmer than the earlier `#C7CEDB`, to sit correctly on the teal undertone of `#17323B`) · Text-on-hero-card tertiary: `#7C8AA0`
-- Accent (links, selected states, primary CTA fill except on hero cards): `#0E8C99`
-- Semantic gain: `#1E9E5A` · Semantic loss: `#D64545`
-- View-only tag: text `#8A6D1E` on background `rgba(217,169,74,0.15)`
-- Brief section tags (Daily Brief, one accent per category): MARKET `#0E8C99` (accent) · PORTFOLIO `#1E9E5A` (gain) · WATCH `#8A6D1E` · EARNINGS `#5B4BC4`. These render on the white brief sheet, so WATCH uses the label amber rather than the text-on-dark `#D9A94A` — see `--v-tag-watch` / `--v-tag-earnings` in `app/theme.css`.
-- Admin-restricted card: background `#FDF6E9`, border `#E8C976`, label `#8A6D1E`
+- Accent (links, selected states, primary CTA fill except on hero cards): `#0E8C99` — **for text under 14px use the small-label accent `#0A6B75` (`--v-accent-label`), 6.23:1**
+- Semantic gain: `#1E9E5A` · Semantic loss: `#D64545` — **for text under 14px use `#15794A` (`--v-gain-label`, 5.43:1) / `#B93030` (`--v-loss-label`, 5.95:1)**
+- Text on accent fill: `#FFFFFF` (when the accent is used as a *small* fill — pills, chips, filter tabs — use the deeper `#0A6B75` label accent so white text clears 6.23:1)
+- Warning/attention label: `#8A5F19` (`--v-warn`; darkened from `#A9741F`, 3.27:1)
+- View-only tag: text `#7D6118` on background `rgba(217,169,74,0.15)`
+- Brief section tags (Daily Brief, one accent per category): MARKET `#0A6B75` (accent label) · PORTFOLIO `#15794A` (gain label) · WATCH `#8A6D1E` · EARNINGS `#5B4BC4`. These render on the white brief sheet, so all four use the AA small-label variants rather than the full-brightness canvas colors — see `--v-tag-watch` / `--v-tag-earnings` / `--v-*-label` in `app/theme.css`.
+- Admin-restricted card: background `#FDF6E9`, border `#E8C976`, label `#7D6118`
+
+#### Small-text (AA) contrast rule — applies to BOTH themes
+
+Two different bars, and they are not interchangeable:
+
+- **Text under 14px needs 4.5:1.** Every small colored label — category tags, section eyebrows, legend rows, "Back"/"Edit"/"Cancel" links, schedule meta, filter chips, percentages in table cells — must clear it.
+- **Graphics and large text need 3:1.** Chart lines, bars, donut arcs, icons, and large display numbers keep the full-brightness palette values (`#1E9E5A` gain, `#D64545` loss, `#0E8C99` accent in light). Do not darken those to "fix" a contrast report.
+
+So the palette carries a **label variant** of each semantic color, used only for small text:
+
+| Role | Full (graphics/large) | Small-label (text <14px) |
+| --- | --- | --- |
+| gain | `#1E9E5A` | `#15794A` (`--v-gain-label`, 5.43:1) |
+| loss | `#D64545` | `#B93030` (`--v-loss-label`, 5.95:1) |
+| accent | `#0E8C99` | `#0A6B75` (`--v-accent-label`, 6.23:1) |
+
+In the dark theme these label tokens **alias the base values** (`#3DDC84` / `#F0716B` / `#5FD8DE`) — the dark palette already clears 7:1, so nothing changes there. Never hardcode a hex for a small label; always use the token.
+
+`--v-text-faint` is the one deliberate exception: it is reserved for purely decorative, non-informational marks, and it may sit below 4.5:1. If a value is meant to be *read*, it belongs on secondary/tertiary, not faint.
 
 ### Dark theme
 

@@ -48,8 +48,9 @@ const EMPTY: BriefData = { content: '', healthScore: null, riskLevel: null, gene
  *  EARNINGS=tag-earnings (violet). */
 function tagColor(label: string): string {
   switch (label) {
-    case 'MARKET': return 'var(--v-accent)';
-    case 'PORTFOLIO': return 'var(--v-gain)';
+    /* 9.5px labels → the *_label tokens (WCAG AA 4.5:1 on the light sheet). */
+    case 'MARKET': return 'var(--v-accent-label)';
+    case 'PORTFOLIO': return 'var(--v-gain-label)';
     case 'WATCH': return 'var(--v-tag-watch)';
     case 'EARNINGS': return 'var(--v-tag-earnings)';
     default: return 'var(--v-text-muted)';
@@ -176,12 +177,12 @@ export function BriefModal({ kind, accountId, onClose, onAskRufus }: BriefModalP
           }}
         >
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.12em', color: 'var(--v-accent)' }} data-testid="brief-modal-eyebrow">
+            <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.12em', color: 'var(--v-accent-label)' }} data-testid="brief-modal-eyebrow">
               {eyebrow}
             </div>
             <div
               data-testid="brief-modal-title"
-              style={{ fontSize: 20, fontWeight: 800, color: 'var(--v-text-primary)', marginTop: 5, letterSpacing: '-0.01em' }}
+              style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontWeight: 500, fontSize: 22, color: 'var(--v-text-primary)', marginTop: 4, letterSpacing: 0 }}
             >
               {title}
             </div>
@@ -266,7 +267,7 @@ export function BriefModal({ kind, accountId, onClose, onAskRufus }: BriefModalP
                   ul: ({ children }) => <ul style={{ margin: '4px 0 10px 0', paddingLeft: 18 }}>{children}</ul>,
                   ol: ({ children }) => <ol style={{ margin: '4px 0 10px 0', paddingLeft: 18 }}>{children}</ol>,
                   li: ({ children }) => <li style={{ margin: '4px 0', lineHeight: 1.6 }}>{children}</li>,
-                  h2: ({ children }) => <h2 style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--v-accent)', margin: '16px 0 6px' }}>{children}</h2>,
+                  h2: ({ children }) => <h2 style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--v-accent-label)', margin: '16px 0 6px' }}>{children}</h2>,
                   h3: ({ children }) => <h3 style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--v-text-secondary)', margin: '14px 0 5px' }}>{children}</h3>,
                   hr: () => <hr style={{ border: 'none', borderTop: '0.5px solid var(--v-rule)', margin: '14px 0' }} />,
                   code: ({ children }) => <code style={{ background: 'var(--v-rule)', borderRadius: 4, padding: '1px 5px', fontSize: 12.5 }}>{children}</code>,

@@ -444,7 +444,7 @@ export function TradeTab() {
                 cursor: 'pointer',
                 fontSize: '13px',
                 fontWeight: on ? 700 : 500,
-                color: on ? 'var(--v-accent)' : 'var(--v-text-secondary)',
+                color: on ? 'var(--v-accent-label)' : 'var(--v-text-secondary)',
                 borderBottom: on ? '2px solid var(--v-accent)' : '2px solid transparent',
                 marginBottom: '-1px',
                 transition: 'color 0.15s ease',
@@ -547,7 +547,7 @@ export function TradeTab() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                     <span style={{ color: 'var(--v-text-primary)', fontSize: '13px', fontWeight: '700', whiteSpace: 'nowrap' }}>{s.symbol}</span>
-                    <span style={{ fontSize: '9px', fontWeight: '600', color: 'var(--v-accent)', background: 'var(--v-accent-dim)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>DCA</span>
+                    <span style={{ fontSize: '9px', fontWeight: '600', color: 'var(--v-accent-label)', background: 'var(--v-accent-dim)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>DCA</span>
                   </div>
                   <span style={{ color: 'var(--v-text-secondary)', fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {s.config?.investBy === 'shares' ? `${s.config.quantity || '?'} sh` : `$${s.config?.amount ?? '?'}`} · {s.config?.frequency ?? 'weekly'}
@@ -1360,7 +1360,7 @@ export function TradeTab() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                     <span style={{ color: 'var(--v-text-primary)', fontSize: '13px', fontWeight: 700 }}>{s.symbol}</span>
-                    <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--v-accent)', background: 'var(--v-accent-dim)', padding: '2px 6px', borderRadius: '4px' }}>DCA</span>
+                    <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--v-accent-label)', background: 'var(--v-accent-dim)', padding: '2px 6px', borderRadius: '4px' }}>DCA</span>
                   </div>
                   <span style={{ color: 'var(--v-text-secondary)', fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {s.config?.investBy === 'shares' ? `${s.config.quantity || '?'} sh` : `$${s.config?.amount ?? '?'}`} · {s.config?.frequency ?? 'weekly'}
@@ -1401,8 +1401,8 @@ export function TradeTab() {
                   cursor: 'pointer',
                   borderRadius: '9999px',
                   whiteSpace: 'nowrap',
-                  background: on ? 'var(--v-accent)' : 'var(--v-panel)',
-                  border: on ? '1px solid var(--v-accent)' : '1px solid var(--v-card-border)',
+                  background: on ? 'var(--v-accent-label)' : 'var(--v-panel)',
+                  border: on ? '1px solid var(--v-accent-label)' : '1px solid var(--v-card-border)',
                   color: on ? 'var(--v-accent-text)' : 'var(--v-text-secondary)',
                 }}
               >
@@ -1418,7 +1418,7 @@ export function TradeTab() {
             <button
               data-testid="show-sweeps"
               onClick={() => setShowSweeps(true)}
-              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--v-accent)', fontSize: '12px', fontWeight: 600 }}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--v-accent-label)', fontSize: '12px', fontWeight: 600 }}
             >
               Show all ({hiddenSweepCount} cash-sweep {hiddenSweepCount === 1 ? 'entry' : 'entries'} hidden)
             </button>

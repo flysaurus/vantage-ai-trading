@@ -740,7 +740,7 @@ apiGet('/api/broker/status')
                         ${o.estimatedValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                       <span style={{ flex: 0.7, textAlign: 'right' }}>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--v-accent)', background: 'var(--v-accent-dim)', padding: '2px 6px', borderRadius: 3 }}>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--v-accent-label)', background: 'var(--v-accent-dim)', padding: '2px 6px', borderRadius: 3 }}>
                           {o.orderType === 'market' ? 'Market' : o.orderType === 'limit' ? 'Limit' : 'Stop'}
                         </span>
                       </span>
@@ -759,7 +759,7 @@ apiGet('/api/broker/status')
                 </div>
 
                 {execProgress && (
-                  <div style={{ marginBottom: 12, padding: '8px 12px', background: 'var(--v-accent-dim)', borderRadius: 8, fontSize: 12, fontWeight: 600, color: 'var(--v-accent)', textAlign: 'center' }}>
+                  <div style={{ marginBottom: 12, padding: '8px 12px', background: 'var(--v-accent-dim)', borderRadius: 8, fontSize: 12, fontWeight: 600, color: 'var(--v-accent-label)', textAlign: 'center' }}>
                     {execProgress}
                   </div>
                 )}
@@ -807,7 +807,7 @@ apiGet('/api/broker/status')
                         ${t.estimatedValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                       <span style={{ flex: 0.7, textAlign: 'right' }}>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--v-accent)', background: 'var(--v-accent-dim)', padding: '2px 6px', borderRadius: 3 }}>Market</span>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--v-accent-label)', background: 'var(--v-accent-dim)', padding: '2px 6px', borderRadius: 3 }}>Market</span>
                       </span>
                     </div>
                   ))}
@@ -841,14 +841,14 @@ apiGet('/api/broker/status')
           <button onClick={() => { setChatOpen(true); router.push('/'); }} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
             <ArrowLeft size={16} /> Back
           </button>
-          <button onClick={() => router.push('/strategies')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--v-accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
+          <button onClick={() => router.push('/strategies')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--v-accent-label)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
             View strategies →
           </button>
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--v-text-primary)', margin: '0 0 6px' }}>Portfolio Rebalancing</h1>
         <p style={{ fontSize: 13, color: 'var(--v-text-muted)', margin: 0 }}>Restore your target allocation</p>
         {fromAi && (
-          <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--v-accent-dim)', border: '1px solid var(--v-accent-dim)', borderRadius: 8, fontSize: 12, color: 'var(--v-accent)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--v-accent-dim)', border: '1px solid var(--v-accent-dim)', borderRadius: 8, fontSize: 12, color: 'var(--v-accent-label)', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span>💡</span>
             <span>{isFresh ? 'AI Suggested Plan — review before executing' : sessionId ? 'Populated from AI Advisor' : 'Opened from AI Advisor'}</span>
           </div>
@@ -924,7 +924,7 @@ apiGet('/api/broker/status')
                   <span style={{ fontWeight: 700, color: 'var(--v-text-primary)' }}>{pos.symbol}</span>
                   <span style={{ textAlign: 'right', color: 'var(--v-text-secondary)' }}>${pos.marketValue.toLocaleString()}</span>
                   <span style={{ textAlign: 'right', color: 'var(--v-text-muted)' }}>{currentPct.toFixed(1)}%</span>
-                  <span style={{ textAlign: 'right', color: 'var(--v-accent)', fontWeight: 600 }}>{targetPct.toFixed(1)}%</span>
+                  <span style={{ textAlign: 'right', color: 'var(--v-accent-label)', fontWeight: 600 }}>{targetPct.toFixed(1)}%</span>
                   <span style={{ textAlign: 'right', color: driftColor, fontWeight: 600 }}>
                     {drift > 0 ? '+' : ''}{drift.toFixed(1)}%
                   </span>
@@ -937,7 +937,7 @@ apiGet('/api/broker/status')
                 <span style={{ fontWeight: 700, color: 'var(--v-text-primary)' }}>{sym}</span>
                 <span style={{ textAlign: 'right', color: 'var(--v-text-secondary)' }}>$0.00</span>
                 <span style={{ textAlign: 'right', color: 'var(--v-text-secondary)' }}>0.0%</span>
-                <span style={{ textAlign: 'right', color: 'var(--v-accent)', fontWeight: 600 }}>{targets[sym].toFixed(1)}%</span>
+                <span style={{ textAlign: 'right', color: 'var(--v-accent-label)', fontWeight: 600 }}>{targets[sym].toFixed(1)}%</span>
                 <span style={{ textAlign: 'right', color: 'var(--v-gain)', fontWeight: 600 }}>-{targets[sym].toFixed(1)}%</span>
               </div>
             ))}
@@ -1148,7 +1148,7 @@ apiGet('/api/broker/status')
           {/* — Option A: Order Queue — */}
           {autoMode === 'auto' && editedOrders.length > 0 && (
             <>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent-label)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
                 Order Queue
               </div>
 
@@ -1165,14 +1165,14 @@ apiGet('/api/broker/status')
                           </span>
                           <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--v-text-primary)' }}>{order.symbol}</span>
                           {(order as any).isAiSuggested && (
-                            <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--v-accent)', background: 'var(--v-accent-dim)', padding: '2px 6px', borderRadius: 3 }}>AI Suggested</span>
+                            <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--v-accent-label)', background: 'var(--v-accent-dim)', padding: '2px 6px', borderRadius: 3 }}>AI Suggested</span>
                           )}
                           {(order as any).type && (
                             <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--v-text-secondary)', background: 'rgba(100,116,139,0.12)', padding: '2px 6px', borderRadius: 3 }}>{(order as any).type === 'etf' ? 'ETF' : 'Stock'}</span>
                           )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--v-accent)', background: 'var(--v-accent-dim)', padding: '2px 8px', borderRadius: 4 }}>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--v-accent-label)', background: 'var(--v-accent-dim)', padding: '2px 8px', borderRadius: 4 }}>
                             {order.orderType === 'limit' ? `Limit $${(order.limitPrice || 0).toFixed(2)}` : order.orderType === 'stop' ? 'Stop' : 'Market'}
                           </span>
                           <button
@@ -1191,7 +1191,7 @@ apiGet('/api/broker/status')
                           <span>
                             <span style={{ color: 'var(--v-text-secondary)' }}>{(order as any).currentPct.toFixed(1)}%</span>
                             <span style={{ margin: '0 4px', color: 'var(--v-text-muted)' }}>→</span>
-                            <span style={{ color: 'var(--v-accent)', fontWeight: 600 }}>{(order as any).targetPct.toFixed(1)}%</span>
+                            <span style={{ color: 'var(--v-accent-label)', fontWeight: 600 }}>{(order as any).targetPct.toFixed(1)}%</span>
                           </span>
                         )}
                       </div>
@@ -1312,7 +1312,7 @@ apiGet('/api/broker/status')
                   </div>
                   <button
                     onClick={() => router.push(`/?tab=trade&symbol=${t.symbol}`)}
-                    style={{ padding: '6px 14px', fontSize: 11, fontWeight: 700, background: 'linear-gradient(135deg, var(--v-accent), var(--v-accent))', border: 'none', borderRadius: 8, color: 'var(--v-canvas)', cursor: 'pointer', fontFamily: 'inherit' }}
+                    style={{ padding: '6px 14px', fontSize: 11, fontWeight: 700, background: 'var(--v-accent-label)', border: 'none', borderRadius: 8, color: 'var(--v-accent-text)', cursor: 'pointer', fontFamily: 'inherit' }}
                   >
                     Trade →
                   </button>
@@ -1337,7 +1337,7 @@ apiGet('/api/broker/status')
               disabled={!alertOnDrift}
               style={{ width: 40, padding: '4px 6px', background: alertOnDrift ? 'var(--v-card)' : 'var(--v-canvas)', border: '1px solid var(--v-card-border)', borderRadius: 4, color: alertOnDrift ? 'var(--v-text-primary)' : 'var(--v-text-faint)', fontSize: 13, fontWeight: 600, textAlign: 'center', fontFamily: 'inherit' }}
             />
-            <span style={{ fontSize: 12, color: alertOnDrift ? 'var(--v-text-muted)' : 'var(--v-text-faint)' }}>%</span>
+            <span style={{ fontSize: 12, color: 'var(--v-text-muted)' }}>%</span>
             <button
               onClick={() => setAlertOnDrift(!alertOnDrift)}
               style={{
@@ -1449,7 +1449,7 @@ apiGet('/api/broker/status')
 function Section({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 28 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent-label)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
         {icon} {label}
       </div>
       {children}

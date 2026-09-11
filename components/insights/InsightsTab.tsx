@@ -382,7 +382,7 @@ export function InsightsTab() {
               onClick={() => setTab('portfolio')}
               style={{
                 display: 'inline-block', marginTop: 14, background: 'none', border: 'none',
-                color: 'var(--v-accent)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                color: 'var(--v-accent-label)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
                 fontFamily: 'inherit', padding: 0, textDecoration: 'underline', textUnderlineOffset: 3,
               }}
             >

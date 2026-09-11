@@ -729,7 +729,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         {/* Error state */}
         {curatedError && !curatedLoading && (
           <div style={{ textAlign: 'center', padding: '32px 0' }}>
-            <p style={{ fontSize: '13px', color: 'var(--v-loss)', marginBottom: '8px' }}>
+            <p style={{ fontSize: '13px', color: 'var(--v-loss-label)', marginBottom: '8px' }}>
               Could not load baskets: {curatedError}
             </p>
             <button onClick={() => setStep('custom_theme')} style={{
@@ -1235,7 +1235,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                         <span style={{ fontSize: '11px', color: 'var(--v-text-secondary)', marginLeft: '6px' }}>{stock.name}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '12px', color: 'var(--v-accent)', fontWeight: '500' }}>{stock.allocation.toFixed(2)}%</span>
+                        <span style={{ fontSize: '12px', color: 'var(--v-accent-label)', fontWeight: '500' }}>{stock.allocation.toFixed(2)}%</span>
                         <span style={{ fontSize: '12px', color: 'var(--v-text-primary)', fontWeight: '500' }}>
                           ${(stock.dollarAmount || 0).toFixed(2)}
                         </span>
@@ -1343,7 +1343,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                 </div>
               </div>
             )}
-            {error && <p style={{ fontSize: '11px', color: 'var(--v-loss)', marginTop: '6px' }}>{error}</p>}
+            {error && <p style={{ fontSize: '11px', color: 'var(--v-loss-label)', marginTop: '6px' }}>{error}</p>}
           </>
         ) : (
           <p style={{ fontSize: '13px', color: 'var(--v-text-secondary)', textAlign: 'center', padding: '24px 0' }}>
@@ -1668,10 +1668,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                       <span style={{ color: 'var(--v-text-primary)', fontWeight: '700', fontSize: '14px' }}>{stock.symbol}</span>
                       <span style={{ color: 'var(--v-text-muted)', fontSize: '11px' }}>{stock.name}</span>
                       {stock.isCustomAdded && (
-                        <span style={{ fontSize: '9px', color: 'var(--v-accent)', background: 'var(--v-accent-dim)', borderRadius: '4px', padding: '1px 5px' }}>CUSTOM</span>
+                        <span style={{ fontSize: '9px', color: 'var(--v-accent-label)', background: 'var(--v-accent-dim)', borderRadius: '4px', padding: '1px 5px' }}>CUSTOM</span>
                       )}
                     </div>
-                    <span style={{ color: 'var(--v-accent)', fontWeight: '600', fontSize: '13px' }}>{stock.allocation.toFixed(2)}%</span>
+                    <span style={{ color: 'var(--v-accent-label)', fontWeight: '600', fontSize: '13px' }}>{stock.allocation.toFixed(2)}%</span>
                   </div>
 
                   {/* Row 2: Controls + amount + qty (same line) */}
@@ -1836,14 +1836,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                   <button onClick={() => setShowAddInput(true)} style={{
                     width: '100%', padding: '10px', background: 'none',
                     border: '1px dashed var(--v-accent-dim)', borderRadius: '8px',
-                    color: 'var(--v-accent)', fontSize: '13px', cursor: 'pointer',
+                    color: 'var(--v-accent-label)', fontSize: '13px', cursor: 'pointer',
                   }}>+ Add Stock or ETF</button>
                 )}
               </div>
             )}
 
             {/* Error */}
-            {error && <p style={{ fontSize: '11px', color: 'var(--v-loss)', padding: '8px 16px' }}>{error}</p>}
+            {error && <p style={{ fontSize: '11px', color: 'var(--v-loss-label)', padding: '8px 16px' }}>{error}</p>}
 
             {/* ── Running Total + Estimated Total ── */}
             {(() => {
@@ -2096,7 +2096,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               </>
             )}
             {!executionResult.success && (
-              <p style={{ fontSize: '13px', color: 'var(--v-loss)', marginBottom: '16px' }}>
+              <p style={{ fontSize: '13px', color: 'var(--v-loss-label)', marginBottom: '16px' }}>
                 {executionResult.error || 'Unknown error'}
               </p>
             )}
@@ -2433,7 +2433,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               {(basketResult as any).status !== 'OPEN' && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
                   <span style={{ color: 'var(--v-text-muted)', fontSize: '12px' }}>Cash remaining</span>
-                  <span style={{ color: 'var(--v-accent)', fontSize: '12px' }}>
+                  <span style={{ color: 'var(--v-accent-label)', fontSize: '12px' }}>
                     ${basketResult.cashRemaining.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>

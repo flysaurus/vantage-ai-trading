@@ -13,6 +13,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import type { Position } from '@/types';
 import { useTabStore } from '@/store';
 import {
@@ -188,6 +189,7 @@ interface InsightCardProps {
 }
 
 export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTeaser, width = 300 }: InsightCardProps) {
+  const router = useRouter();
   const { setTab, setChatOpen, setPendingPrompt, setFocusPosition, openPositionDetail } = useTabStore();
   const item = card.item;
 
@@ -237,6 +239,11 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
         their existing single-column layouts. ── */
   const isConcentration =
     item.triggerType === 'concentration_single' || item.triggerType === 'concentration_top3';
+
+  // Deep-link into the REAL Portfolio Rebalancing activation flow — the SAME
+  // route the Invest tab (TradeTab) and StrategySheet's Execute button push.
+  // No parallel flow, no new router.
+  const openAutoRebalancing = () => router.push('/strategies/setup/rebalancing');
 
   const primary = buildPrimaryAction({ action, item, isReadOnly, setPendingPrompt, setChatOpen, setFocusPosition, openPositionDetail, setTab, positions });
   const secondary = buildSecondaryAction({ item, setPendingPrompt, setChatOpen });
@@ -315,7 +322,9 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
            Then the supporting sentence AND the sub-line render FULL-WIDTH
            beneath that row — spanning the whole card — so they never wrap in
            a narrow column beside the donut (the previous 4-line-wrap cause).
-           The action row below is a SINGLE line: CTA · Ask Rufus · Remind. */
+           The action area below is TWO compact rows: primary
+           Review + Set up auto-rebalancing, then the lighter Ask Rufus +
+           Remind row (see the action-row block further down). */
         <>
           <div
             data-testid="concentration-top-row"
@@ -346,9 +355,72 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
         </>
       )}
 
-      {/* action row — explicit taps only; swipe never reaches these.
-          SINGLE LINE (nowrap): CTA · Ask Rufus · Remind, with Remind pushed
-          right via margin-left:auto (never bottom-anchored with dead space). */}
+      {/* action area — explicit taps only; swipe never reaches these.
+          • CONCENTRATION CARD → TWO compact rows.
+            Row 1 (primary):   Review <sym>  · Set up auto-rebalancing →
+            Row 2 (secondary,
+            reduced weight):     Ask Rufus →  · Remind in Nd
+            The secondary row is deliberately lighter (smaller/looser type)
+            so the card stays compact and never grows back to its earlier
+            bloated size — the primary row carries the visual weight.
+          • Every OTHER card → the original SINGLE nowrap line, unchanged. */}
+      {isConcentration ? (
+        <div
+          data-testid="card-action-row"
+          data-layout="two-row"
+          style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 10, minWidth: 0 }}
+        >
+          {/* Row 1 — primary */}
+          <div
+            data-testid="card-action-row-primary"
+            style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}
+          >
+            {primary && (
+              <button
+                type="button"
+                data-testid="card-primary-cta"
+                onClick={(e) => { e.stopPropagation(); primary.onClick(); }}
+                style={primarySlimStyle}
+              >
+                {primary.label}
+              </button>
+            )}
+            <button
+              type="button"
+              data-testid="card-set-up-auto-rebalancing"
+              data-branch="flow"
+              onClick={(e) => { e.stopPropagation(); openAutoRebalancing(); }}
+              style={autoRebalanceLinkStyle}
+            >
+              Set up auto-rebalancing →
+            </button>
+          </div>
+          {/* Row 2 — secondary, reduced weight */}
+          <div
+            data-testid="card-action-row-secondary"
+            style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}
+          >
+            {secondary && (
+              <button
+                type="button"
+                data-testid="card-secondary-link"
+                onClick={(e) => { e.stopPropagation(); secondary.onClick(); }}
+                style={secondaryLinkStyle}
+              >
+                {secondary.label} →
+              </button>
+            )}
+            <button
+              type="button"
+              data-testid="card-snooze"
+              onClick={(e) => { e.stopPropagation(); onSnooze(item.id); }}
+              style={snoozeSlimStyle}
+            >
+              Remind in 5d
+            </button>
+          </div>
+        </div>
+      ) : (
       <div
         data-testid="card-action-row"
         style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 14, flexWrap: 'nowrap', minWidth: 0 }}
@@ -382,6 +454,7 @@ export function InsightCard({ card, positions, isReadOnly, onSnooze, onOpenTease
           Remind in 5d
         </button>
       </div>
+      )}
     </article>
   );
 }
@@ -484,6 +557,41 @@ const snoozeBtnStyle: React.CSSProperties = {
   marginLeft: 'auto',
   whiteSpace: 'nowrap',
   flexShrink: 0,
+};
+
+// Concentration-card Row 2 snooze: same label/behaviour as the shared snooze
+// button, slimmer vertical padding so the secondary row stays short and the
+// two-row action area does not re-bloat the card.
+const snoozeSlimStyle: React.CSSProperties = { ...snoozeBtnStyle, padding: '5px 2px' };
+
+// Concentration-card Row 1 link: the "set up the live flow" affordance sits
+// beside the filled primary CTA — full-strength hero accent, compact enough to
+// share the line with the CTA without wrapping the row.
+const autoRebalanceLinkStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  color: 'var(--v-hero-accent)',
+  padding: '0 2px',
+  fontSize: 11.5,
+  fontWeight: 700,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  textDecoration: 'none',
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
+};
+
+// Concentration-card primary CTA — same look as the shared primary button, a
+// hair narrower so it + the auto-rebalancing link fit one line in the 300px card.
+const primarySlimStyle: React.CSSProperties = { ...primaryBtnStyle, padding: '9px 12px' };
+
+// Concentration-card Row 2 link: REDUCED weight vs Row 1 (smaller, lighter,
+// looser) so the two-row action area stays compact instead of re-bloating.
+const secondaryLinkStyle: React.CSSProperties = {
+  ...rufusLinkStyle,
+  fontSize: 11.5,
+  fontWeight: 500,
+  padding: '2px 2px',
 };
 
 /* ── CTA mapping (mirrors the pre-existing ActionButton semantics) ── */

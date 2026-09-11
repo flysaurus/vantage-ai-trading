@@ -63,7 +63,7 @@ export default function StrategiesPage() {
       {/* Active Schedules Summary */}
       {!loading && activeSchedules.length > 0 && (
         <div style={{ marginBottom: 24, padding: 14, background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent-label)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
             <Activity size={12} style={{ marginRight: 6 }} />Active Schedules
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -71,7 +71,7 @@ export default function StrategiesPage() {
               <div key={s.id} onClick={() => router.push(`/strategies/setup/dca`)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--v-canvas)', border: '1px solid var(--v-card-border)', borderRadius: 8, cursor: 'pointer' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--v-text-primary)' }}>{s.symbol}</span>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--v-accent)', background: 'var(--v-accent-dim)', padding: '2px 8px', borderRadius: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--v-accent-label)', background: 'var(--v-accent-dim)', padding: '2px 8px', borderRadius: 4 }}>
                     DCA
                   </span>
                 </div>
@@ -85,7 +85,7 @@ export default function StrategiesPage() {
       )}
 
       {/* Strategy Cards */}
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent-label)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>
         <TrendingUp size={12} style={{ marginRight: 6 }} />All Strategies
       </div>
 
@@ -116,7 +116,7 @@ export default function StrategiesPage() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {scheduleCount(s.key) > 0 && (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent)', background: 'var(--v-accent-dim)', padding: '3px 8px', borderRadius: 9999 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent-label)', background: 'var(--v-accent-dim)', padding: '3px 8px', borderRadius: 9999 }}>
                     {scheduleCount(s.key)} active
                   </span>
                 )}

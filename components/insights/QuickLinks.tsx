@@ -1,22 +1,28 @@
 // ─── Insights: quick-links 2×2 ─────────────────────────────
 // Rebalance plan · Risk reduction · Tax optimization · Goal tracker
 //
-// Two of them DEEP-LINK into an existing trigger flow when that trigger
-// is active (no new logic — it routes into the same chat/position flow
-// the deck cards use). When nothing is active they fall back to an Ask
-// Rufus prompt. The other two are Ask-Rufus-only, and say so plainly —
-// no copy implying a feature that doesn't exist.
+// Rebalance plan and Tax optimization DEEP-LINK into the REAL activation
+// flows the Invest tab uses (`/strategies/setup/rebalancing` and
+// `/strategies/setup/tax-harvesting`) — the same routes StrategySheet's
+// Execute button pushes. No parallel flow, no new router: plain
+// `useRouter().push`, exactly like components/trade/TradeTab.tsx.
 //
-// EVERY tile shows the same "Ask Rufus →" link line (accent colour,
-// trailing arrow, no underline) so the four tiles read identically. The
-// extra `sub` line only appears when a tile really does deep-link into a
-// live alert — additive honesty, never a replacement for the link.
-// `data-branch` exposes which path was taken (trigger | ask) so it is
+// Risk reduction deep-links into the ACTIVE risk trigger when one exists
+// (opens the over-concentrated position's detail — the same flow the deck
+// card's "Review …" CTA uses); with no active trigger it falls back to an
+// Ask Rufus prompt. Goal tracker stays Ask-Rufus-only.
+//
+// The trailing link line uses the shared canvas accent treatment (accent
+// colour, trailing arrow, no underline). Its label reflects the tile's real
+// destination — "Set up →" when it opens a live flow, "Ask Rufus →" when
+// it opens chat — so no tile implies a feature it does not perform.
+// `data-branch` exposes which path was taken (flow | trigger | ask) so it is
 // verifiable in screenshots/tests.
 
 'use client';
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import { useTabStore } from '@/store';
 
 interface Props {
@@ -25,7 +31,8 @@ interface Props {
 }
 
 export function QuickLinks({ items }: Props) {
-  const { setChatOpen, setPendingPrompt, setTab, openPositionDetail } = useTabStore();
+  const router = useRouter();
+  const { setChatOpen, setPendingPrompt, openPositionDetail } = useTabStore();
 
   const drift = items.find((i) => i?.triggerType === 'portfolio_drift') || null;
   const concentration =
@@ -36,31 +43,38 @@ export function QuickLinks({ items }: Props) {
     setChatOpen(true);
   };
 
+  // Risk reduction: when a concentration trigger is live we open the
+  // over-concentrated position's detail (the deck card's "Review <sym>"
+  // flow) — so the label must say so, not "Ask Rufus →". The symbol is
+  // resolved here ONCE and reused by both the label and the handler, so the
+  // two can never disagree.
+  const riskSymbol: string | null = concentration
+    ? (concentration?.meta?.symbol ||
+        (Array.isArray(concentration?.meta?.symbols) ? concentration.meta.symbols[0] : null) ||
+        null)
+    : null;
+
   const links = [
     {
       id: 'rebalance',
       title: 'Rebalance plan',
       sub: drift ? 'Uses your active drift alert' : '',
-      branch: drift ? 'trigger' : 'ask',
-      onClick: () => {
-        if (drift) ask('rebalance');
-        else ask('Build me a rebalance plan for my current portfolio.');
-      },
+      branch: 'flow',
+      cta: 'Set up →',
+      // The REAL Portfolio Rebalancing activation flow — same route the
+      // Invest tab and StrategySheet's Execute button push.
+      onClick: () => router.push('/strategies/setup/rebalancing'),
     },
     {
       id: 'risk',
       title: 'Risk reduction',
       sub: concentration ? 'Uses your active concentration alert' : '',
-      branch: concentration ? 'trigger' : 'ask',
+      branch: riskSymbol ? 'trigger' : 'ask',
+      cta: riskSymbol ? `Review ${riskSymbol} →` : 'Ask Rufus →',
       onClick: () => {
-        if (concentration) {
-          const sym =
-            concentration?.meta?.symbol ||
-            (Array.isArray(concentration?.meta?.symbols) ? concentration.meta.symbols[0] : null);
-          if (sym) {
-            openPositionDetail(sym, 'insights');
-            return;
-          }
+        if (riskSymbol) {
+          openPositionDetail(riskSymbol, 'insights');
+          return;
         }
         ask('How can I reduce the risk in my portfolio?');
       },
@@ -68,15 +82,18 @@ export function QuickLinks({ items }: Props) {
     {
       id: 'tax',
       title: 'Tax optimization',
-      sub: 'Ask Rufus',
-      branch: 'ask',
-      onClick: () => ask('What tax-optimization moves make sense in my portfolio right now?'),
+      sub: 'Open tax-loss harvesting',
+      branch: 'flow',
+      cta: 'Set up →',
+      // The REAL Tax Loss Harvesting activation flow.
+      onClick: () => router.push('/strategies/setup/tax-harvesting'),
     },
     {
       id: 'goals',
       title: 'Goal tracker',
       sub: 'Ask Rufus',
       branch: 'ask',
+      cta: 'Ask Rufus →',
       onClick: () => ask('How am I tracking against my investing goals?'),
     },
   ];
@@ -107,14 +124,15 @@ export function QuickLinks({ items }: Props) {
           >
             <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--v-text-primary)' }}>{l.title}</span>
             {l.sub && <span style={{ fontSize: 11, color: 'var(--v-text-muted)' }}>{l.sub}</span>}
-            {/* Same "Ask Rufus" link treatment as the hero cards and the
-                Health card: accent colour, trailing arrow, no underline.
-                EVERY tile carries this line — including Risk reduction. */}
+            {/* Shared canvas link treatment (health card + hero cards): accent
+                colour, trailing arrow, no underline. The label reflects the
+                tile's real destination (flow vs chat). */}
             <span
               data-testid={`quick-link-${l.id}-ask`}
-              style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--v-accent)', marginTop: 'auto' }}
+              data-branch={l.branch}
+              style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--v-accent-label)', marginTop: 'auto' }}
             >
-              Ask Rufus →
+              {l.cta}
             </span>
           </button>
         ))}

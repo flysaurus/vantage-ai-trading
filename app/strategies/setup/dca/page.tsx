@@ -361,7 +361,7 @@ export default function DcaSetupPage() {
           <button onClick={() => router.back()} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
             <ArrowLeft size={16} /> Back
           </button>
-          <button onClick={() => router.push('/strategies')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--v-accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
+          <button onClick={() => router.push('/strategies')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--v-accent-label)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
             View strategies →
           </button>
         </div>
@@ -382,7 +382,7 @@ export default function DcaSetupPage() {
         {/* Available cash readout */}
         {availableCash != null && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--v-accent-dim)', border: '1px solid var(--v-accent-dim)', borderRadius: 8, marginBottom: 10 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-text-muted)' }}>Available cash</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-text-secondary)' }}>Available cash</span>
             <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--v-accent)' }}>{fmtCurrency(availableCash)}</span>
           </div>
         )}
@@ -390,7 +390,7 @@ export default function DcaSetupPage() {
         {/* Amount vs Shares toggle */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
           {(['amount', 'shares'] as const).map(mode => (
-            <button key={mode} onClick={() => { setInvestBy(mode); setAmountError(''); setQuantityError(''); }} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid var(--v-card-border)', background: investBy === mode ? 'var(--v-accent)' : 'var(--v-card)', color: investBy === mode ? 'var(--v-canvas)' : 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit' }}>
+            <button key={mode} onClick={() => { setInvestBy(mode); setAmountError(''); setQuantityError(''); }} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid var(--v-card-border)', background: investBy === mode ? 'var(--v-accent-label)' : 'var(--v-card)', color: investBy === mode ? 'var(--v-accent-text)' : 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit' }}>
               {mode === 'amount' ? '💵 Dollar Amount' : '📊 Shares'}
             </button>
           ))}
@@ -399,7 +399,7 @@ export default function DcaSetupPage() {
         {isAmountMode ? (
           <>
             <input type="text" inputMode="decimal" value={amount} onChange={e => handleAmount(e.target.value)} placeholder="$0" style={{ width: '100%', padding: '12px 14px', background: 'var(--v-card)', border: `1px solid ${amountError ? 'var(--v-loss)' : 'var(--v-card-border)'}`, borderRadius: 8, color: 'var(--v-text-primary)', fontSize: 16, fontWeight: 700, outline: 'none', fontFamily: 'inherit' }} />
-            {amountError && <div style={{ fontSize: 11, color: 'var(--v-loss)', marginTop: 4 }}>{amountError}</div>}
+            {amountError && <div style={{ fontSize: 11, color: 'var(--v-loss-label)', marginTop: 4 }}>{amountError}</div>}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
               {AMOUNT_CHIPS.map(c => (
                 <button key={c} onClick={() => handleAmount(c.toString())} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid var(--v-card-border)', background: amount === c.toString() ? 'var(--v-accent)' : 'var(--v-card)', color: amount === c.toString() ? 'var(--v-canvas)' : 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -416,7 +416,7 @@ export default function DcaSetupPage() {
         ) : (
           <>
             <input type="text" inputMode="decimal" value={quantity} onChange={e => handleQuantity(e.target.value)} placeholder="0" style={{ width: '100%', padding: '12px 14px', background: 'var(--v-card)', border: `1px solid ${quantityError ? 'var(--v-loss)' : 'var(--v-card-border)'}`, borderRadius: 8, color: 'var(--v-text-primary)', fontSize: 16, fontWeight: 700, outline: 'none', fontFamily: 'inherit' }} />
-            {quantityError && <div style={{ fontSize: 11, color: 'var(--v-loss)', marginTop: 4 }}>{quantityError}</div>}
+            {quantityError && <div style={{ fontSize: 11, color: 'var(--v-loss-label)', marginTop: 4 }}>{quantityError}</div>}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
               {[1, 5, 10, 25, 50].map(n => (
                 <button key={n} onClick={() => handleQuantity(n.toString())} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid var(--v-card-border)', background: quantity === n.toString() ? 'var(--v-accent)' : 'var(--v-card)', color: quantity === n.toString() ? 'var(--v-canvas)' : 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -480,7 +480,7 @@ export default function DcaSetupPage() {
         </div>
 
         <div>
-          <div style={{ fontSize: 11, color: 'var(--v-text-secondary)', marginBottom: 4, fontWeight: 600 }}>End date <span style={{ color: 'var(--v-accent)' }}>*</span></div>
+          <div style={{ fontSize: 11, color: 'var(--v-text-secondary)', marginBottom: 4, fontWeight: 600 }}>End date <span style={{ color: 'var(--v-accent-label)' }}>*</span></div>
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={startDate} style={{ width: '100%', padding: '10px 12px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, color: 'var(--v-text-primary)', fontSize: 13, outline: 'none', fontFamily: 'inherit', colorScheme: 'dark' }} />
           {endDate && estOrders > 0 && (
             <div style={{ marginTop: 8, fontSize: 12, color: 'var(--v-text-muted)' }}>
@@ -493,7 +493,7 @@ export default function DcaSetupPage() {
       {/* ─── Section 5: Preview ──────────────────────── */}
       {selectedSymbol && effectiveAmount > 0 && frequency && (
         <div style={{ background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent-label)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
             <Clock size={12} style={{ marginRight: 6, display: 'inline' }} />Preview
           </div>
           {isAmountMode && estShares && <PreviewRow label="Est. shares per order" value={`${estShares} @ ${fmtCurrency(price)}`} />}
@@ -501,7 +501,7 @@ export default function DcaSetupPage() {
           {totalInvested && <PreviewRow label={`Total invested (${monthsRunning}mo)`} value={totalInvested} />}
           {endDate && estOrders > 0 && <PreviewRow label="Orders scheduled" value={estOrders.toString()} />}
           {availableCash != null && isAmountMode && parseFloat(amount) > availableCash && (
-            <div style={{ marginTop: 8, padding: '6px 10px', background: 'var(--v-loss-dim)', border: '1px solid var(--v-loss-dim)', borderRadius: 6, fontSize: 11, color: 'var(--v-loss)', fontWeight: 600 }}>
+            <div style={{ marginTop: 8, padding: '6px 10px', background: 'var(--v-loss-dim)', border: '1px solid var(--v-loss-dim)', borderRadius: 6, fontSize: 11, color: 'var(--v-loss-label)', fontWeight: 600 }}>
               ⚠️ Amount exceeds available cash (${fmtCurrency(availableCash)})
             </div>
           )}
@@ -564,7 +564,7 @@ export default function DcaSetupPage() {
 function Section({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 20 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent-label)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
         {icon} {label}
       </div>
       {children}
@@ -582,7 +582,7 @@ function Spinner({ label }: { label: string }) {
 
 function ErrorBox({ message }: { message: string }) {
   return (
-    <div style={{ padding: 12, background: 'var(--v-loss-dim)', border: '1px solid var(--v-loss-dim)', borderRadius: 8, color: 'var(--v-loss)', fontSize: 12, marginBottom: 16 }}>
+    <div style={{ padding: 12, background: 'var(--v-loss-dim)', border: '1px solid var(--v-loss-dim)', borderRadius: 8, color: 'var(--v-loss-label)', fontSize: 12, marginBottom: 16 }}>
       {message}
     </div>
   );
@@ -596,7 +596,7 @@ function StockCard({ details, changeColor, position }: { details: StockDetails; 
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--v-text-primary)' }}>{details.symbol}</div>
           {details.name && <div style={{ fontSize: 12, color: 'var(--v-text-muted)', marginTop: 2 }}>{details.name}</div>}
         </div>
-        {details.sector && <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--v-accent)', background: 'var(--v-accent-dim)', border: '1px solid var(--v-accent-dim)', borderRadius: 6, padding: '3px 10px' }}>{details.sector}</span>}
+        {details.sector && <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--v-accent-label)', background: 'var(--v-accent-dim)', border: '1px solid var(--v-accent-dim)', borderRadius: 6, padding: '3px 10px' }}>{details.sector}</span>}
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 14, padding: '10px 12px', background: 'var(--v-canvas)', borderRadius: 8 }}>
         <DollarSign size={14} style={{ color: 'var(--v-accent)' }} />
@@ -615,7 +615,7 @@ function StockCard({ details, changeColor, position }: { details: StockDetails; 
       {position && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--v-accent-dim)', border: '1px solid var(--v-accent-dim)', borderRadius: 8 }}>
           <Activity size={14} style={{ color: 'var(--v-accent)' }} />
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-accent)' }}>Already in portfolio: {position.qty != null ? `${position.qty} shares` : 'held'}</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-accent-label)' }}>Already in portfolio: {position.qty != null ? `${position.qty} shares` : 'held'}</span>
         </div>
       )}
     </div>

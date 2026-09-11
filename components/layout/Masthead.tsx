@@ -74,7 +74,7 @@ export function Masthead({ accountName, brokerLabel, dotColor, isReadOnly, style
             type="button"
             onClick={onStyleClick}
             style={{
-              background: 'none', border: 'none', color: 'var(--v-accent)', fontSize: 13,
+              background: 'none', border: 'none', color: 'var(--v-accent-label)', fontSize: 13,
               fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0,
               whiteSpace: 'nowrap', textDecoration: 'underline', textUnderlineOffset: 3,
             }}

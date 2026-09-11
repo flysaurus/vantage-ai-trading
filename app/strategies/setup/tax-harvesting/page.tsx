@@ -376,7 +376,7 @@ export default function TaxHarvestingPage() {
     <div className="strategy-page" style={{ height: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--v-canvas)', color: 'var(--v-text-primary)', padding: '16px 16px 300px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       {/* Toast */}
       {toast && (
-        <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, animation: 'dcaToastIn 0.25s ease-out', background: 'var(--v-gain)', color: 'var(--v-canvas)', padding: '8px 18px', borderRadius: 9999, fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>
+        <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, animation: 'dcaToastIn 0.25s ease-out', background: 'var(--v-gain-label)', color: 'var(--v-accent-text)', padding: '8px 18px', borderRadius: 9999, fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>
           {toast}
         </div>
       )}
@@ -409,7 +409,7 @@ export default function TaxHarvestingPage() {
       )}
 
       {loadError && (
-        <div style={{ padding: 16, background: 'var(--v-loss-dim)', border: '1px solid var(--v-loss-dim)', borderRadius: 8, fontSize: 13, color: 'var(--v-loss)', marginBottom: 16 }}>
+        <div style={{ padding: 16, background: 'var(--v-loss-dim)', border: '1px solid var(--v-loss-dim)', borderRadius: 8, fontSize: 13, color: 'var(--v-loss-label)', marginBottom: 16 }}>
           {loadError}
         </div>
       )}
@@ -710,7 +710,7 @@ export default function TaxHarvestingPage() {
 function Section({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 28 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent-label)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
         {icon} {label}
       </div>
       {children}
