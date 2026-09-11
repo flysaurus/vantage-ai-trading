@@ -11,6 +11,7 @@ import type { Position, AccountSummary } from '@/types';
 import { availableCash as computeAvailableCash } from '@/lib/available-cash';
 import type { Basket } from '@/context/PortfolioContext';
 import SellModal from './SellModal';
+import BulkSellSheet from './BulkSellSheet';
 import TradeTicket from './TradeTicket';
 import BasketActionPanel from '@/components/basket/BasketActionPanel';
 import BasketCard from './BasketCard';
@@ -842,6 +843,9 @@ export function PortfolioTab() {
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
   const [sellModalOpen, setSellModalOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
+  // Bulk sell is a two-step action: select -> confirm sheet (with FIFO
+  // disclosure) -> execute. It used to fire at the broker on the first tap.
+  const [bulkSellOpen, setBulkSellOpen] = useState(false);
   const [expandedBasketIds, setExpandedBasketIds] = useState<Set<string>>(new Set());
   const [tradeTicket, setTradeTicket] = useState<{
     symbol: string; side: 'BUY' | 'SELL'; currentPrice: number;
@@ -1004,6 +1008,57 @@ export function PortfolioTab() {
   const cancelSelect = () => {
     setSelectMode(false);
     setSelectedSymbols(new Set());
+  };
+
+  // ── Bulk sell: the confirmation sheet resolves the selection into concrete
+  // targets; this only runs once the user has confirmed there.
+  // Declared as function declarations (hoisted) so they can live above the
+  // `displayPositions` / `baskets` bindings — the bodies only run after render. ──
+  function computeBulkSellItems() {
+    const out: { symbol: string; qty: number; price: number }[] = [];
+    selectedSymbols.forEach(s => {
+      if (s.startsWith('basket:')) return;
+      const pos = displayPositions.find((p: Position) => p.symbol === s);
+      if (pos) out.push({ symbol: pos.symbol, qty: pos.qty, price: pos.currentPrice ?? pos.avgCost });
+    });
+    return out;
+  }
+
+  function computeBulkSellBaskets() {
+    const out: { id: string; name: string; symbols: string[] }[] = [];
+    selectedSymbols.forEach(s => {
+      if (!s.startsWith('basket:')) return;
+      const bid = s.replace('basket:', '');
+      const basket = baskets.find((b: Basket) => b.id === bid);
+      if (basket) {
+        out.push({
+          id: basket.id,
+          name: basket.name,
+          symbols: basket.positions.filter(p => p.status === 'active').map(p => p.symbol),
+        });
+      }
+    });
+    return out;
+  }
+
+  const runBulkSell = async () => {
+    for (const item of computeBulkSellItems()) {
+      try {
+        await executeTrade(item.symbol, 'SELL', item.qty, item.price);
+      } catch { /* continue */ }
+    }
+
+    for (const basket of computeBulkSellBaskets()) {
+      if (basket.symbols.length > 0) {
+        try {
+          await sellBasketPositions(basket.id, basket.symbols);
+        } catch { /* continue */ }
+      }
+    }
+
+    setBulkSellOpen(false);
+    refreshContext?.();
+    cancelSelect();
   };
 
   // ── Derived values ──
@@ -1196,7 +1251,9 @@ export function PortfolioTab() {
           </div>
 
           {/* Select mode — a MODE toggle, not a filter. Demoted to a text link so the
-              chip row reads purely as All / Gainers / Losers. */}
+              chip row reads purely as All / Gainers / Losers. Hidden entirely on
+              read-only connections: the only thing it enables is selling. */}
+          {!isReadOnly && (
           <button
             type="button"
             data-testid="select-toggle"
@@ -1207,13 +1264,14 @@ export function PortfolioTab() {
             style={{
               padding: 0, background: 'transparent', border: 'none',
               marginLeft: 8,
-              color: 'var(--v-accent)',
+              color: 'var(--v-accent-label)',
               fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 12,
               cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap',
             }}
           >
             {selectMode ? 'Done' : 'Select'}
           </button>
+          )}
         </div>
       </div>
 
@@ -1558,7 +1616,7 @@ export function PortfolioTab() {
       })()}
 
       {/* ── Select Mode Action Bar ── */}
-      {selectMode && selectedSymbols.size > 0 && (
+      {!isReadOnly && selectMode && selectedSymbols.size > 0 && (
         <div style={{
           padding: '12px 16px',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1571,43 +1629,8 @@ export function PortfolioTab() {
             {selectedSymbols.size} selected
           </span>
           <button
-            onClick={async () => {
-              const individualSymbols: string[] = [];
-              const basketIds: string[] = [];
-              selectedSymbols.forEach(s => {
-                if (s.startsWith('basket:')) {
-                  basketIds.push(s.replace('basket:', ''));
-                } else {
-                  individualSymbols.push(s);
-                }
-              });
-
-              for (const sym of individualSymbols) {
-                const pos = displayPositions.find((p: Position) => p.symbol === sym);
-                if (pos) {
-                  try {
-                    await executeTrade(sym, 'SELL', pos.qty, pos.currentPrice ?? pos.avgCost);
-                  } catch { /* continue */ }
-                }
-              }
-
-              for (const bid of basketIds) {
-                const basket = baskets.find(b => b.id === bid);
-                if (basket) {
-                  const activeSymbols = basket.positions
-                    .filter(p => p.status === 'active')
-                    .map(p => p.symbol);
-                  if (activeSymbols.length > 0) {
-                    try {
-                      await sellBasketPositions(bid, activeSymbols);
-                    } catch { /* continue */ }
-                  }
-                }
-              }
-
-              refreshContext?.();
-              cancelSelect();
-            }}
+            data-testid="bulk-sell-open"
+            onClick={() => setBulkSellOpen(true)}
             style={{
               padding: '8px 20px', borderRadius: 10,
               background: 'rgba(239,68,68,0.12)',
@@ -1620,6 +1643,16 @@ export function PortfolioTab() {
             Sell Selected
           </button>
         </div>
+      )}
+
+      {/* ── Bulk sell confirmation (holds the FIFO disclosure) ── */}
+      {bulkSellOpen && (
+        <BulkSellSheet
+          items={computeBulkSellItems()}
+          baskets={computeBulkSellBaskets()}
+          onClose={() => setBulkSellOpen(false)}
+          onConfirm={runBulkSell}
+        />
       )}
 
     </div>

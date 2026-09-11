@@ -49,7 +49,7 @@ So the palette carries a **label variant** of each semantic color, used only for
 
 In the dark theme these label tokens **alias the base values** (`#3DDC84` / `#F0716B` / `#5FD8DE`) — the dark palette already clears 7:1, so nothing changes there. Never hardcode a hex for a small label; always use the token.
 
-`--v-text-faint` is the one deliberate exception: it is reserved for purely decorative, non-informational marks, and it may sit below 4.5:1. If a value is meant to be *read*, it belongs on secondary/tertiary, not faint.
+`--v-text-faint` is the low-emphasis tier. It is no longer allowed to fail AA: in the light theme it is `#6A7280` (4.50:1 on the canvas, 4.85:1 on white) and in the dark theme `#7C8AA0` (5.74:1). The earlier light value (`#8891A6`, 2.93:1) and dark value (`#5C6478`, 3.40:1) were both under the bar. The low end of the hierarchy is expressed with **size and weight**, not with illegible contrast. Faint is still the right choice for genuinely decorative marks (the `·` separators in the balance row, an inactive selection dot) — if a value is meant to be read, it belongs on secondary/tertiary.
 
 ### Dark theme
 

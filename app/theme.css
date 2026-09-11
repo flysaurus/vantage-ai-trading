@@ -60,7 +60,11 @@
   --v-text-primary: #10182b;
   --v-text-secondary: #5b6472;
   --v-text-muted: #636c7d;
-  --v-text-faint: #8891a6;
+  /* Decorative tier, but no longer sub-AA: 4.50:1 on the canvas, 4.85:1 on
+     white. Only the por-card tint (4.23:1) sits below AA and that surface only
+     ever uses faint for "·" separators. Hierarchy at the low end now comes from
+     size/weight, not from contrast. */
+  --v-text-faint: #6a7280;
 
   /* semantic */
   --v-accent: #0e8c99;
@@ -145,7 +149,8 @@
   --v-text-primary: #eaeeF7;
   --v-text-secondary: #c4ccdc;
   --v-text-muted: #8891a6;
-  --v-text-faint: #5c6478;
+  /* was #5c6478 (3.40:1 on the dark canvas — under AA); now 5.74:1 */
+  --v-text-faint: #7c8aa0;
 
   --v-accent: #5fd8de;
   --v-accent-text: #00272b;
