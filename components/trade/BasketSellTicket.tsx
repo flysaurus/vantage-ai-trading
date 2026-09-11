@@ -18,6 +18,7 @@ import {
   type FIFOResult,
 } from '@/lib/fifo-engine';
 import FIFOExplainer, { hasSeenFIFOExplainer } from '@/components/disclosure/FIFOExplainer';
+import { usePageScrollLock, SCROLL_SCOPE_ATTR } from '@/lib/ui/scroll-lock';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
 // ─── Types ───────────────────────────────────────────────
@@ -196,7 +197,6 @@ export default function BasketSellTicket({
 
   useEffect(() => {
     if (!isOpen) return;
-    document.body.style.overflow = 'hidden';
     const ms = getMarketStatus();
     setMarketIsOpen(ms.isOpen);
     // Reset state
@@ -207,10 +207,10 @@ export default function BasketSellTicket({
     }
     setQtyMap(init);
     setSubmitting(false);
-    return () => {
-      document.body.style.overflow = '';
-    };
   }, [isOpen, basket.positions]);
+
+  // Lock the app's real scrollers (locking <body> alone was a no-op here).
+  usePageScrollLock(isOpen);
 
   const setQty = (symbol: string, val: string) => {
     setQtyMap(prev => ({ ...prev, [symbol]: val }));
@@ -347,6 +347,7 @@ export default function BasketSellTicket({
   return createPortal(
     <>
     <div
+      data-testid="basket-sell-ticket"
       style={{
         position: 'fixed',
         inset: 0,
@@ -360,6 +361,7 @@ export default function BasketSellTicket({
       onClick={onClose}
     >
       <div
+        data-testid="basket-sell-ticket-panel"
         style={{
           background: BG_CARD,
           borderRadius: 16,
@@ -621,10 +623,15 @@ export default function BasketSellTicket({
 
             {/* ── Ticker Rows (scrollable) ── */}
             <div
+              {...{ [SCROLL_SCOPE_ATTR]: 'basket-sell-ticket' }}
+              data-testid="basket-sell-rows"
               style={{
                 flex: 1,
                 overflowY: 'auto',
                 padding: '0 18px',
+                touchAction: 'pan-y',
+                WebkitOverflowScrolling: 'touch',
+                overscrollBehavior: 'contain',
               }}
             >
               {rows.map((row, idx) => {

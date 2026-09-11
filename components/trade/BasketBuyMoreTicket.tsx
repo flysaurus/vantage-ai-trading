@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { getMarketStatus } from '@/lib/market-hours';
+import { usePageScrollLock, SCROLL_SCOPE_ATTR } from '@/lib/ui/scroll-lock';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -58,7 +59,6 @@ export default function BasketBuyMoreTicket({
 
   useEffect(() => {
     if (!isOpen) return;
-    document.body.style.overflow = 'hidden';
     const ms = getMarketStatus();
     setMarketIsOpen(ms.isOpen);
     // Reset quantities on open
@@ -68,10 +68,10 @@ export default function BasketBuyMoreTicket({
     }
     setQtyMap(init);
     setSubmitting(false);
-    return () => {
-      document.body.style.overflow = '';
-    };
   }, [isOpen, basket.positions]);
+
+  // Lock the app's real scrollers (locking <body> alone was a no-op here).
+  usePageScrollLock(isOpen);
 
   // Derived totals
   const { rows, totalCost, selectedCount, totalPositions } = useMemo(() => {
@@ -122,6 +122,7 @@ export default function BasketBuyMoreTicket({
 
   return createPortal(
     <div
+      data-testid="basket-buy-more-ticket"
       style={{
         position: 'fixed',
         inset: 0,
@@ -135,6 +136,7 @@ export default function BasketBuyMoreTicket({
       onClick={onClose}
     >
       <div
+        data-testid="basket-buy-more-ticket-panel"
         style={{
           background: BG_CARD,
           borderRadius: 16,
@@ -264,10 +266,15 @@ export default function BasketBuyMoreTicket({
 
         {/* ── Ticker Rows (scrollable) ── */}
         <div
+          {...{ [SCROLL_SCOPE_ATTR]: 'basket-buy-more-ticket' }}
+          data-testid="basket-buy-more-rows"
           style={{
             flex: 1,
             overflowY: 'auto',
             padding: '0 18px',
+            touchAction: 'pan-y',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
           }}
         >
           {rows.map((row, idx) => {

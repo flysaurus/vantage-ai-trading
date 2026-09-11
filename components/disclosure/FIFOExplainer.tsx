@@ -10,6 +10,7 @@
 
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { usePageScrollLock, SCROLL_SCOPE_ATTR } from '@/lib/ui/scroll-lock';
 
 export interface FIFOExplainerProps {
   isOpen: boolean;
@@ -45,12 +46,9 @@ export default function FIFOExplainer({
   oldestLotDate,
   secondLotDate,
 }: FIFOExplainerProps) {
-  useEffect(() => {
-    if (!isOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, [isOpen]);
+  // Locks the app's real scrollers (.content-area / [data-page-scroller]). The
+  // old body-only overflow lock did nothing on this app.
+  usePageScrollLock(isOpen);
 
   const handleDismiss = () => {
     markFIFOExplainerSeen();
@@ -60,13 +58,16 @@ export default function FIFOExplainer({
   if (!isOpen) return null;
 
   return createPortal(
-    <div style={{
+    <div
+      {...{ [SCROLL_SCOPE_ATTR]: 'fifo-explainer' }}
+      data-testid="fifo-explainer"
+      style={{
       position: 'fixed', inset: 0, zIndex: 9999,
       background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '20px',
     }}>
-      <div style={{
+      <div data-testid="fifo-explainer-card" style={{
         background: '#0a0f1e',
         border: '1px solid rgba(56,214,232,0.25)',
         borderRadius: '20px',
@@ -88,13 +89,20 @@ export default function FIFOExplainer({
         </div>
 
         {/* Body */}
-        <div style={{
+        <div
+          {...{ [SCROLL_SCOPE_ATTR]: 'fifo-explainer-body' }}
+          data-testid="fifo-explainer-body"
+          style={{
           display: 'flex', gap: '9px',
           padding: '12px 13px',
           background: 'rgba(56,214,232,0.08)',
           border: '1px solid rgba(56,214,232,0.25)',
           borderRadius: '12px',
           alignItems: 'flex-start',
+          maxHeight: '50vh',
+          overflowY: 'auto',
+          touchAction: 'pan-y',
+          overscrollBehavior: 'contain',
         }}>
           <span style={{ fontSize: '14px', marginTop: '1px', flexShrink: 0 }}>💡</span>
           <div>

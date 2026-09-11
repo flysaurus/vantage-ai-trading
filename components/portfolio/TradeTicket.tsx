@@ -12,6 +12,7 @@ import { getMarketStatus } from '@/lib/market-hours';
 import { useAccounts } from '@/context/AccountContext';
 import { X } from 'lucide-react';
 import { getActiveLotCount, consumeLotsFIFO, type Lot } from '@/lib/fifo-engine';
+import { usePageScrollLock, SCROLL_SCOPE_ATTR } from '@/lib/ui/scroll-lock';
 import FIFOExplainer, { hasSeenFIFOExplainer, markFIFOExplainerSeen } from '@/components/disclosure/FIFOExplainer';
 import type { WashSaleResult } from '@/lib/wash-sale';
 
@@ -133,9 +134,8 @@ export default function TradeTicket({
 
   useEffect(() => {
     if (!isOpen) return;
-    // Lock body scroll while modal is open
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    // NB: the page scroll lock lives in the `usePageScrollLock(isOpen)` hook
+    // below — locking <body> here was a no-op for this app's inner scroller.
     const ms = getMarketStatus();
     setMarketOpen(ms.isOpen);
     setNextOpenLabel(ms.nextOpenLabel);
@@ -154,8 +154,11 @@ export default function TradeTicket({
     setSubmitting(false);
     setConfirmed(false);
     setTradeError(null);
-    return () => { document.body.style.overflow = prev; };
   }, [isOpen]);
+
+  // Lock the REAL scrollers (the ticket is portalled, so the page behind it is
+  // the app's .content-area, not <body>).
+  usePageScrollLock(isOpen);
 
   const rawInput = parseFloat(quantity) || 0;
   const limit = parseFloat(limitPrice) || 0;
@@ -285,14 +288,18 @@ export default function TradeTicket({
   const sideLabel = side === 'BUY' ? 'Buy' : 'Sell';
 
   return createPortal(
-    <div style={{
+    <div
+      data-testid="trade-ticket"
+      style={{
       position: 'fixed', inset: 0, zIndex: 50,
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
       background: 'rgba(0,0,0,0.6)',
       backdropFilter: 'blur(4px)',
       WebkitBackdropFilter: 'blur(4px)',
     }} onClick={onClose}>
-      <div style={{
+      <div
+        data-testid="trade-ticket-panel"
+        style={{
         width: '100%', maxWidth: 420, maxHeight: '85vh',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         background: '#0f172a',
@@ -301,10 +308,15 @@ export default function TradeTicket({
       }} onClick={(e) => e.stopPropagation()}>
         
         {/* Scrollable body */}
-        <div style={{
+        <div
+          {...{ [SCROLL_SCOPE_ATTR]: 'trade-ticket' }}
+          data-testid="trade-ticket-body"
+          style={{
           flex: 1, overflowY: 'auto',
           padding: '24px 20px 0',
+          touchAction: 'pan-y',
           WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
         }}>
         
         {/* Header */}

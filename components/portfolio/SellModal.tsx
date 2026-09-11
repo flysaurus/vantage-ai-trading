@@ -1,6 +1,7 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { consumeLotsFIFO, type Lot } from '@/lib/fifo-engine'
+import { usePageScrollLock, SCROLL_SCOPE_ATTR } from '@/lib/ui/scroll-lock'
 
 interface Position {
  symbol: string
@@ -32,17 +33,10 @@ export default function SellModal({ positions, onClose, onConfirm, showPercentOp
  const [sellPercent, setSellPercent] = useState(100)
  const [sliderValue, setSliderValue] = useState(100)
 
- useEffect(() => {
-   const prev = document.body.style.overflow;
-   document.body.style.overflow = 'hidden';
-   document.body.style.position = 'fixed';
-   document.body.style.width = '100%';
-   return () => {
-     document.body.style.overflow = prev;
-     document.body.style.position = '';
-     document.body.style.width = '';
-   };
- }, [])
+ // This modal is only mounted while it is open, so the lock is unconditional.
+ // It locks the REAL scrollers (.content-area / [data-page-scroller]) — locking
+ // <body> alone does nothing on this app (see lib/ui/scroll-lock.ts).
+ usePageScrollLock(true)
 
  const handleDone = () => {
    (onConfirm ?? onClose)()
@@ -75,6 +69,7 @@ export default function SellModal({ positions, onClose, onConfirm, showPercentOp
 
  return (
  <div
+ data-testid="sell-modal"
  onClick={onClose}
  style={{
  position: 'fixed',
@@ -85,10 +80,10 @@ export default function SellModal({ positions, onClose, onConfirm, showPercentOp
  alignItems: 'center',
  justifyContent: 'center',
  padding: '20px',
- touchAction: 'none',
  }}
  >
  <div
+ data-testid="sell-modal-panel"
  onClick={e => e.stopPropagation()}
  style={{
  backgroundColor: '#1a2235',
@@ -286,10 +281,15 @@ export default function SellModal({ positions, onClose, onConfirm, showPercentOp
  </div>
  )}
 
- {/* STOCK LIST */}
- <div style={{
+ {/* STOCK LIST — the sheet's own scroller; data-scroll-scope keeps the
+     document-level touchmove canceller from blocking it. */}
+ <div
+ {...{ [SCROLL_SCOPE_ATTR]: 'sell-modal' }}
+ data-testid="sell-modal-list"
+ style={{
    overflowY: 'auto',
    flex: 1,
+   touchAction: 'pan-y',
    WebkitOverflowScrolling: 'touch',
    overscrollBehavior: 'contain',
  }}>
