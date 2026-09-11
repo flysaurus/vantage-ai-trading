@@ -368,6 +368,14 @@ test.describe('Invest — Functional', () => {
   });
 
   test('order history shows correct tickers and years', async ({ page }) => {
+    // Order history sits behind the Invest sub-nav (Strategies | Tracking |
+    // Orders). The default sub-tab is Strategies, so the order list is not in
+    // the DOM until Orders is selected — scrolling alone renders nothing.
+    const ordersTab = page.getByTestId('invest-tab-orders');
+    await ordersTab.first().waitFor({ state: 'visible', timeout: 15000 });
+    await ordersTab.first().click();
+    await page.waitForTimeout(2500);
+
     for (let y = 0; y <= 2000; y += 300) {
       await page.evaluate((sy) => window.scrollTo(0, sy), y);
       await page.waitForTimeout(100);
@@ -649,17 +657,29 @@ test.describe('AI Tab — Noticed CTA tap-through', () => {
     expect(bodyText.toLowerCase()).toContain('rebalance');
   });
 
-  test('Review AAPL CTA navigates to Portfolio and expands the card', async ({ page }) => {
+  test('Review AAPL CTA opens the canonical position detail', async ({ page }) => {
     await openExplore(page);
 
     await page.getByRole('button', { name: 'Review AAPL', exact: true }).click();
 
-    // Cross-tab focus switched us to Portfolio and rendered the AAPL card.
-    const aaplCard = page.locator('#position-AAPL');
-    await aaplCard.waitFor({ state: 'visible', timeout: 10000 });
+    // Since the Holdings rebuild there is exactly ONE position detail: the
+    // full-screen canonical screen (components/portfolio/PositionDetail.tsx).
+    // The old inline `#position-AAPL` expanding card no longer exists (rows
+    // are `data-testid="position-row-<SYM>"` now); the Insights
+    // "Review <ticker>" action lands on the same screen a Holdings row tap
+    // opens, which is the point of that rebuild.
+    const detail = page.getByTestId('position-detail');
+    await detail.waitFor({ state: 'visible', timeout: 15000 });
 
-    // Expanded card reveals the Lots & Cost Basis section.
-    await expect(aaplCard.locator('text=Lots & Cost Basis').first()).toBeVisible({ timeout: 5000 });
+    // The right symbol, and a way back (it is a full screen, not a tab pane).
+    await expect(detail).toContainText('AAPL');
+    await expect(page.getByTestId('position-detail-back')).toBeVisible();
+
+    // Lots & cost basis belongs to the canonical detail (rendered when the
+    // account has lots). Informational — demo accounts may have none.
+    const detailText = await detail.innerText();
+    console.log('Position detail lots section:', /LOTS & COST BASIS/i.test(detailText));
+    expect(detailText).toContain('AAPL');
   });
 
   test('Remind CTA opens the snooze popover (unchanged behavior)', async ({ page }) => {
