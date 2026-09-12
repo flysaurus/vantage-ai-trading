@@ -9,7 +9,7 @@
 
 import { snapTradeFetch, snapTradeFetchSafe } from '@/lib/snaptrade/auth';
 import { getAccountBalances } from '@/lib/snaptrade/client';
-import { extractOrderSymbol } from '@/lib/snaptrade/mapping';
+import { extractOrderSymbol, extractPositionTicker, extractPositionName } from '@/lib/snaptrade/mapping';
 import { toStandardSymbol, toBrokerSymbol } from './symbol-resolver';
 import { resolveSectorStatic } from '@/lib/sector-resolver';
 import type {
@@ -33,14 +33,27 @@ interface SnapAccount {
   account_category: string | null;
 }
 
+/**
+ * Raw row from SnapTrade's `GET /accounts/{id}/positions` response.
+ * Only the fields we actually consume are declared. NOTE: `symbol` is often a
+ * nested OBJECT here (unlike the old `/holdings` shape, where it was a string).
+ */
 interface SnapPosition {
-  symbol?: string;
+  symbol?:
+    | string
+    | {
+        symbol?: string | { symbol?: string; description?: string };
+        description?: string;
+        type?: { code?: string } | null;
+        asset_type?: string;
+      };
   description?: string;
-  units?: number;
-  price?: number;
-  average_purchase_price?: number;
-  total_purchase_price?: number;
-  open_pnl?: number;
+  units?: number | string;
+  fractional_units?: number | string;
+  price?: number | string;
+  average_purchase_price?: number | string;
+  open_pnl?: number | string;
+  cash_equivalent?: boolean;
   asset_type?: string;
   sector?: string;
 }
@@ -131,6 +144,79 @@ function _statusLabel(s: OrderStatus): string {
     case 'CANCELLED': return 'cancelled';
     default: return s.toLowerCase();
   }
+}
+
+/**
+ * Extract the row array from a SnapTrade positions response.
+ * Some brokers return a bare array; others wrap it in `{ results: [...] }`.
+ */
+function _extractSnapArray(raw: unknown): unknown[] {
+  if (raw && typeof raw === 'object' && Array.isArray((raw as { results?: unknown[] }).results)) {
+    return (raw as { results: unknown[] }).results;
+  }
+  return Array.isArray(raw) ? raw : [];
+}
+
+/**
+ * Map ONE raw row from SnapTrade's `GET /accounts/{id}/positions` response to a
+ * canonical `BrokerPosition`, or `null` when the row must be skipped.
+ *
+ * PURE + exported so it can be unit-tested in isolation. Never spreads the raw
+ * payload — it emits an explicit, fixed field set.
+ *
+ * Rules:
+ *   - `symbol` may be an OBJECT (triple-nested: symbol.symbol.symbol) or a
+ *     bare string — both are handled via the shared extractPosition* helpers.
+ *   - Rows with no resolvable symbol are skipped.
+ *   - Cash-equivalent sweeps (SPAXX/money-market) with ZERO units are skipped
+ *     (their value already lives in the cash balance — counting them double-counts).
+ *   - `average_purchase_price` is the cost basis; when absent we fall back to
+ *     the current `price` (better than a $0 basis).
+ *   - NO acquisition date is invented: the positions payload carries none, so
+ *     `buyDate` is deliberately ABSENT from the returned object.
+ */
+export function mapSnapPositionToBrokerPosition(raw: any): BrokerPosition | null {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const shares = Number(raw.units ?? raw.fractional_units ?? 0) || 0;
+
+  // Cash-equivalent sweeps with zero units are not real positions.
+  if (raw.cash_equivalent === true && shares === 0) return null;
+
+  const symbol =
+    extractPositionTicker(raw) ||
+    (typeof raw.symbol === 'string' ? raw.symbol : '');
+  if (!symbol) return null;
+
+  const name =
+    extractPositionName(raw) ||
+    (typeof raw.description === 'string' && raw.description) ||
+    symbol;
+
+  // Cost basis: prefer the reported average purchase price; fall back to the
+  // current price only when no purchase price is available. No date is derived.
+  const avgCost = Number(raw.average_purchase_price ?? raw.price ?? 0) || 0;
+  const totalCost = shares * avgCost;
+
+  const sym = typeof raw.symbol === 'object' ? raw.symbol : undefined;
+  const rawType = String(
+    raw.asset_type ?? sym?.asset_type ?? sym?.type?.code ?? '',
+  ).toUpperCase();
+  const type: 'Stock' | 'ETF' = rawType.includes('ETF') ? 'ETF' : 'Stock';
+
+  const sector = typeof raw.sector === 'string' ? raw.sector.trim() : '';
+
+  return {
+    symbol,
+    name,
+    sector: sector || resolveSectorStatic(symbol) || undefined,
+    type,
+    shares,
+    avgCost,
+    totalCost,
+    // NOTE: `buyDate` intentionally omitted — the positions endpoint provides
+    // no acquisition date, and fabricating one corrupts holding-period logic.
+  };
 }
 
 /** Map SnapTrade order_type → our OrderType (reverse of _mapOrderTypeToSnapTrade) */
@@ -309,29 +395,17 @@ export class SnapTradeBroker implements BrokerEngine {
 
     for (const acct of accounts) {
       try {
-        const positions = await snapTradeFetch<SnapPosition[]>(
-          `/authorizations/${this.connectionId}/accounts/${acct.id}/holdings`,
+        // Working endpoint: GET /accounts/{id}/positions
+        // (the old `/holdings` path returns HTTP 410 Gone — deprecated).
+        const raw = await snapTradeFetch<unknown>(
+          `/accounts/${acct.id}/positions`,
           null,
           { userId: this.userId, userSecret: this.userSecret },
         );
 
-        for (const pos of positions) {
-          if (!pos.symbol || pos.symbol === '') continue;
-
-          const shares = pos.units ?? 0;
-          const avgCost = pos.average_purchase_price ?? pos.price ?? 0;
-          const totalCost = shares * avgCost;
-
-          allPositions.push({
-            symbol: pos.symbol,
-            name: pos.description || pos.symbol,
-            sector: pos.sector?.trim() || resolveSectorStatic(pos.symbol) || undefined,
-            type: pos.asset_type === 'ETF' ? 'ETF' : 'Stock',
-            shares,
-            avgCost,
-            totalCost,
-            buyDate: new Date().toISOString(),
-          });
+        for (const row of _extractSnapArray(raw) as SnapPosition[]) {
+          const mapped = mapSnapPositionToBrokerPosition(row);
+          if (mapped) allPositions.push(mapped);
         }
       } catch (err) {
         console.error(

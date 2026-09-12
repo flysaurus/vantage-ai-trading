@@ -400,7 +400,11 @@ function upsertPosition(
       shares: params.shares,
       avgCost: params.price,
       totalCost: params.cost,
-      buyDate: new Date().toISOString(),
+      // No `buyDate` here on purpose. This in-memory record is not the system
+      // of record for acquisition dates — real dates come from the broker's
+      // activity history (see lib/tax-harvest/lot-reconstruction.ts). Stamping
+      // "now" made an unverifiable date look authoritative downstream (e.g.
+      // "bought 0 days ago"), so consumers now see absence and say so.
       basketId: params.basketId,
       basketName: params.basketName,
       basketEmoji: params.basketEmoji,

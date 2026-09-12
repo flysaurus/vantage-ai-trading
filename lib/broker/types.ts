@@ -129,7 +129,11 @@ export interface BrokerPosition {
   shares: number;
   avgCost: number;
   totalCost: number;
-  buyDate: string;
+  /** Acquisition date (ISO). OPTIONAL — only present when the source truly
+   *  knows it (e.g. a broker that reports acquisition dates, or Demo dates).
+   *  Live SnapTrade positions do NOT surface a purchase date, so it must be
+   *  ABSENT rather than fabricated — it feeds tax / holding-period logic. */
+  buyDate?: string;
   basketId?: string;
   basketName?: string;
   basketEmoji?: string;
