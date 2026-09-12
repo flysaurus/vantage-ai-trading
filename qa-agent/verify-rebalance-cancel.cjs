@@ -201,6 +201,9 @@ async function clickInAppCard(page, card) {
   const picker2 = shell2.picker || (await pickerVisible(page));
   check('Back: app shell comes back', shell2.rendered);
   check('Back: does NOT re-show the account picker', !picker2, `picker=${picker2} url=${url2.replace(BASE, '')}`);
+  // The header "Back" used to also pop open the Rufus chat overlay.
+  const chatOpen = await page.getByTestId('chat-input').isVisible().catch(() => false);
+  check('Back: does NOT open the Rufus chat', !chatOpen, `chatInput=${chatOpen}`);
 
   // ── Case 3: Tax Loss Harvesting bottom "Cancel" (same helper, different page) ──
   await page.goto(`${BASE}/?tab=invest`, { waitUntil: 'domcontentloaded', timeout: 90000 });

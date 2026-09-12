@@ -97,7 +97,7 @@ interface Trade {
 export default function RebalancingPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const { setTab, setChatOpen } = useTabStore();
+  const { setTab } = useTabStore();
   const investorStyle = (user?.investorStyle || 'buffett') as import('@/types').InvestorStyle;
 
   // Read account from global Zustand store (populated by usePortfolio elsewhere)
@@ -981,7 +981,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button onClick={() => { setChatOpen(true); returnToApp(router); }} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
+          <button onClick={() => returnToApp(router)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
             <ArrowLeft size={16} /> Back
           </button>
           <button onClick={() => router.push('/strategies')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--v-accent-label)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
