@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { LEARNING_CARDS } from '@/lib/learning/triggers';
 import { isConceptShown, markConceptShown } from '@/lib/learning/detector';
 import { CURRICULUM, nextUpTopic } from '@/lib/learning/curriculum';
+import { hasCheck, questionsFor } from '@/lib/learning/checks';
 import type { LearningCard } from '@/lib/learning/triggers';
 
 interface LearningLibraryProps {
@@ -59,6 +60,11 @@ export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
   const [selectedCard, setSelectedCard] = useState<LearningCard | null>(null);
   const [justMarked, setJustMarked] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
+  // Self-check flow. All local; nothing here is persisted or sent anywhere.
+  const [checkModule, setCheckModule] = useState<{ id: string; title: string } | null>(null);
+  const [checkStep, setCheckStep] = useState(0);
+  const [checkPicked, setCheckPicked] = useState<number | null>(null);
+  const [checkDone, setCheckDone] = useState(false);
 
   if (!open) return null;
 
@@ -77,6 +83,34 @@ export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
     if (!selectedCard) return;
     markConceptShown(selectedCard.term);
     setJustMarked(prev => new Set([...prev, selectedCard.term]));
+  }
+
+  // Opening a self-check always starts fresh — the flow keeps no state between visits.
+  function openCheck(mod: { id: string; title: string }) {
+    setCheckStep(0);
+    setCheckPicked(null);
+    setCheckDone(false);
+    setCheckModule(mod);
+  }
+  function closeCheck() {
+    setCheckModule(null);
+    setCheckStep(0);
+    setCheckPicked(null);
+    setCheckDone(false);
+  }
+  // Lock in the tapped option; later taps on the same question are ignored.
+  function pickOption(i: number) {
+    if (checkPicked !== null) return;
+    setCheckPicked(i);
+  }
+  function advanceCheck() {
+    const total = checkModule ? questionsFor(checkModule.id).length : 0;
+    if (checkStep >= total - 1) {
+      setCheckDone(true);
+    } else {
+      setCheckStep(s => s + 1);
+      setCheckPicked(null);
+    }
   }
 
   // The single first-unread topic in path order, skipping anything not yet written.
@@ -182,6 +216,132 @@ export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
               color: BG, fontSize: '14px', fontWeight: '700',
               cursor: 'pointer',
             }}>Got it!</button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Module self-check view ───────────────────────────────
+  // Replaces the list like the card detail does; ← (or Back to path) returns here.
+  if (checkModule) {
+    const questions = questionsFor(checkModule.id);
+    const current = questions[checkStep];
+    const revealed = checkPicked !== null;
+    const isLast = checkStep >= questions.length - 1;
+
+    return (
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        zIndex: 10000, background: BG,
+        display: 'flex', flexDirection: 'column',
+        paddingBottom: BAR_PAD,
+      }}>
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '12px',
+          padding: '16px', borderBottom: `1px solid ${BORDER}`,
+        }}>
+          <button onClick={closeCheck} style={{
+            background: 'none', border: 'none', color: MUTED,
+            fontSize: '20px', cursor: 'pointer', padding: '4px 8px', flexShrink: 0,
+          }}>←</button>
+          <span style={{
+            fontSize: '13px', fontWeight: '700', color: '#ffffff',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{checkModule.title}</span>
+        </div>
+
+        {/* Scrollable content */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px' }}>
+          <p style={{ fontSize: '12px', color: MUTED, margin: 0 }}>
+            Self-check · 3 questions · nothing is saved
+          </p>
+
+          {checkDone || !current ? (
+            <>
+              <p style={{
+                fontSize: '15px', color: '#cbd5e1', lineHeight: 1.7,
+                margin: '20px 0 24px',
+              }}>That's the module. Nothing saved — read on.</p>
+              <button onClick={closeCheck} style={{
+                width: '100%', padding: '13px', background: ACCENT,
+                border: 'none', borderRadius: '10px',
+                color: BG, fontSize: '14px', fontWeight: '700',
+                cursor: 'pointer',
+              }}>Back to path</button>
+            </>
+          ) : (
+            <>
+              <p style={{
+                fontSize: '11px', fontWeight: '700', letterSpacing: '0.05em',
+                color: MUTED, margin: '18px 0 8px',
+              }}>Question {checkStep + 1} of {questions.length}</p>
+
+              <h2 style={{
+                fontSize: '17px', fontWeight: '700', color: '#ffffff',
+                lineHeight: 1.4, margin: '0 0 16px',
+              }}>{current.q}</h2>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {current.options.map((opt, i) => {
+                  const isAnswer = i === current.answer;
+                  const isPick = i === checkPicked;
+                  // Before answering: plain tappable rows. After: the right option
+                  // in accent, a wrong pick in muted red, the rest dimmed and inert.
+                  const bg = revealed
+                    ? (isAnswer ? `${ACCENT}1f` : isPick ? '#f871711a' : TILE_READ)
+                    : TILE;
+                  const border = revealed
+                    ? (isAnswer ? ACCENT : isPick ? '#f87171' : BORDER)
+                    : BORDER_2;
+                  const color = revealed
+                    ? (isAnswer ? ACCENT : isPick ? '#f87171' : MUTED)
+                    : '#e2e8f0';
+                  const dim = revealed && !isAnswer && !isPick;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => pickOption(i)}
+                      disabled={revealed}
+                      style={{
+                        width: '100%', textAlign: 'left' as const,
+                        background: bg, border: `1px solid ${border}`,
+                        borderRadius: '10px', padding: '13px 14px',
+                        color, fontSize: '14px', lineHeight: 1.45,
+                        cursor: revealed ? 'default' : 'pointer',
+                        opacity: dim ? 0.55 : 1,
+                      }}
+                    >{opt}</button>
+                  );
+                })}
+              </div>
+
+              {revealed && (
+                <>
+                  <div style={{
+                    background: TILE, border: `1px solid ${BORDER_2}`,
+                    borderRadius: '10px', padding: '14px 16px', marginTop: '16px',
+                  }}>
+                    <p style={{
+                      fontSize: '11px', fontWeight: '600', color: '#e2e8f0',
+                      textTransform: 'uppercase', letterSpacing: '0.08em',
+                      margin: '0 0 8px',
+                    }}>Why</p>
+                    <p style={{
+                      fontSize: '14px', color: MUTED, lineHeight: 1.6, margin: 0,
+                    }}>{current.why}</p>
+                  </div>
+
+                  <button onClick={advanceCheck} style={{
+                    width: '100%', padding: '13px', background: ACCENT,
+                    border: 'none', borderRadius: '10px', marginTop: '16px',
+                    color: BG, fontSize: '14px', fontWeight: '700',
+                    cursor: 'pointer',
+                  }}>{isLast ? 'Finish' : 'Next question'}</button>
+                </>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -400,10 +560,30 @@ export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
                     </div>
 
                     {mod.check && (
-                      <p style={{
-                        fontSize: '11px', color: MUTED, fontStyle: 'italic',
-                        margin: '10px 0 0', paddingLeft: '2px',
-                      }}>End-of-module self-check</p>
+                      hasCheck(mod.id) ? (
+                        <button
+                          onClick={() => openCheck({ id: mod.id, title: mod.title })}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '10px',
+                            width: '100%', textAlign: 'left' as const,
+                            background: 'none', border: 'none',
+                            color: MUTED, fontStyle: 'italic',
+                            fontSize: '11px', margin: '10px 0 0', padding: '4px 2px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <span style={{ flex: 1 }}>End-of-module self-check</span>
+                          <span style={{
+                            flexShrink: 0, color: ACCENT,
+                            fontStyle: 'normal', fontWeight: '600',
+                          }}>Start · 3 questions</span>
+                        </button>
+                      ) : (
+                        <p style={{
+                          fontSize: '11px', color: MUTED, fontStyle: 'italic',
+                          margin: '10px 0 0', paddingLeft: '2px',
+                        }}>End-of-module self-check</p>
+                      )
                     )}
                   </div>
                 );
