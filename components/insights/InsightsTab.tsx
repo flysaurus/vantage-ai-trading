@@ -36,6 +36,7 @@ import { getStyleContent } from '@/lib/content/investor-styles';
 import { useTabStore } from '@/store';
 import type { Position, AccountSummary } from '@/types';
 import { apiGet, apiPost } from '@/lib/api-client';
+import { useThresholdCrossings } from '@/lib/insights/use-threshold-crossings';
 import { fmt, pctStr, splitCents } from '@/lib/insights/format';
 import { buildDeck, buildEarningsRows, type DeckTeaser } from '@/lib/insights/deck';
 import { briefAskPrompt } from '@/lib/insights/brief';
@@ -79,6 +80,11 @@ export function InsightsTab() {
   const loading = isBrokerExpected ? brokerLoading : liveLoading;
 
   const positions: Position[] = displayAccount?.positions || [];
+
+  // ── Threshold crossings (item: one-line rollup on Insights) ──
+  // SAME source as the Holdings row badges, so the two screens agree on who
+  // crossed. The noticed feed is a log and can lag; this is the live set.
+  const { symbols: crossedSymbols, count: crossedCount } = useThresholdCrossings(positions);
 
   const accountName = isShowingDemo ? 'Demo' : brokerMeta?.name || activeAccount?.name || 'Broker';
 
@@ -391,6 +397,46 @@ export function InsightsTab() {
           </div>
         </div>
       </div>
+
+      {/* ── 3b. Threshold rollup — ONE line, only when something crossed ──
+          Compact summary of the inline Holdings badges: the user should not
+          have to open Holdings and hunt for the pills to learn that positions
+          moved past a threshold. Tapping goes to Holdings (where the badges
+          are), never to a screen that needs another choice. Count and
+          membership come from the same computation the badges use. */}
+      {crossedCount > 0 && (
+        <div style={{ margin: '12px 20px 0' }}>
+          <button
+            type="button"
+            data-testid="threshold-rollup"
+            onClick={() => setTab('portfolio')}
+            title={crossedSymbols.join(', ')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+              background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)',
+              borderRadius: 12, padding: '11px 14px', cursor: 'pointer',
+              fontFamily: 'inherit', textAlign: 'left',
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                background: 'var(--v-accent-label)',
+              }}
+            />
+            <span
+              data-testid="threshold-rollup-text"
+              style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--v-text-primary)' }}
+            >
+              {crossedCount} {crossedCount === 1 ? 'position' : 'positions'} crossed a threshold today
+            </span>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--v-accent-label)', whiteSpace: 'nowrap' }}>
+              Review →
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* ── 4. Hero deck (or single fallback card) ──
           SHARED HEADER (PART 1): orb + "RUFUS NOTICED" renders exactly ONCE,
