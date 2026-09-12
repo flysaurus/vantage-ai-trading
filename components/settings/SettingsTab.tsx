@@ -7,7 +7,6 @@ import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 
-import { isLearningEnabled, setLearningEnabled as saveLearningPref } from '@/lib/learning/preferences';
 import {
   CONCENTRATION_PRESETS,
   suggestedPresetForStyle,
@@ -74,7 +73,6 @@ export function SettingsTab() {
   );
   const [savingTarget, setSavingTarget] = useState(false);
 
-  const [learningEnabled, setLearningEnabled] = useState(isLearningEnabled);
   const [isAdmin, setIsAdmin] = useState(false);
   // ── Confirmation dialog state ─────────────────────────
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -290,63 +288,6 @@ export function SettingsTab() {
       >
         {label}
       </button>
-    );
-  };
-
-  // ── Learning Toggle ───────────────────────────────────
-  const LearningToggle = () => {
-    const handleToggle = () => {
-      const next = !learningEnabled;
-      setLearningEnabled(next);
-      saveLearningPref(next);
-    };
-    return (
-      <div
-        onClick={handleToggle}
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '14px 16px',
-          background: '#1a2235',
-          borderRadius: '0 0 10px 10px',
-          minHeight: '52px',
-          cursor: 'pointer',
-        }}
-      >
-        <div>
-          <p style={{ fontSize: '15px', color: '#ffffff' }}>Learning</p>
-          <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>
-            {learningEnabled ? 'Financial concept tips after AI responses' : 'No educational cards shown'}
-          </p>
-        </div>
-        {/* Toggle switch */}
-        <div
-          style={{
-            width: '44px',
-            height: '26px',
-            borderRadius: '13px',
-            background: learningEnabled ? '#22d3ee' : '#334155',
-            position: 'relative',
-            transition: 'background 0.2s ease',
-            flexShrink: 0,
-          }}
-        >
-          <div
-            style={{
-              width: '20px',
-              height: '20px',
-              borderRadius: '50%',
-              background: '#ffffff',
-              position: 'absolute',
-              top: '3px',
-              left: learningEnabled ? '21px' : '3px',
-              transition: 'left 0.2s ease',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-            }}
-          />
-        </div>
-      </div>
     );
   };
 
@@ -929,7 +870,6 @@ export function SettingsTab() {
           </div>
         ))}
 
-        <LearningToggle />
       </div>
 
       {/* ═══════════════════════════════════════════════════════
@@ -1206,7 +1146,9 @@ export function SettingsTab() {
             background: '#0a0f1e',
             borderTop: '1px solid rgba(255,255,255,0.08)',
             padding: '12px 16px',
-            paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
+            // Full-screen sheet (inset 0, z-9999) — it covers BottomNav (z-50), so the bar only
+            // needs to clear the home-indicator safe area. Was reserving 90-100px of dead space.
+            paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
           }}>
             <button
               onClick={() => {

@@ -10,6 +10,18 @@ import { useLivePortfolio } from '@/context/PortfolioContext';
 import { useTradingCapability } from '@/hooks/useTradingCapability';
 import { getMarketStatus } from '@/lib/market-hours';
 
+// ── Bottom-bar geometry ──────────────────────────────────────────────────────
+// This modal is FULL-SCREEN (`position: fixed; inset: 0`, z-index 9999), so it sits
+// ABOVE the app chrome — BottomNav is z-50 and the Ask Rufus bar is z-45. The old
+// `max(calc(env(safe-area-inset-bottom) + 90px), 100px)` padding reserved space for a
+// nav bar that is never visible behind this modal, which left a large empty gap under
+// the bottom buttons (≈124px on iOS, 100px everywhere else). Bottom bars now only
+// clear the home-indicator safe area, and each scroll body reserves just enough room
+// to clear its own bar.
+const BAR_PAD = 'calc(12px + env(safe-area-inset-bottom, 0px))';
+const SCROLL_CLEAR_SHORT = 'calc(92px + env(safe-area-inset-bottom, 0px))'; // 1-button bar
+const SCROLL_CLEAR_MED = 'calc(152px + env(safe-area-inset-bottom, 0px))';  // 2-button bar
+
 // System basket name date suffix: MMDDYYYY in America/New_York.
 function formatSystemBasketDate(d: Date): string {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -673,7 +685,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       <div
         style={{
           flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px',
-          paddingBottom: 'calc(16px + env(safe-area-inset-bottom) + 80px)',
+          paddingBottom: SCROLL_CLEAR_SHORT,
           overscrollBehavior: 'contain',
           WebkitOverflowScrolling: 'touch',
         }}
@@ -912,7 +924,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         background: 'var(--v-canvas)',
         borderTop: '1px solid var(--v-rule)',
         padding: '12px 16px',
-        paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
+        paddingBottom: BAR_PAD,
       }}>
         <button
           onClick={() => {
@@ -944,7 +956,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
   const customThemeStep = (
     <>
       <div
-        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px', paddingBottom: '200px', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px', paddingBottom: SCROLL_CLEAR_MED, overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
         onWheel={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
       >
@@ -989,7 +1001,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         background: 'var(--v-canvas)',
         borderTop: '1px solid var(--v-rule)',
         padding: '12px 16px',
-        paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
+        paddingBottom: BAR_PAD,
         display: 'flex',
         flexDirection: 'column',
         gap: '10px',
@@ -1057,7 +1069,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         }}>×</button>
       </div>
       <div
-        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px', paddingBottom: 'calc(100px + env(safe-area-inset-bottom))', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px', paddingBottom: SCROLL_CLEAR_MED, overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
         onWheel={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
       >
@@ -1131,7 +1143,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         background: 'var(--v-canvas)',
         borderTop: '1px solid var(--v-rule)',
         padding: '12px 16px',
-        paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
+        paddingBottom: BAR_PAD,
         display: 'flex',
         flexDirection: 'column',
         gap: '10px',
@@ -1196,7 +1208,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
   const reviewStep = (
     <>
       <div
-        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px', paddingBottom: '200px', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px', paddingBottom: '24px', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
         onWheel={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
       >
@@ -2012,7 +2024,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         background: 'var(--v-canvas)',
         borderTop: '1px solid var(--v-rule)',
         padding: '12px 16px',
-        paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
+        paddingBottom: BAR_PAD,
         display: 'flex',
         flexDirection: 'column',
         gap: '10px',
@@ -2202,7 +2214,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           background: 'var(--v-canvas)',
           borderTop: '1px solid var(--v-rule)',
           padding: '12px 16px',
-          paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
+          paddingBottom: BAR_PAD,
           display: 'flex',
           flexDirection: 'column',
           gap: '10px',

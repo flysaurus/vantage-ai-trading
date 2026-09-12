@@ -33,8 +33,6 @@ import { HoldingsCallout } from '@/components/ai/HoldingsCallout';
 import { ProgressIndicator, type ChecklistItem } from '@/components/ai/ProgressIndicator';
 import TradeTicket from '@/components/portfolio/TradeTicket';
 import CompassIcon from '@/components/CompassIcon';
-import { useLearningMoment } from '@/hooks/useLearningMoment';
-import { LearningMomentCard } from '@/components/learning/LearningMomentCard';
 import { LearningLibrary } from '@/components/learning/LearningLibrary';
 import { ChatHistory } from '@/components/ai/ChatHistory';
 
@@ -709,10 +707,6 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
       fetchNoticed();
     }
   };
-
-  // ── Learning moment detection ──
-  const { learningCard, dismissLearning } =
-    useLearningMoment(lastAIResponse, currentSessionId);
 
   // ── Scroll behavior refs ──
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -3623,11 +3617,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           markMarkerExecuted(tradeTicket.symbol, tradeTicket.side, params.shares, params.shares * price);
         }}
       />
-
-      {/* ── Learning Moment Card ── */}
-      {learningCard && (
-        <LearningMomentCard card={learningCard} onGotIt={() => dismissLearning(true)} onDismiss={() => dismissLearning(false)} />
-      )}
 
       {/* ── Learning Library Overlay ── */}
       <LearningLibrary open={showLibrary} onClose={() => setShowLibrary(false)} />
