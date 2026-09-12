@@ -108,6 +108,86 @@ export interface TaxHarvestPlanExportInput {
 /** Illustrative blended short-term capital-gains rate for the savings estimate. */
 export const DEFAULT_TAX_RATE = 0.2;
 
+// ─── Payload normalization ──────────────────────────────────────────────────
+// Lives HERE, not in the route, so it can be unit-tested without booting a
+// NextRequest. The route used to inline this mapping and silently dropped
+// `preciseSavings` + `illustrative` — the client sent both, the workbook never
+// saw them, and a plan whose positions carry no purchase date fell back to the
+// legacy single figure (harvestableLosses × rate) instead of the labelled
+// "dated positions + illustrative range" split. Whitelisting is right; losing
+// fields while whitelisting is the bug this function exists to prevent.
+
+/** Clamp/validate a number coming from the client. */
+function numOrNull(v: unknown, fallback: number | null = null): number | null {
+  const n = typeof v === 'string' ? Number(v) : v;
+  return typeof n === 'number' && Number.isFinite(n) ? n : fallback;
+}
+
+/** Trim + length-cap a client string; null when empty. */
+function strOrNull(v: unknown, max = 120): string | null {
+  return v != null && String(v).trim().length > 0 ? String(v).trim().slice(0, max) : null;
+}
+
+/**
+ * Map an untrusted request body onto `TaxHarvestPlanExportInput`.
+ * Returns null when the body carries no usable positions (the route 400s).
+ */
+export function normalizeTaxHarvestExportInput(
+  body: any,
+  generatedAt: Date = new Date(),
+): TaxHarvestPlanExportInput | null {
+  const rawPositions: any[] = Array.isArray(body?.positions) ? body.positions.slice(0, 500) : [];
+  const positions: TaxHarvestExportPosition[] = rawPositions
+    .map((p) => ({
+      symbol: String(p?.symbol ?? '').toUpperCase().slice(0, 12),
+      name: strOrNull(p?.name, 80),
+      qty: numOrNull(p?.qty, 0) ?? 0,
+      costBasis: numOrNull(p?.costBasis, 0) ?? 0,
+      marketValue: numOrNull(p?.marketValue, 0) ?? 0,
+      unrealizedLoss: numOrNull(p?.unrealizedLoss, 0) ?? 0,
+      unrealizedLossPct: numOrNull(p?.unrealizedLossPct, 0) ?? 0,
+      washSaleStatus: strOrNull(p?.washSaleStatus, 80),
+      washSaleSafe: typeof p?.washSaleSafe === 'boolean' ? p.washSaleSafe : undefined,
+      daysSinceLastTrade: numOrNull(p?.daysSinceLastTrade),
+    }))
+    .filter((p) => p.symbol.length > 0);
+
+  if (positions.length === 0) return null;
+
+  const environment =
+    body?.environment === 'demo' || body?.environment === 'paper' || body?.environment === 'live'
+      ? (body.environment as 'demo' | 'paper' | 'live')
+      : null;
+
+  const rawIllustrative = body?.illustrative;
+  const illustrativeLoss = numOrNull(rawIllustrative?.loss, 0) ?? 0;
+  const illustrative =
+    rawIllustrative && illustrativeLoss > 0
+      ? {
+          loss: illustrativeLoss,
+          low: numOrNull(rawIllustrative?.low, 0) ?? 0,
+          high: numOrNull(rawIllustrative?.high, 0) ?? 0,
+          positionCount: Math.max(0, Math.round(numOrNull(rawIllustrative?.positionCount, 0) ?? 0)),
+          note: strOrNull(rawIllustrative?.note, 500),
+        }
+      : null;
+
+  return {
+    accountName: strOrNull(body?.accountName, 80) || 'Portfolio',
+    broker: strOrNull(body?.broker, 60),
+    environment,
+    access: body?.access === 'read-only' ? 'read-only' : 'trading',
+    isDemo: body?.isDemo === true,
+    taxYear: numOrNull(body?.taxYear),
+    estimatedTaxRate: numOrNull(body?.estimatedTaxRate),
+    preciseSavings: numOrNull(body?.preciseSavings),
+    illustrative,
+    positions,
+    generatedAt,
+    note: strOrNull(body?.note, 500),
+  };
+}
+
 /**
  * Wash-sale status text for a position.
  * Prefers an explicit `washSaleStatus`; otherwise derives from the safe flag.
@@ -206,9 +286,15 @@ export async function buildTaxHarvestPlanWorkbook(
   const illustrativeMid = illustrative ? (illustrative.low + illustrative.high) / 2 : 0;
   // The rate reported on the summary is the blended rate behind the headline —
   // so it can never read 0.00% while the plan shows real harvestable losses.
-  const effectiveRate = harvestableLosses > 0
+  // It is also sanity-bounded: a real book lands inside the illustrative band
+  // (15–24%), so a ratio above 100% means the payload is internally
+  // inconsistent (e.g. an undated loss larger than the whole harvestable loss
+  // it was supposed to be part of). Printing 739.95% would be as misleading as
+  // printing 0.00%, so fall back to the caller's rate instead.
+  const blendedRate = harvestableLosses > 0
     ? (estimatedTaxSavings + illustrativeMid) / harvestableLosses
-    : taxRate;
+    : 0;
+  const effectiveRate = blendedRate > 0 && blendedRate <= 1 ? blendedRate : taxRate;
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Vantage';
