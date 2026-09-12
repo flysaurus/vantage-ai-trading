@@ -21,6 +21,7 @@ const PUBLIC_ROUTES = [
   '/onboarding',
   '/create-account',
   '/you-are-in', // has its own auth check
+  '/core', // Portfolio Intelligence Core preview — WebGL visual only, no data
   '/api/ai/facts/test', // admin-only test endpoint (uses service role internally)
   '/api/ai/weekly-snapshot/test-contradiction', // admin-only test endpoint (uses service role internally)
   '/api/ai/greeting/test-variety', // admin-only test endpoint (uses service role internally)
