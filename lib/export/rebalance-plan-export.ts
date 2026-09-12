@@ -60,18 +60,21 @@ export interface RebalancePlanExportInput {
   note?: string | null;
 }
 
-const CURRENCY_FMT = '"$"#,##0.00';
-const PERCENT_FMT = '0.00"%"';
-const QTY_FMT = '#,##0.0000';
-const HEADER_FILL: ExcelJS.Fill = {
+// Shared style tokens for plan exports. Exported so sibling exports (e.g. the
+// tax-loss-harvesting plan) can reuse ONE source of truth instead of forking
+// the palette/formats. Exporting does not change any runtime behavior here.
+export const CURRENCY_FMT = '"$"#,##0.00';
+export const PERCENT_FMT = '0.00"%"';
+export const QTY_FMT = '#,##0.0000';
+export const HEADER_FILL: ExcelJS.Fill = {
   type: 'pattern',
   pattern: 'solid',
   fgColor: { argb: 'FF0B1220' },
 };
-const INK = 'FF0B1220';
-const MUTED = 'FF64748B';
+export const INK = 'FF0B1220';
+export const MUTED = 'FF64748B';
 
-function num(value: number | null | undefined, dp = 2): number | null {
+export function num(value: number | null | undefined, dp = 2): number | null {
   if (value == null || !Number.isFinite(value)) return null;
   const f = Math.pow(10, dp);
   return Math.round(value * f) / f;
@@ -106,7 +109,7 @@ export function rebalanceExportFilename(input: {
   return `vantage-rebalance-plan-${slug}-${stamp}.xlsx`;
 }
 
-function styleHeaderRow(row: ExcelJS.Row) {
+export function styleHeaderRow(row: ExcelJS.Row) {
   row.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
   row.fill = HEADER_FILL;
   row.alignment = { vertical: 'middle' };

@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, TrendingUp, Activity } from 'lucide-react';
 import { returnToApp } from '@/lib/nav-back';
+import { tlhEntryPath, consumeTlhCancelNotice } from '@/lib/tax-harvest/origin';
 
 const STRATEGIES = [
   { key: 'dca', name: 'Dollar Cost Averaging', icon: '🔄', desc: 'Invest a fixed amount on a recurring schedule', path: '/strategies/setup/dca', available: true },
@@ -20,6 +21,17 @@ export default function StrategiesPage() {
   const [activeSchedules, setActiveSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isReadOnly, setIsReadOnly] = useState(false);
+  // Neutral, one-shot notice when the user backs out of a gated strategy flow
+  // (currently Tax Loss Harvesting) without accepting the disclosure.
+  const [flashNotice, setFlashNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    const notice = consumeTlhCancelNotice();
+    if (!notice) return;
+    setFlashNotice(notice.text);
+    const t = setTimeout(() => setFlashNotice(null), 9000);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -61,6 +73,15 @@ export default function StrategiesPage() {
         <p style={{ fontSize: 13, color: 'var(--v-text-muted)', margin: 0 }}>Configure and monitor automated trading strategies</p>
       </div>
 
+      {flashNotice && (
+        <div
+          data-testid="flash-notice"
+          style={{ marginBottom: 24, padding: '12px 14px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 10, fontSize: 12, fontWeight: 500, color: 'var(--v-text-primary)', lineHeight: 1.5 }}
+        >
+          {flashNotice}
+        </div>
+      )}
+
       {/* Active Schedules Summary */}
       {!loading && activeSchedules.length > 0 && (
         <div style={{ marginBottom: 24, padding: 14, background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 12 }}>
@@ -94,7 +115,7 @@ export default function StrategiesPage() {
         {STRATEGIES.filter(s => !(isReadOnly && s.key === 'dca')).map(s => (
           <div
             key={s.key}
-            onClick={() => s.available ? router.push(s.path) : null}
+            onClick={() => s.available ? router.push(s.key === 'taxharvest' ? tlhEntryPath('strategies') : s.path) : null}
             style={{
               padding: '14px 16px',
               background: 'var(--v-card)',

@@ -14,6 +14,7 @@ import { isWorkingStatus } from '@/lib/order-format';
 import { computeBasketAggregateStatus } from '@/lib/basket-aggregate';
 import { Masthead } from '@/components/layout/Masthead';
 import { getStyleContent } from '@/lib/content/investor-styles';
+import { tlhEntryPath } from '@/lib/tax-harvest/origin';
 
 const statusBorder: Record<string, string> = {
   filled_buy: 'var(--v-gain)',
@@ -36,7 +37,7 @@ interface InvestStrategy {
 const ALL_STRATEGIES: InvestStrategy[] = [
   { key: 'dca', name: 'Dollar Cost Averaging', desc: 'Invest a fixed amount on a schedule', icon: '🔄', path: '/strategies/setup/dca', available: true },
   { key: 'rebalancing', name: 'Portfolio Rebalancing', desc: 'Restore your target asset allocation', icon: '⚖️', path: '/strategies/setup/rebalancing', available: true },
-  { key: 'taxharvest', name: 'Tax Loss Harvesting', desc: 'Offset gains by realizing losses', icon: '🧾', path: '/strategies/setup/tax-harvesting', available: true },
+  { key: 'taxharvest', name: 'Tax Loss Harvesting', desc: 'Offset gains by realizing losses', icon: '🧾', path: tlhEntryPath('invest'), available: true },
   { key: 'momentum', name: 'Momentum Rotation', desc: 'Rotate into the strongest trends', icon: '🚀', path: '#', available: false },
   { key: 'meanreversion', name: 'Mean Reversion', desc: 'Buy oversold, sell overextended', icon: '📉', path: '#', available: false },
 ];

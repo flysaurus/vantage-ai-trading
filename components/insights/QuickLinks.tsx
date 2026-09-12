@@ -24,6 +24,7 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { useTabStore } from '@/store';
+import { tlhEntryPath } from '@/lib/tax-harvest/origin';
 
 interface Props {
   /** All active noticed items (already fetched by the Insights tab). */
@@ -86,7 +87,7 @@ export function QuickLinks({ items }: Props) {
       branch: 'flow',
       cta: 'Set up →',
       // The REAL Tax Loss Harvesting activation flow.
-      onClick: () => router.push('/strategies/setup/tax-harvesting'),
+      onClick: () => router.push(tlhEntryPath('insights')),
     },
     {
       id: 'goals',

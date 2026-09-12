@@ -4,10 +4,36 @@ import { apiGet, apiPost } from '@/lib/api-client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, TrendingDown, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, Activity, Info } from 'lucide-react';
+import { ArrowLeft, TrendingDown, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, Activity, Info, Download } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getDemoAccount } from '@/lib/demo-data';
 import { returnToApp } from '@/lib/nav-back';
+import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
+import { AccountProvider } from '@/context/AccountContext';
+import TradeTicket from '@/components/portfolio/TradeTicket';
+import TaxHarvestDisclosureGate from '@/components/disclosure/TaxHarvestDisclosureGate';
+import {
+  TLH_DISCLOSURE_BANNER_TEXT,
+  isDisclosureAccepted,
+  acceptDisclosure,
+} from '@/lib/tax-harvest/disclosure';
+import {
+  parseTlhOrigin,
+  setTlhCancelNotice,
+  tlhOriginPath,
+  type TlhOrigin,
+} from '@/lib/tax-harvest/origin';
+import {
+  computePositionHoldingPeriod,
+  summarizeTaxEstimate,
+  annualSavingsRange,
+  rateBreakdownNote,
+  toFifoLots,
+  SHORT_TERM_ASSUMED_RATE,
+  LONG_TERM_ASSUMED_RATE,
+  type PositionHoldingPerformance,
+  type TaxLot,
+} from '@/lib/tax-harvest/holding-period';
 
 // ─── Types ─────────────────────────────────────────────────
 interface Position {
@@ -169,7 +195,18 @@ function isYearEnd(): boolean {
 }
 
 // ─── Page Component ────────────────────────────────────────
+// Standalone /strategies route: mount AccountProvider so TradeTicket (the real
+// pre-filled sell ticket) sees the active account and its trading capability,
+// exactly as the shared Portfolio surfaces do.
 export default function TaxHarvestingPage() {
+  return (
+    <AccountProvider>
+      <TaxHarvestingPageInner />
+    </AccountProvider>
+  );
+}
+
+function TaxHarvestingPageInner() {
   const router = useRouter();
   const { user } = useAuth();
   const investorStyle = (user?.investorStyle || 'buffett') as import('@/types').InvestorStyle;
@@ -193,6 +230,27 @@ export default function TaxHarvestingPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState('');
+  const [downloading, setDownloading] = useState(false);
+
+  // ── Disclosure / navigation state (Round 25) ──
+  // `accountKey` scopes the disclosure acceptance to ONE account; `origin` is
+  // the screen the user actually came from (passed as real navigation state on
+  // the entry links), so Cancel/Back return there instead of guessing.
+  const [accountKey, setAccountKey] = useState<string | null>(null);
+  const [accountLabel, setAccountLabel] = useState<string | null>(null);
+  const [accountBroker, setAccountBroker] = useState<string | null>(null);
+  const [accountEnvironment, setAccountEnvironment] = useState<'demo' | 'paper' | 'live' | null>(null);
+  const [origin, setOrigin] = useState<TlhOrigin | null>(null);
+  const [showGate, setShowGate] = useState(false);
+  const [disclosureAccepted, setDisclosureAccepted] = useState(false);
+
+  // ── Holding-period + YTD data ──
+  const [lotsBySymbol, setLotsBySymbol] = useState<Record<string, TaxLot[]>>({});
+  const [ytdQuotes, setYtdQuotes] = useState<Record<string, { yearStartClose: number; latestClose: number }>>({});
+  const [ytdLoading, setYtdLoading] = useState(false);
+
+  // ── Real sell ticket (tradeable accounts only) ──
+  const [harvestTicket, setHarvestTicket] = useState<{ symbol: string; price: number } | null>(null);
 
   // ─── Data Loading ────────────────────────────────────────
   // /strategies/* routes are standalone (NOT wrapped in BrokerProvider), so the
@@ -211,6 +269,10 @@ export default function TaxHarvestingPage() {
         // Resolve the active live account so we scope broker calls to it.
         let connectionId: string | null = null;
         let liveTradingEnabled = true;
+        let resolvedAccountKey = 'demo';
+        let resolvedAccountLabel: string | null = null;
+        let resolvedBroker: string | null = null;
+        let resolvedEnvironment: 'demo' | 'paper' | 'live' | null = null;
         try {
           const acctRes = await apiGet('/api/accounts');
           if (acctRes.ok) {
@@ -223,6 +285,12 @@ export default function TaxHarvestingPage() {
               : null;
             if (live) {
               liveTradingEnabled = live.tradingEnabled !== false;
+              resolvedAccountKey = typeof live.id === 'string' ? live.id : 'demo';
+              resolvedAccountLabel = live.name || live.broker || null;
+              resolvedBroker = live.broker || live.brokerageSlug || null;
+              resolvedEnvironment = (live.environment === 'paper' || live.environment === 'live')
+                ? live.environment
+                : 'live';
               if (typeof live.id === 'string' && live.id.startsWith('snaptrade:')) {
                 connectionId = live.id.slice('snaptrade:'.length);
               }
@@ -231,6 +299,10 @@ export default function TaxHarvestingPage() {
         } catch { /* fall through to demo */ }
 
         if (cancelled) return;
+        setAccountKey(resolvedAccountKey);
+        setAccountLabel(resolvedAccountLabel);
+        setAccountBroker(resolvedBroker);
+        setAccountEnvironment(resolvedEnvironment ?? (resolvedAccountKey === 'demo' ? 'demo' : null));
 
         // Check broker status (scoped to the resolved connection when we have one).
         let connected = false;
@@ -319,6 +391,67 @@ export default function TaxHarvestingPage() {
         if (cancelled) return;
         setPositions(posList);
 
+        // ── Holding-period ledger: the FIFO lots behind each position ──
+        // Same `position_lots` ledger the sell flow and wash-sale checks use.
+        // Zero lots for imported broker positions is expected — those carry no
+        // acquisition date, and the page reports them as "unknown" rather than
+        // assuming a rate.
+        try {
+          const supabase = getSupabaseBrowserClient();
+          const { data: sessionData } = await supabase.auth.getSession();
+          const uid = sessionData?.session?.user?.id;
+          if (uid) {
+            let lotsQuery = supabase
+              .from('position_lots')
+              .select('id, ticker, qty, remaining_qty, price_at_fill, filled_at')
+              .eq('user_id', uid)
+              .gt('remaining_qty', 0)
+              .order('filled_at', { ascending: true });
+            lotsQuery = connectionId
+              ? lotsQuery.eq('account_id', connectionId)
+              : lotsQuery.is('account_id', null);
+            const { data: lotRows } = await lotsQuery;
+            if (!cancelled && Array.isArray(lotRows)) {
+              const grouped: Record<string, TaxLot[]> = {};
+              for (const row of lotRows as any[]) {
+                const ticker = String(row.ticker || '').toUpperCase();
+                if (!ticker) continue;
+                if (!grouped[ticker]) grouped[ticker] = [];
+                grouped[ticker].push({
+                  id: String(row.id),
+                  qty: Number(row.qty) || 0,
+                  remainingQty: Number(row.remaining_qty) || 0,
+                  priceAtFill: Number(row.price_at_fill) || 0,
+                  filledAt: String(row.filled_at || ''),
+                });
+              }
+              setLotsBySymbol(grouped);
+            }
+          }
+        } catch { /* no lot ledger available — every position reports unknown */ }
+
+        // ── YTD baseline closes (prior-year close per symbol) ──
+        if (posList.length > 0 && !cancelled) {
+          setYtdLoading(true);
+          try {
+            const ytdRes = await apiGet(`/api/market/ytd?symbols=${posList.map(p => p.symbol).join(',')}`);
+            if (ytdRes.ok) {
+              const ytdData = await ytdRes.json();
+              const rows = ytdData?.quotes || {};
+              const parsed: Record<string, { yearStartClose: number; latestClose: number }> = {};
+              Object.entries(rows).forEach(([sym, r]: [string, any]) => {
+                const yearStartClose = Number(r?.yearStartClose);
+                const latestClose = Number(r?.latestClose);
+                if (Number.isFinite(yearStartClose) && yearStartClose > 0) {
+                  parsed[sym] = { yearStartClose, latestClose: Number.isFinite(latestClose) ? latestClose : 0 };
+                }
+              });
+              if (!cancelled) setYtdQuotes(parsed);
+            }
+          } catch { /* YTD row simply won't render */ }
+          if (!cancelled) setYtdLoading(false);
+        }
+
         // Load YTD trade summary
         const summary = await loadTradeSummary(connected);
         if (!cancelled) setTradeSummary(summary);
@@ -356,6 +489,45 @@ export default function TaxHarvestingPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // ─── Entry origin (real navigation state, not a guess) ────
+  // Entry links pass ?from=<origin>; Cancel/Back return there.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    setOrigin(parseTlhOrigin(params.get('from')));
+  }, []);
+
+  // ─── Disclosure gate ─────────────────────────────────────
+  // Blocking, per account. Re-shown only when the copy version changes.
+  useEffect(() => {
+    if (!accountKey) return;
+    const accepted = isDisclosureAccepted(accountKey);
+    setDisclosureAccepted(accepted);
+    if (!accepted) setShowGate(true);
+  }, [accountKey]);
+
+  const handleAcceptDisclosure = useCallback(() => {
+    if (!accountKey) return;
+    acceptDisclosure(accountKey);
+    setDisclosureAccepted(true);
+    setShowGate(false);
+  }, [accountKey]);
+
+  /**
+   * Leave the page — always return to the screen the user actually came from.
+   * When they never accepted the disclosure, the origin screen is told why in
+   * neutral language (no warning styling).
+   */
+  const handleExit = useCallback((opts?: { cancelledGate?: boolean }) => {
+    const blocked = Boolean(opts?.cancelledGate) || !disclosureAccepted;
+    if (blocked) setTlhCancelNotice(origin ?? 'strategies');
+    if (origin) {
+      router.push(tlhOriginPath(origin));
+      return;
+    }
+    returnToApp(router);
+  }, [origin, disclosureAccepted, router]);
+
   // ─── Derived ─────────────────────────────────────────────
   const lossPositions = useMemo(() =>
     positions.filter(p => p.unrealizedPL < 0)
@@ -363,36 +535,67 @@ export default function TaxHarvestingPage() {
     [positions],
   );
 
-  const totalLossHarvestable = useMemo(() =>
-    Object.values(selectedHarvests).reduce((s, h) => s + Math.abs(h.loss), 0),
-    [selectedHarvests],
-  );
-
   const totalTaxSavings = useMemo(() =>
-    totalLossHarvestable * 0.20,
-    [totalLossHarvestable],
+    Object.values(selectedHarvests).reduce((s, h) => s + (h.estTaxSavings || 0), 0),
+    [selectedHarvests],
   );
 
   const selectedCount = Object.keys(selectedHarvests).length;
   const replacementCount = Object.keys(selectedReplacements).length;
 
-  // Assumed blended short-term capital-gains rate for illustrative estimates.
-  const ASSUMED_SHORT_TERM_RATE = 0.24;
+  // A live, tradeable connection can place a real sell order from here.
+  const canTrade = isConnected && !isReadOnly;
 
-  // Projected annual tax-savings range, derived from the portfolio we already
-  // loaded (not hardcoded): a modest, recurring slice of the current
-  // harvestable-loss value. Low end = 25% of today's harvestable losses (a
-  // conservative "typical" year); high end = 50% (an active year). Both are
-  // multiplied by the assumed rate. Falls back to a stated static range when
-  // the portfolio has no market value to derive from.
-  const annualSavingsRange = useMemo(() => {
-    const totalLosses = lossPositions.reduce((s, p) => s + Math.abs(p.unrealizedPL), 0);
-    if (totalLosses <= 0) return null;
-    return {
-      low: totalLosses * 0.25 * ASSUMED_SHORT_TERM_RATE,
-      high: totalLosses * 0.50 * ASSUMED_SHORT_TERM_RATE,
-    };
-  }, [lossPositions]);
+  // ── Holding-period breakdown per loss position ──────────
+  // Short- vs long-term comes from the FIFO lot ledger, never from a single
+  // assumed rate. Shares with no tracked lot are reported as unknown and are
+  // excluded from the estimate instead of being approximated.
+  const lossBreakdowns = useMemo(() => {
+    const asOf = new Date();
+    const map: Record<string, PositionHoldingPerformance> = {};
+    for (const p of lossPositions) {
+      map[p.symbol] = computePositionHoldingPeriod(
+        {
+          symbol: p.symbol,
+          qty: p.qty,
+          avgCost: p.qty > 0 ? p.costBasis / p.qty : 0,
+          currentPrice: p.currentPrice,
+          marketValue: p.marketValue,
+        },
+        lotsBySymbol[p.symbol] || [],
+        asOf,
+      );
+    }
+    return map;
+  }, [lossPositions, lotsBySymbol]);
+
+  const taxSummary = useMemo(
+    () => summarizeTaxEstimate(Object.values(lossBreakdowns)),
+    [lossBreakdowns],
+  );
+
+  // ── Year-to-date unrealized P&L ─────────────────────────
+  // Distinct from the since-inception Total on Insights: this measures what the
+  // CURRENT holdings have done since the prior year's close.
+  const ytdStats = useMemo(() => {
+    let unrealized = 0;
+    let covered = 0;
+    let missing = 0;
+    for (const p of positions) {
+      const q = ytdQuotes[p.symbol];
+      const price = p.currentPrice > 0 ? p.currentPrice : q?.latestClose || 0;
+      if (!q || !(price > 0)) { missing += 1; continue; }
+      unrealized += (price - q.yearStartClose) * p.qty;
+      covered += 1;
+    }
+    return { unrealized, covered, missing };
+  }, [positions, ytdQuotes]);
+
+  // Recurring-year projection off the rate-corrected estimate.
+  const savingsRange = useMemo(
+    () => annualSavingsRange(taxSummary.estimatedSavings),
+    [taxSummary.estimatedSavings],
+  );
 
   // ─── Handlers ────────────────────────────────────────────
   const handleHarvest = useCallback((pos: Position) => {
@@ -406,6 +609,7 @@ export default function TaxHarvestingPage() {
         return next;
       }
       const loss = Math.abs(pos.unrealizedPL);
+      const bd = lossBreakdowns[pos.symbol];
       return {
         ...prev,
         [pos.symbol]: {
@@ -415,11 +619,91 @@ export default function TaxHarvestingPage() {
           currentPrice: pos.currentPrice,
           loss,
           lossPct: Math.abs(pos.unrealizedPLPct),
-          estTaxSavings: loss * 0.20,
+          // Rate-corrected estimate: short-term losses at the assumed ordinary
+          // rate, long-term at the long-term rate. Shares with no acquisition
+          // date contribute $0 rather than a guessed number.
+          estTaxSavings: bd ? bd.estimatedSavings : 0,
         },
       };
     });
-  }, [washSaleStatuses]);
+  }, [washSaleStatuses, lossBreakdowns]);
+
+  // Open the REAL pre-filled sell ticket for one position (tradeable accounts).
+  // Same ticket, same execution route, same FIFO/wash-sale disclosure as the
+  // Portfolio sell flow — the harvest is just a pre-filled sell of that
+  // position, targeting the same lots the ledger would consume.
+  const openHarvestTicket = useCallback((pos: Position) => {
+    setHarvestTicket({ symbol: pos.symbol, price: pos.currentPrice });
+  }, []);
+
+  // ─── Plan download (.xlsx) ────────────────────────────────
+  // Available in BOTH access modes — a read-only connection can't place orders
+  // from Vantage, so the download is the only way to act on the review.
+  // Same transport + styling as the rebalancing plan export.
+  const handleDownload = useCallback(async () => {
+    if (downloading || lossPositions.length === 0) return;
+    setDownloading(true);
+    try {
+      const positionsPayload = lossPositions.map(p => {
+        const bd = lossBreakdowns[p.symbol];
+        const wash = washSaleStatuses[p.symbol];
+        return {
+          symbol: p.symbol,
+          name: p.name ?? null,
+          qty: p.qty,
+          costBasis: p.costBasis,
+          marketValue: p.marketValue,
+          unrealizedLoss: -Math.abs(p.unrealizedPL),
+          unrealizedLossPct: -Math.abs(p.unrealizedPLPct),
+          holdingPeriod: bd?.label ?? 'Unknown',
+          estTaxSavings: bd ? bd.estimatedSavings : 0,
+          washSaleSafe: wash ? wash.isSafe : undefined,
+          daysSinceLastTrade: wash?.daysSinceLastTrade ?? null,
+          washSaleStatus: wash
+            ? (wash.isSafe
+                ? 'Clear'
+                : `Blocked — purchased ${wash.daysSinceLastTrade} day${wash.daysSinceLastTrade === 1 ? '' : 's'} ago`)
+            : 'Not checked',
+        };
+      });
+      const res = await apiPost('/api/strategies/tax-harvest/export', {
+        accountName: accountLabel || (isDemo ? 'Demo Portfolio' : 'Portfolio'),
+        broker: accountBroker,
+        environment: accountEnvironment,
+        access: canTrade ? 'trading' : 'read-only',
+        isDemo,
+        taxYear: new Date().getFullYear(),
+        estimatedTaxRate: taxSummary.totalLosses > 0
+          ? taxSummary.estimatedSavings / taxSummary.totalLosses
+          : null,
+        positions: positionsPayload,
+        note: taxSummary.unknownLoss > 0
+          ? `${taxSummary.unclassifiedPositionCount} position(s) have no purchase date on file, so their holding period could not be determined and they are excluded from the savings estimate.`
+          : null,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        setToast(err?.error || 'Download failed');
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = /filename="?([^";]+)"?/.exec(disposition);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = match?.[1] || 'vantage-tax-harvest-plan.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setToast('✓ Plan downloaded (.xlsx)');
+    } catch {
+      setToast('Network error');
+    } finally {
+      setDownloading(false);
+    }
+  }, [downloading, lossPositions, lossBreakdowns, washSaleStatuses, accountLabel, accountBroker, accountEnvironment, isDemo, canTrade, taxSummary]);
 
   const handleSelectReplacement = useCallback((symbol: string, replacement: { symbol: string; name: string; price: number }) => {
     setSelectedReplacements(prev => {
@@ -475,7 +759,7 @@ export default function TaxHarvestingPage() {
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button onClick={() => returnToApp(router)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
+          <button onClick={() => handleExit()} data-testid="harvest-back" style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
             <ArrowLeft size={16} /> Back
           </button>
           <span style={{ padding: '4px 10px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 9999, fontSize: 11, fontWeight: 700, color: 'var(--v-text-muted)' }}>
@@ -517,8 +801,46 @@ export default function TaxHarvestingPage() {
         </div>
       )}
 
+      {/* ─── Persistent tax-estimate disclosure banner ──────────────
+          Stacked with (never merged into) the read-only / demo notices above.
+          Same amber informational banner treatment as those notices. */}
+      {!loading && (
+        <div
+          data-testid="tlh-estimate-banner"
+          style={{ padding: '8px 14px', background: 'var(--v-warn-dim)', border: '1px solid var(--v-warn-dim)', borderRadius: 8, fontSize: 11, fontWeight: 600, color: 'var(--v-warn)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6, lineHeight: 1.5 }}
+        >
+          <span>⚠️</span>
+          <span>{TLH_DISCLOSURE_BANNER_TEXT}</span>
+        </div>
+      )}
+
       {!loading && !loadError && (
         <>
+          {/* ─── Section 0a: Year-to-Date ─────────────── */}
+          <Section icon={<Activity size={12} />} label="Year to Date">
+            <div data-testid="ytd-unrealized" style={{ padding: '12px 14px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--v-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                    YTD Unrealized P&amp;L
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: ytdStats.unrealized >= 0 ? 'var(--v-gain)' : 'var(--v-loss)' }}>
+                    {ytdStats.unrealized >= 0 ? '+' : '-'}${Math.abs(ytdStats.unrealized).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.5 }}>
+                  <div>{ytdStats.covered} of {positions.length} positions priced since Dec 31</div>
+                  <div>Since Jan 1 &mdash; unrealized, on today&apos;s holdings</div>
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.5, marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--v-card-border)' }}>
+                This is this year&apos;s move only. The since-inception total you see on Insights includes earlier years.
+                {ytdLoading && ' Loading year-start prices…'}
+                {ytdStats.missing > 0 && ` ${ytdStats.missing} position${ytdStats.missing === 1 ? '' : 's'} had no year-start price available.`}
+              </div>
+            </div>
+          </Section>
+
           {/* ─── Section 0: Ongoing Monitoring ──────── */}
           <Section icon={<Activity size={12} />} label="Ongoing Monitoring">
             <div style={{ padding: '12px 14px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 10, fontSize: 12, color: 'var(--v-text-muted)', lineHeight: 1.6 }}>
@@ -546,37 +868,81 @@ export default function TaxHarvestingPage() {
                 </div>
                 {tradeSummary.realizedGains > 0 && (
                   <div style={{ fontSize: 12, color: 'var(--v-text-secondary)', padding: '8px 12px', background: 'var(--v-card)', borderRadius: 8, marginBottom: 10 }}>
-                    Harvestable losses could save you approximately <strong style={{ color: 'var(--v-gain)' }}>${((tradeSummary.realizedGains - tradeSummary.realizedLosses) * 0.20).toFixed(2)}</strong> in taxes (est. 20% rate)
+                    Harvestable losses could offset about <strong style={{ color: 'var(--v-gain)' }}>${taxSummary.estimatedSavings.toFixed(2)}</strong> of tax, estimated from each position&apos;s actual holding period
                   </div>
                 )}
               </>
             )}
 
-            {/* Projected annual tax savings — illustrative range */}
-            <div style={{ padding: '12px 14px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 10 }}>
+            {/* Tax estimate — per-position holding period, not one flat rate */}
+            <div data-testid="tax-rate-breakdown" style={{ padding: '12px 14px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 10 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--v-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
-                Projected Annual Tax Savings
+                Estimated Tax Savings on Harvestable Losses
               </div>
-              {annualSavingsRange ? (
-                <>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--v-gain)', marginBottom: 4 }}>
-                    ${annualSavingsRange.low.toFixed(0)} – ${annualSavingsRange.high.toFixed(0)}
-                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-text-muted)' }}> / year</span>
+              <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--v-gain)', marginBottom: 10 }}>
+                ${taxSummary.estimatedSavings.toFixed(2)}
+              </div>
+
+              {/* Rate split by holding period */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                <div data-testid="tax-rate-short-term" style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, fontSize: 12, color: 'var(--v-text-secondary)' }}>
+                  <span>
+                    Short-term losses <span style={{ color: 'var(--v-text-muted)' }}>(held ≤ 1 year)</span>
+                  </span>
+                  <span style={{ color: 'var(--v-text-primary)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    ${taxSummary.shortTermLoss.toFixed(2)} × {Math.round(SHORT_TERM_ASSUMED_RATE * 100)}% = ${taxSummary.shortTermSavings.toFixed(2)}
+                  </span>
+                </div>
+                <div data-testid="tax-rate-long-term" style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, fontSize: 12, color: 'var(--v-text-secondary)' }}>
+                  <span>
+                    Long-term losses <span style={{ color: 'var(--v-text-muted)' }}>(held &gt; 1 year)</span>
+                  </span>
+                  <span style={{ color: 'var(--v-text-primary)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    ${taxSummary.longTermLoss.toFixed(2)} × {Math.round(LONG_TERM_ASSUMED_RATE * 100)}% = ${taxSummary.longTermSavings.toFixed(2)}
+                  </span>
+                </div>
+                {taxSummary.unknownLoss > 0 && (
+                  <div data-testid="tax-rate-unknown" style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, fontSize: 12, color: 'var(--v-text-muted)' }}>
+                    <span>Holding period unknown</span>
+                    <span style={{ whiteSpace: 'nowrap' }}>${taxSummary.unknownLoss.toFixed(2)} — excluded</span>
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.5 }}>
-                    Illustrative estimate based on your current harvestable losses (${lossPositions.reduce((s, p) => s + Math.abs(p.unrealizedPL), 0).toFixed(0)}). Assumes a {Math.round(ASSUMED_SHORT_TERM_RATE * 100)}% short-term capital-gains rate and a typical year of recurring opportunities. Actual results vary with market conditions.
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--v-gain)', marginBottom: 4 }}>
-                    $0 – $500<span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-text-muted)' }}> / year</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.5 }}>
-                    Illustrative estimate. No harvestable losses in the portfolio today to derive from, so this uses a conservative static range. Assumes a {Math.round(ASSUMED_SHORT_TERM_RATE * 100)}% short-term capital-gains rate. Actual results vary with market conditions.
-                  </div>
-                </>
+                )}
+              </div>
+
+              {taxSummary.unclassifiedPositionCount > 0 && (
+                <div style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.6, padding: '8px 10px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, marginBottom: 10 }}>
+                  {taxSummary.unclassifiedPositionCount} of {Object.keys(lossBreakdowns).length} loss positions have no purchase date on file
+                  (they weren&apos;t bought through Vantage, and your broker doesn&apos;t report an acquisition date per position), so their
+                  holding period can&apos;t be determined from the data we hold. Those losses are left out of the estimate rather than
+                  run through an assumed rate.
+                </div>
               )}
+
+              {/* Recurring-year projection */}
+              <div style={{ paddingTop: 10, borderTop: '1px solid var(--v-card-border)' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--v-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                  Projected Annual Tax Savings
+                </div>
+                {savingsRange ? (
+                  <>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--v-gain)', marginBottom: 4 }}>
+                      ${savingsRange.low.toFixed(0)} – ${savingsRange.high.toFixed(0)}
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-text-muted)' }}> / year</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.5 }}>
+                      A typical year of recurring opportunities: 25%–50% of the estimate above (a quiet vs. an active year).
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.5 }}>
+                    Not enough classified losses to project a recurring-year range yet.
+                  </div>
+                )}
+              </div>
+
+              <div style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.5, marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--v-card-border)' }}>
+                {rateBreakdownNote()} Illustrative only — actual results depend on your income and on your full tax picture.
+              </div>
             </div>
           </Section>
 
@@ -594,6 +960,14 @@ export default function TaxHarvestingPage() {
                   const isWashBlocked = wash && !wash.isSafe;
                   const replacement = selectedReplacements[pos.symbol];
                   const suggestions = getReplacementSuggestions(pos.sector);
+                  const bd = lossBreakdowns[pos.symbol];
+                  const periodPill = bd?.label === 'Short-term'
+                    ? { text: 'Short-term ≤ 1 yr', color: 'var(--v-warn)' }
+                    : bd?.label === 'Long-term'
+                      ? { text: 'Long-term > 1 yr', color: 'var(--v-gain)' }
+                      : bd?.label === 'Mixed'
+                        ? { text: 'Mixed short & long', color: 'var(--v-accent-label)' }
+                        : { text: 'Holding period unknown', color: 'var(--v-text-muted)' };
 
                   return (
                     <div key={pos.symbol} style={{ padding: 12, background: 'var(--v-card)', border: `1px solid ${isSelected ? 'var(--v-accent)' : 'var(--v-card-border)'}`, borderRadius: 10, transition: 'border-color 0.2s' }}>
@@ -602,6 +976,10 @@ export default function TaxHarvestingPage() {
                         <div>
                           <span style={{ fontWeight: 700, color: 'var(--v-text-primary)', fontSize: 14 }}>{pos.symbol}</span>
                           <span style={{ fontSize: 11, color: 'var(--v-text-secondary)', marginLeft: 8 }}>{pos.name}</span>
+                          <div data-testid={`holding-period-${pos.symbol}`} style={{ fontSize: 10, fontWeight: 700, color: periodPill.color, marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.3 }}>
+                            {periodPill.text}
+                            {bd && bd.lots.length > 0 && bd.unknownQty === 0 && bd.lots.length > 1 ? ` · ${bd.lots.length} lots` : ''}
+                          </div>
                         </div>
                         <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--v-loss)' }}>
                           -${Math.abs(pos.unrealizedPL).toFixed(2)} ({pos.unrealizedPLPct.toFixed(1)}%)
@@ -611,7 +989,11 @@ export default function TaxHarvestingPage() {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, fontSize: 11, color: 'var(--v-text-muted)', marginBottom: 8 }}>
                         <span>Cost: ${pos.costBasis.toFixed(2)}</span>
                         <span>Current: ${pos.marketValue.toFixed(2)}</span>
-                        <span style={{ color: 'var(--v-gain)' }}>Savings: ${(Math.abs(pos.unrealizedPL) * 0.20).toFixed(2)}</span>
+                        <span style={{ color: bd && bd.estimatedSavings > 0 ? 'var(--v-gain)' : 'var(--v-text-muted)' }}>
+                          {bd && bd.estimatedSavings > 0
+                            ? `Savings: $${bd.estimatedSavings.toFixed(2)}`
+                            : 'Savings: —'}
+                        </span>
                       </div>
 
                       {/* Wash sale status */}
@@ -631,20 +1013,43 @@ export default function TaxHarvestingPage() {
 
                       {/* Harvest button + replacement */}
                       <div style={{ display: 'flex', gap: 8, marginBottom: isSelected ? 10 : 0 }}>
-                        <button
-                          onClick={() => handleHarvest(pos)}
-                          disabled={isWashBlocked}
-                          style={{
-                            flex: 1, padding: '8px 12px',
-                            background: isSelected ? 'var(--v-card-border)' : isWashBlocked ? 'var(--v-card)' : 'var(--v-card)',
-                            border: `1px solid ${isSelected ? 'var(--v-accent)' : 'var(--v-card-border)'}`,
-                            borderRadius: 8, color: isSelected ? 'var(--v-accent)' : isWashBlocked ? 'var(--v-text-faint)' : 'var(--v-text-muted)',
-                            fontSize: 12, fontWeight: 600, cursor: isWashBlocked ? 'not-allowed' : 'pointer',
-                            fontFamily: 'inherit',
-                          }}
-                        >
-                          {isWashBlocked ? 'Blocked — Wash Sale' : isSelected ? 'Deselect' : 'Harvest Loss'}
-                        </button>
+                        {canTrade ? (
+                          <button
+                            onClick={() => openHarvestTicket(pos)}
+                            disabled={isWashBlocked}
+                            data-testid={`harvest-ticket-${pos.symbol}`}
+                            style={{
+                              flex: 1, padding: '8px 12px',
+                              background: isWashBlocked ? 'var(--v-card)' : 'var(--v-accent)',
+                              border: `1px solid ${isWashBlocked ? 'var(--v-card-border)' : 'var(--v-accent)'}`,
+                              borderRadius: 8, color: isWashBlocked ? 'var(--v-text-faint)' : 'var(--v-accent-text)',
+                              fontSize: 12, fontWeight: 700, cursor: isWashBlocked ? 'not-allowed' : 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            {isWashBlocked ? 'Blocked — Wash Sale' : 'Harvest Loss'}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleHarvest(pos)}
+                            disabled={isWashBlocked || isReadOnly}
+                            data-testid={`harvest-ticket-${pos.symbol}`}
+                            style={{
+                              flex: 1, padding: '8px 12px',
+                              background: isSelected ? 'var(--v-card-border)' : 'var(--v-card)',
+                              border: `1px solid ${isSelected ? 'var(--v-accent)' : 'var(--v-card-border)'}`,
+                              borderRadius: 8, color: isSelected ? 'var(--v-accent)' : isWashBlocked || isReadOnly ? 'var(--v-text-faint)' : 'var(--v-text-muted)',
+                              fontSize: 12, fontWeight: 600, cursor: isWashBlocked || isReadOnly ? 'not-allowed' : 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            {isWashBlocked
+                              ? 'Blocked — Wash Sale'
+                              : isReadOnly
+                                ? 'Review only — read-only account'
+                                : isSelected ? 'Deselect' : 'Harvest Loss'}
+                          </button>
+                        )}
                       </div>
 
                       {/* Replacement suggestions */}
@@ -732,7 +1137,9 @@ export default function TaxHarvestingPage() {
                     <span style={{ fontWeight: 600, color: 'var(--v-text-primary)' }}>{h.symbol}</span>
                     <span style={{ color: 'var(--v-text-muted)' }}>Sell {h.qty} shares</span>
                     <span style={{ color: 'var(--v-loss)' }}>-${h.loss.toFixed(2)}</span>
-                    <span style={{ color: 'var(--v-gain)' }}>${h.estTaxSavings.toFixed(2)} saved</span>
+                    <span style={{ color: h.estTaxSavings > 0 ? 'var(--v-gain)' : 'var(--v-text-muted)' }}>
+                      {h.estTaxSavings > 0 ? `$${h.estTaxSavings.toFixed(2)} saved` : '— holding period unknown'}
+                    </span>
                   </div>
                 ))}
 
@@ -794,7 +1201,16 @@ export default function TaxHarvestingPage() {
           >
             {submitting ? 'Executing...' : isReadOnly ? 'Read-only — unavailable' : isConnected ? `Execute Harvest (${selectedCount})` : 'Connect Broker to Execute'}
           </button>
-          <button onClick={() => returnToApp(router)} data-testid="harvest-cancel" style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+          <button
+            onClick={handleDownload}
+            disabled={downloading || lossPositions.length === 0}
+            data-testid="harvest-download"
+            style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid var(--v-card-border)', background: 'var(--v-card)', color: downloading || lossPositions.length === 0 ? 'var(--v-disabled-text)' : 'var(--v-text-primary)', fontSize: 12, fontWeight: 700, cursor: downloading || lossPositions.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <Download size={13} />
+            {downloading ? 'Preparing…' : '.xlsx'}
+          </button>
+          <button onClick={() => handleExit()} data-testid="harvest-cancel" style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             Cancel
           </button>
         </div>
@@ -829,6 +1245,58 @@ export default function TaxHarvestingPage() {
           </div>
         </div>
       )}
+
+      {/* ─── Disclosure gate ────────────────────────
+          Blocking, shown on first entry for this account and again only if the
+          disclosure copy version changes. */}
+      <TaxHarvestDisclosureGate
+        isOpen={showGate && !loading}
+        accountLabel={accountLabel || undefined}
+        onAccept={handleAcceptDisclosure}
+        onCancel={() => handleExit({ cancelledGate: true })}
+      />
+
+      {/* ─── Real pre-filled sell ticket (tradeable accounts) ──
+          The same TradeTicket the Portfolio sell flow uses, pre-filled for this
+          position and the same lots the FIFO ledger would consume. */}
+      {harvestTicket && (() => {
+        const pos = positions.find(p => p.symbol === harvestTicket.symbol);
+        if (!pos) return null;
+        return (
+          <TradeTicket
+            isOpen
+            onClose={() => setHarvestTicket(null)}
+            symbol={pos.symbol}
+            side="SELL"
+            currentPrice={harvestTicket.price}
+            sharesHeld={pos.qty}
+            availableCash={0}
+            initialShares={pos.qty}
+            companyName={pos.name}
+            lots={toFifoLots(lotsBySymbol[pos.symbol], pos.symbol)}
+            onConfirm={async (params) => {
+              const res = await apiPost('/api/broker/execute-trade', {
+                symbol: pos.symbol,
+                side: 'SELL',
+                shares: params.shares,
+                orderType: params.type,
+                dollarAmount: params.dollarAmount,
+                limitPrice: params.limitPrice,
+                stopPrice: params.stopPrice,
+                timeInForce: params.timeInForce,
+                currentPrice: harvestTicket.price,
+                expectedCompanyName: pos.name,
+              });
+              if (!res.ok) {
+                const err = await res.json().catch(() => null);
+                throw new Error(err?.error || 'Order failed');
+              }
+              setHarvestTicket(null);
+              setToast('✓ Sell order submitted — harvest in progress');
+            }}
+          />
+        );
+      })()}
 
       <style>{`@keyframes dcaToastIn { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>

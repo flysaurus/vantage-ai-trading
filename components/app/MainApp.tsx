@@ -30,6 +30,7 @@ import { AccountProvider, useAccounts } from '@/context/AccountContext';
 import { AccountSwitcher } from '@/components/accounts/AccountSwitcher';
 import AccountSelectScreen from '@/components/accounts/AccountSelectScreen';
 import { rememberTab } from '@/lib/nav-back';
+import { consumeTlhCancelNotice } from '@/lib/tax-harvest/origin';
 import { PortfolioProvider, useLivePortfolio } from '@/context/PortfolioContext';
 import { useAppState } from '@/lib/app-state';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
@@ -71,6 +72,17 @@ function AppShell() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [showGreeting, setShowGreeting] = useState(false);
   const [showWelcomeToast, setShowWelcomeToast] = useState(false);
+  // One-shot notice handed over when the user cancels out of a disclosure gate
+  // (currently: Tax Loss Harvesting). Neutral tone — states the requirement,
+  // no warning styling.
+  const [flashNotice, setFlashNotice] = useState<string | null>(null);
+  useEffect(() => {
+    const notice = consumeTlhCancelNotice();
+    if (!notice) return;
+    setFlashNotice(notice.text);
+    const t = setTimeout(() => setFlashNotice(null), 9000);
+    return () => clearTimeout(t);
+  }, []);
   const greetingShown = useRef(false);
 
   const [chatMessages, setChatMessages] = useState<
@@ -365,6 +377,20 @@ function AppShell() {
           background: 'var(--v-canvas)', display: 'flex', flexDirection: 'column',
         }}>
           <AITab messages={chatMessages} setMessages={setChatMessages} onClose={() => setChatOpen(false)} />
+        </div>
+      )}
+
+      {flashNotice && (
+        <div
+          data-testid="flash-notice"
+          style={{
+            position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', zIndex: 99997,
+            background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: '12px',
+            padding: '12px 18px', maxWidth: '90vw', boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
+            animation: 'welcomeSlideDown 0.4s ease-out',
+          }}
+        >
+          <span style={{ color: 'var(--v-text-primary)', fontSize: 13, fontWeight: 500 }}>{flashNotice}</span>
         </div>
       )}
 

@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { usePageScrollLock, SCROLL_SCOPE_ATTR } from '@/lib/ui/scroll-lock';
+import { tlhEntryPath } from '@/lib/tax-harvest/origin';
 
 interface StrategySheetProps {
   strategy: string | null;
@@ -345,7 +346,9 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
             onClick={() => {
               onClose();
               const slug = ROUTE_SLUGS[strategy] || strategy;
-              setTimeout(() => router.push(`/strategies/setup/${slug}`), 150);
+              // Tax Loss Harvesting carries its real origin so Cancel/Back return here.
+              const target = strategy === 'taxharvest' ? tlhEntryPath('strategies') : `/strategies/setup/${slug}`;
+              setTimeout(() => router.push(target), 150);
             }}
             style={{
               width: '100%',
