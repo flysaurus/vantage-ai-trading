@@ -263,7 +263,7 @@ describe('unknown-start detection', () => {
     );
   });
 
-  it('prefers a ticker earliest activity date over the account window', () => {
+  it('uses the account window start, not the ticker\u2019s own earliest activity', () => {
     const res = reconstructLotsFromActivities(
       [
         act({ symbol: 'AAPL', units: 1, price: 100, trade_date: '2026-01-01T10:00:00Z' }),
@@ -272,8 +272,12 @@ describe('unknown-start detection', () => {
       { positionQtyByTicker: { MSFT: 2 } },
     );
     expect(res.windowStartDate).toBe('2026-01-01T10:00:00.000Z');
+    // MSFT's first on-file row is 2026-04-01, but the shares predate the
+    // account history (2026-01-01) — the label must name that one date so it
+    // matches the "history begins on …" body text on every surface.
+    expect(res.unknownStartByTicker.MSFT.earliestActivityDate).toBe('2026-04-01T10:00:00.000Z');
     expect(res.unknownStartByTicker.MSFT.label).toBe(
-      'Unknown start \u2014 acquired before 2026-04-01 on file',
+      'Unknown start \u2014 acquired before 2026-01-01 on file',
     );
   });
 

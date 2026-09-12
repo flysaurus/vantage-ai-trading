@@ -172,8 +172,14 @@ export function classifyActivityType(raw: string | null | undefined): ActivityKi
 const EM_DASH = '\u2014';
 
 /**
- * Em-approved human label for an unknown start. Pass the most specific date
- * available (the ticker's own earliest activity, else the account window).
+ * Em-approved human label for an unknown start.
+ *
+ * Always pass the ACCOUNT window start — the date the broker's transaction
+ * history begins. Shares can only be called "undateable" because no record
+ * exists this far back, so the boundary that statement refers to is the
+ * account's retention boundary, not the ticker's own first row (a symbol whose
+ * first on-file row is a later SELL would otherwise print a later, weaker date
+ * than the explanatory body text sitting right next to it).
  */
 export function unknownStartLabel(windowStartDate: string | null): string {
   const day = utcDay(windowStartDate);
@@ -413,7 +419,9 @@ export function reconstructLotsFromActivities(
       oversoldUnits: oversold,
       earliestActivityDate,
       windowStartDate,
-      label: unknownStartLabel(earliestActivityDate ?? windowStartDate),
+      // One date everywhere: the account window start drives the label, so the
+      // headline and the "history begins on <date>" body text can never disagree.
+      label: unknownStartLabel(windowStartDate ?? earliestActivityDate),
     };
   }
 
