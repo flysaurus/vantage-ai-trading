@@ -5,6 +5,7 @@ import {
   reviewTickerForItem,
 } from '@/lib/insights/noticed-copy';
 import {
+  computeThresholdCrossings,
   crossingFor,
   formatThresholdBadge,
   thresholdCrossings,
@@ -173,5 +174,88 @@ describe('thresholdCrossings', () => {
     expect(crossingFor(map, 'nvda')).toBeNull();
     expect(crossingFor(null, 'BX')).toBeNull();
     expect(crossingFor(map, null)).toBeNull();
+  });
+});
+
+/**
+ * PART 6 — the Insights rollup count is a TRUTH count, never a page size.
+ *
+ * Regression guard for the ROUND 24 confusion: the Insights line said "5
+ * positions crossed a threshold" while Holdings showed 14 badges. Root cause
+ * was a hard `.limit(5)` page size on the NOTICED feed — an API pagination
+ * constant, not a materiality threshold. The rollup now derives from the same
+ * live computation as the badges, so it must count EVERY crossed position.
+ *
+ * Fixture = the 14 real crossings on the connected Fidelity account.
+ */
+describe('computeThresholdCrossings — rollup count (every crossing, uncapped)', () => {
+  // Live totalPnlPercent values for the positions that crossed a band…
+  const crossed: Array<{ symbol: string; totalPnlPercent: number }> = [
+    { symbol: 'PEP', totalPnlPercent: -19.62 },
+    { symbol: 'AAPL', totalPnlPercent: 53.59 },
+    { symbol: 'BX', totalPnlPercent: -24.21 },
+    { symbol: 'AMD', totalPnlPercent: 257.82 },
+    { symbol: 'PAHC', totalPnlPercent: -24.21 },
+    { symbol: 'BROS', totalPnlPercent: 25.4 },
+    { symbol: 'QUBT', totalPnlPercent: -33.14 },
+    { symbol: 'TSM', totalPnlPercent: 100.8 },
+    { symbol: 'SPY', totalPnlPercent: 15.9 },
+    { symbol: 'RKLB', totalPnlPercent: -44.99 },
+    { symbol: 'IBKR', totalPnlPercent: 51.2 },
+    { symbol: 'TSLA', totalPnlPercent: 108.4 },
+    { symbol: 'MSFT', totalPnlPercent: 16.7 },
+    { symbol: 'CHWY', totalPnlPercent: -31.87 },
+  ];
+
+  // …plus positions sitting between bands, and junk rows that must be skipped.
+  const between: Array<{ symbol: string; totalPnlPercent: number }> = [
+    { symbol: 'GLD', totalPnlPercent: 2.1 },
+    { symbol: 'CVX', totalPnlPercent: -4.6 },
+    { symbol: 'BLK', totalPnlPercent: -2.53 },
+    { symbol: 'QQQ', totalPnlPercent: -0.92 },
+  ];
+
+  const all = [...crossed, ...between];
+
+  it('counts all 14 crossed positions — not the noticed feed\u2019s page size of 5', () => {
+    const map = computeThresholdCrossings(all);
+    expect(Object.keys(map)).toHaveLength(14);
+    expect(Object.keys(map).length).toBeGreaterThan(5);
+  });
+
+  it('membership matches the Holdings badges exactly (one shared source)', () => {
+    const map = computeThresholdCrossings(all);
+    for (const p of crossed) expect(map[p.symbol]).toBeDefined();
+    for (const p of between) expect(map[p.symbol]).toBeUndefined();
+  });
+
+  it('is not slice-limited: everyone past the 5th crossing still counts', () => {
+    // Order the crossed list so a naive `.slice(0, 5)` would drop 9 of them.
+    const map = computeThresholdCrossings(crossed);
+    const last5 = crossed.slice(-5).map((p) => p.symbol);
+    expect(Object.keys(map).length).toBe(crossed.length);
+    for (const sym of last5) expect(map[sym]).toBeDefined();
+  });
+
+  it('each entry carries its own band + tone, and null itemId (live-derived)', () => {
+    const map = computeThresholdCrossings(crossed);
+    expect(map.PEP.tone).toBe('loss');
+    expect(map.PEP.threshold).toBe(-20);
+    expect(map.AAPL.tone).toBe('gain');
+    expect(map.AAPL.threshold).toBe(50);
+    expect(map.AMD.threshold).toBe(250);
+    expect(map.RKLB.threshold).toBe(-35);
+    expect(map.SPY.threshold).toBe(15);
+    for (const c of Object.values(map)) expect(c.itemId).toBeNull();
+  });
+
+  it('skips rows with no symbol or an unusable percentage', () => {
+    const map = computeThresholdCrossings([
+      { symbol: '', totalPnlPercent: 60 },
+      { symbol: null, totalPnlPercent: -60 },
+      { symbol: 'ZZZ', totalPnlPercent: null },
+      { symbol: 'YYY', totalPnlPercent: NaN },
+    ]);
+    expect(Object.keys(map)).toEqual([]);
   });
 });

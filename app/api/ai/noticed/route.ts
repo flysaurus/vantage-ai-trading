@@ -15,6 +15,17 @@ import { runNoticedPipeline } from '@/lib/noticed/engine';
 import { parseAccountScope } from '@/lib/account-scope';
 import { resolveBrokerNoticedInput } from '@/lib/noticed/resolve-input';
 
+// ── Feed size cap ─────────────────────────────────────────
+// A SAFETY cap on how many rows we ship to the client — NOT a materiality
+// threshold. It used to be 5, which made the feed look like "only 5 positions
+// crossed a threshold" while the Holdings badges (computed live from the
+// positions themselves) correctly showed every crossing. Worse, the 14 active
+// milestone rows could crowd genuinely new event_impact items out of the
+// 5-row window. Milestone rows are filtered OUT downstream by
+// isDeckEligible / isMoreFromRufusEligible, so raising the cap changes
+// nothing except how much real content survives the window.
+const NOTICED_FEED_LIMIT = 50;
+
 // ── GET: Return visible items (no re-check) ──
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const userId = await getOptionalUserId();
@@ -31,7 +42,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     .eq('resolved', false)
     .or(`dismissed_until.is.null,dismissed_until.lt.${new Date().toISOString().replace('Z', '')}`)
     .order('created_at', { ascending: false })
-    .limit(5);
+    .limit(NOTICED_FEED_LIMIT);
 
   return NextResponse.json({
     items: (items || []).map(formatItem),
@@ -150,7 +161,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .eq('resolved', false)
       .or(`dismissed_until.is.null,dismissed_until.lt.${new Date().toISOString().replace('Z', '')}`)
       .order('created_at', { ascending: false })
-      .limit(5);
+      .limit(NOTICED_FEED_LIMIT);
 
     return NextResponse.json({
       items: (visible || []).map(formatItem),

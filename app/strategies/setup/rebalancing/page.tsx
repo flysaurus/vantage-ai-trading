@@ -9,9 +9,59 @@ import { usePortfolioStore, useTabStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getStyleContent } from '@/lib/content/investor-styles';
 import { getDemoSymbols, getDemoAccount, DEMO_PORTFOLIOS } from '@/lib/demo-data';
-import type { AccountSummary } from '@/types';
+import type { AccountSummary, Position } from '@/types';
 import { SymbolSearch } from '@/components/trade/SymbolSearch';
 import { returnToApp } from '@/lib/nav-back';
+
+// ── Live account → canonical AccountSummary ───────────────
+// The broker layer's own mapping (units/price/openPnl → canonical Position
+// fields), inlined so a cold-loaded strategy page renders exactly what the
+// dashboard renders. Returns null when there is nothing to show, so callers
+// fall through to the demo portfolio.
+function liveAccountFromBroker(
+  data: any,
+): (AccountSummary & { sectorAllocations?: any[] }) | null {
+  if (!data || !Array.isArray(data.positions)) return null;
+  const totalValue = Number(data.totalValue) || 0;
+  const positions: Position[] = data.positions
+    .map((p: any) => {
+      const qty = Number(p.units) || 0;
+      const price = Number(p.price) || 0;
+      const marketValue = Number(p.marketValue) > 0 ? Number(p.marketValue) : price * qty;
+      const costBasis = Number(p.costBasis) || 0;
+      const totalPnl = Number(p.openPnl) || 0;
+      return {
+        symbol: String(p.symbol || ''),
+        name: p.name || p.symbol || '',
+        qty,
+        avgCost: qty > 0 && costBasis > 0 ? costBasis / qty : price,
+        currentPrice: price,
+        marketValue,
+        dayChange: p.dayChange ?? null,
+        dayChangePercent: p.dayChangePct ?? null,
+        totalPnl,
+        totalPnlPercent: costBasis > 0 ? (totalPnl / costBasis) * 100 : 0,
+        portfolioPercent: totalValue > 0 ? (marketValue / totalValue) * 100 : 0,
+      } as Position;
+    })
+    .filter((p: Position) => !!p.symbol && p.qty > 0);
+
+  if (positions.length === 0) return null;
+
+  return {
+    equity: totalValue,
+    buyingPower: data.buyingPower ?? null,
+    cash: Number(data.cash) || 0,
+    dayPnl: data.dayChange ?? null,
+    dayPnlPercent: data.dayChangePct ?? null,
+    totalPnl: Number(data.totalPnl) || 0,
+    totalPnlPercent: Number(data.totalPnlPct) || 0,
+    positions,
+    lastSynced: data.lastSynced ?? null,
+    accountStatus: data.accountStatus ?? null,
+    holdingsUnavailable: Boolean(data.holdingsUnavailable),
+  };
+}
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -145,7 +195,47 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
         return;
       }
 
-      // Fallback: show demo data instantly with avgCost prices,
+      // Fallback #1: the connected live account.
+      // The zustand portfolio store is in-memory only, so a cold load (or a hard
+      // refresh) leaves it empty — which used to fall straight through to the
+      // DEMO portfolio ($100k of XOM/GLD/CVX/SLB) even while a real account was
+      // connected. Resolve the active connection and read its real holdings from
+      // the same endpoint the dashboard uses (positions included).
+      try {
+        let stored = '';
+        try { stored = localStorage.getItem('vantage:activeAccount') || ''; } catch { /* ignore */ }
+        const acctRes = await apiGet('/api/accounts');
+        if (acctRes.ok) {
+          const accountsData = await acctRes.json();
+          const list: any[] = Array.isArray(accountsData?.accounts) ? accountsData.accounts : [];
+          const live =
+            list.find((a) => a?.id === stored && !a.isDemo) ||
+            list.find((a) => a && !a.isDemo);
+          if (live) {
+            const connId = live.connectionId
+              || (typeof live.id === 'string' && live.id.startsWith('snaptrade:')
+                ? live.id.slice('snaptrade:'.length)
+                : '');
+            const res = await apiGet(
+              connId
+                ? `/api/broker/snaptrade/account?connectionId=${encodeURIComponent(connId)}`
+                : '/api/broker/snaptrade/account',
+            );
+            if (res.ok && !cancelled) {
+              const built = liveAccountFromBroker(await res.json());
+              if (built) {
+                setAccount(built);
+                setIsConnected(true);
+                if (live.tradingEnabled === false) setIsReadOnly(true);
+                setDataLoading(false);
+                return;
+              }
+            }
+          }
+        }
+      } catch { /* no connected account — fall through to demo */ }
+
+      // Fallback #2: show demo data instantly with avgCost prices,
       // then refresh asynchronously with live market prices
       try {
         const symbols = getDemoSymbols(investorStyle);
