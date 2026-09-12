@@ -390,3 +390,85 @@ export function annualSavingsRange(estimatedSavings: number): { low: number; hig
 export function rateBreakdownNote(): string {
   return `Short-term losses are estimated at an assumed ${Math.round(SHORT_TERM_ASSUMED_RATE * 100)}% ordinary-income rate; long-term losses at ${Math.round(LONG_TERM_ASSUMED_RATE * 100)}% (the 0 / 15 / 20% long-term ladder depends on your taxable income).`;
 }
+
+// ─── Illustrative fallback for undated positions ─────────────
+//
+// A position with no acquisition date on file cannot be classified, but it DOES
+// have a real dollar loss. Reporting that bucket as "excluded" and letting the
+// portfolio estimate collapse to $0.00 / 0.00% is worse than the flat-rate
+// guess this feature replaced: it reads as "no tax benefit exists" rather than
+// "we can't compute this precisely".
+//
+// So the undated bucket keeps a clearly-labelled ILLUSTRATIVE range — the
+// long-term rate at the low end, the short-term rate at the high end — and is
+// kept strictly separate from the per-position precise figure.
+
+/** Low end of the illustrative assumption for undated losses (long-term rate). */
+export const ILLUSTRATIVE_LOW_RATE = LONG_TERM_ASSUMED_RATE;
+/** High end of the illustrative assumption for undated losses (short-term rate). */
+export const ILLUSTRATIVE_HIGH_RATE = SHORT_TERM_ASSUMED_RATE;
+
+/** Short label for anything driven by the general assumption rather than a real date. */
+export const ILLUSTRATIVE_LABEL = 'General assumption — no purchase date on file';
+
+export interface IllustrativeEstimate {
+  /** Real losses (absolute $) on positions with no acquisition date. */
+  loss: number;
+  /** Low end of the illustrative savings range. */
+  low: number;
+  /** High end of the illustrative savings range. */
+  high: number;
+  /** How many positions are covered by the range. */
+  positionCount: number;
+  /** How many of those positions are currently harvestable. */
+  symbols: string[];
+}
+
+/**
+ * Illustrative savings range for every position we could not date.
+ * Returns null when there is nothing undated (so the UI renders nothing extra).
+ */
+export function illustrativeEstimate(
+  breakdowns: PositionHoldingPerformance[] | null | undefined,
+): IllustrativeEstimate | null {
+  const rows = Array.isArray(breakdowns) ? breakdowns : [];
+  let loss = 0;
+  let positionCount = 0;
+  const symbols: string[] = [];
+  for (const b of rows) {
+    const unknownLoss = Number(b?.unknownLoss) || 0;
+    if (unknownLoss <= 0) continue;
+    loss += unknownLoss;
+    positionCount += 1;
+    if (b?.symbol) symbols.push(b.symbol);
+  }
+  if (loss <= 0) return null;
+  return {
+    loss,
+    low: loss * ILLUSTRATIVE_LOW_RATE,
+    high: loss * ILLUSTRATIVE_HIGH_RATE,
+    positionCount,
+    symbols,
+  };
+}
+
+/**
+ * One sentence explaining the illustrative range — used verbatim by the UI and
+ * the .xlsx export so both say the same thing.
+ */
+export function illustrativeNote(est: IllustrativeEstimate | null): string {
+  if (!est || est.loss <= 0) return '';
+  const positions = `${est.positionCount} position${est.positionCount === 1 ? '' : 's'}`;
+  return `${positions} ($${est.loss.toFixed(2)} of losses) have no purchase date on file — priced precisely would need the acquisition date, so they are held out of the precise figure and shown as an illustrative range instead (${Math.round(ILLUSTRATIVE_LOW_RATE * 100)}%–${Math.round(ILLUSTRATIVE_HIGH_RATE * 100)}% general assumption, not per-position accuracy).`;
+}
+
+/**
+ * Headline savings for the page: the precise figure when we have one, otherwise
+ * null so the caller can lead with the illustrative range rather than $0.00.
+ */
+export function headlineSavings(
+  summary: Pick<TaxEstimateSummary, 'estimatedSavings'> | null | undefined,
+): number | null {
+  const precise = Number(summary?.estimatedSavings) || 0;
+  return precise > 0 ? precise : null;
+}

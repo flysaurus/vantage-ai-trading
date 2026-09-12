@@ -8,6 +8,18 @@ import {
   num,
   styleHeaderRow,
 } from './rebalance-plan-export';
+import {
+  ILLUSTRATIVE_LOW_RATE,
+  ILLUSTRATIVE_HIGH_RATE,
+  ILLUSTRATIVE_LABEL,
+} from '@/lib/tax-harvest/holding-period';
+
+/** Money for the illustrative range cells (they hold text, not numbers). */
+const fmtMoney = (n: number): string =>
+  `$${(num(n) ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** Why the illustrative band exists — printed on the plan so the basis is never implicit. */
+const ILLUSTRATIVE_BASIS_TEXT = ILLUSTRATIVE_LABEL;
 
 /**
  * Excel (.xlsx) export for the Tax Loss Harvesting plan
@@ -71,6 +83,23 @@ export interface TaxHarvestPlanExportInput {
   taxYear?: number | null;
   /** Blended capital-gains rate used for the savings estimate (default 0.20). */
   estimatedTaxRate?: number | null;
+  /**
+   * Savings from the positions we could date precisely. When supplied it is used
+   * verbatim as the headline figure instead of `harvestableLosses × rate`.
+   */
+  preciseSavings?: number | null;
+  /**
+   * Positions with NO acquisition date on file. Their real losses cannot be
+   * classified, so instead of dropping them (which collapsed the whole plan to
+   * $0.00 / 0.00%) they keep a clearly-labelled illustrative range.
+   */
+  illustrative?: {
+    loss: number;
+    low: number;
+    high: number;
+    positionCount: number;
+    note?: string | null;
+  } | null;
   positions: TaxHarvestExportPosition[];
   generatedAt?: Date;
   note?: string | null;
@@ -152,10 +181,34 @@ export async function buildTaxHarvestPlanWorkbook(
   const harvestableLosses =
     num(positions.reduce((s, p) => s + (p.unrealizedLoss < 0 ? Math.abs(p.unrealizedLoss) : 0), 0)) ??
     0;
-  const estimatedTaxSavings = num(harvestableLosses * taxRate) ?? 0;
   const totalCostBasis = num(positions.reduce((s, p) => s + p.costBasis, 0)) ?? 0;
   const totalCurrentValue = num(positions.reduce((s, p) => s + p.marketValue, 0)) ?? 0;
   const totalLoss = num(positions.reduce((s, p) => s + p.unrealizedLoss, 0)) ?? 0;
+
+  // ── Savings figures ──────────────────────────────────────────────────────
+  // The precise figure covers only positions we could date. Anything undated is
+  // valued at the general assumption and reported as a RANGE next to it — never
+  // silently folded into $0.00.
+  const preciseSavings =
+    input.preciseSavings != null && Number.isFinite(input.preciseSavings)
+      ? num(input.preciseSavings) ?? 0
+      : num(harvestableLosses * taxRate) ?? 0;
+  const illustrative = input.illustrative && Number(input.illustrative.loss) > 0
+    ? {
+        loss: num(input.illustrative.loss) ?? 0,
+        low: num(input.illustrative.low) ?? 0,
+        high: num(input.illustrative.high) ?? 0,
+        positionCount: Math.max(0, Math.round(Number(input.illustrative.positionCount) || 0)),
+        note: input.illustrative.note ?? null,
+      }
+    : null;
+  const estimatedTaxSavings = preciseSavings;
+  const illustrativeMid = illustrative ? (illustrative.low + illustrative.high) / 2 : 0;
+  // The rate reported on the summary is the blended rate behind the headline —
+  // so it can never read 0.00% while the plan shows real harvestable losses.
+  const effectiveRate = harvestableLosses > 0
+    ? (estimatedTaxSavings + illustrativeMid) / harvestableLosses
+    : taxRate;
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Vantage';
@@ -230,8 +283,33 @@ export async function buildTaxHarvestPlanWorkbook(
   sectionHeader('HARVEST');
   kv('Positions', positions.length, { bold: true });
   kv('Harvestable losses', harvestableLosses, { fmt: CURRENCY_FMT, bold: true });
-  kv('Estimated tax savings', estimatedTaxSavings, { fmt: CURRENCY_FMT, bold: true });
-  kv('Assumed tax rate', num(taxRate * 100), { fmt: PERCENT_FMT });
+  kv(
+    illustrative ? 'Estimated tax savings (dated positions)' : 'Estimated tax savings',
+    estimatedTaxSavings,
+    { fmt: CURRENCY_FMT, bold: true },
+  );
+  if (illustrative) {
+    kv('No purchase date on file (illustrative)', illustrative.loss, { fmt: CURRENCY_FMT });
+    kv(
+      `Illustrative savings on those ${illustrative.positionCount} position${illustrative.positionCount === 1 ? '' : 's'}`,
+      `${fmtMoney(illustrative.low)} – ${fmtMoney(illustrative.high)}`,
+      { bold: true },
+    );
+    kv(
+      'Total savings range',
+      `${fmtMoney(estimatedTaxSavings + illustrative.low)} – ${fmtMoney(estimatedTaxSavings + illustrative.high)}`,
+      { bold: true },
+    );
+    kv('Assumed tax rate', num(effectiveRate * 100), { fmt: PERCENT_FMT });
+    kv(
+      'Illustrative band',
+      `${num(ILLUSTRATIVE_LOW_RATE * 100)}% – ${num(ILLUSTRATIVE_HIGH_RATE * 100)}%`,
+      { fmt: PERCENT_FMT },
+    );
+    kv('Basis', ILLUSTRATIVE_BASIS_TEXT);
+  } else {
+    kv('Assumed tax rate', num(effectiveRate * 100), { fmt: PERCENT_FMT });
+  }
   r += 1;
 
   if (input.note || input.access === 'read-only') {

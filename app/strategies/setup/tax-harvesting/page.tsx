@@ -8,7 +8,6 @@ import { ArrowLeft, TrendingDown, AlertTriangle, CheckCircle, ChevronDown, Chevr
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getDemoAccount } from '@/lib/demo-data';
 import { returnToApp } from '@/lib/nav-back';
-import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { AccountProvider } from '@/context/AccountContext';
 import TradeTicket from '@/components/portfolio/TradeTicket';
 import TaxHarvestDisclosureGate from '@/components/disclosure/TaxHarvestDisclosureGate';
@@ -28,9 +27,14 @@ import {
   summarizeTaxEstimate,
   annualSavingsRange,
   rateBreakdownNote,
+  illustrativeEstimate,
+  illustrativeNote,
   toFifoLots,
   SHORT_TERM_ASSUMED_RATE,
   LONG_TERM_ASSUMED_RATE,
+  ILLUSTRATIVE_LOW_RATE,
+  ILLUSTRATIVE_HIGH_RATE,
+  ILLUSTRATIVE_LABEL,
   type PositionHoldingPerformance,
   type TaxLot,
 } from '@/lib/tax-harvest/holding-period';
@@ -62,8 +66,11 @@ interface HarvestSelection {
 interface WashSaleStatus {
   symbol: string;
   isSafe: boolean;
-  daysSinceLastTrade: number;
+  /** null when we hold no trade history for the account — unknown, not "clear". */
+  daysSinceLastTrade: number | null;
   lastTradeDate: string | null;
+  /** false ⇒ this account has no order history, so the check couldn't run. */
+  historyAvailable?: boolean;
 }
 
 interface TradeSummary {
@@ -392,43 +399,37 @@ function TaxHarvestingPageInner() {
         setPositions(posList);
 
         // ── Holding-period ledger: the FIFO lots behind each position ──
-        // Same `position_lots` ledger the sell flow and wash-sale checks use.
+        // ONE source of truth, shared with the wash-sale window below: the
+        // account-scoped purchase-dates endpoint (FIFO `position_lots`, falling
+        // back to raw buy `orders`). Reading either table directly from here is
+        // what let the two panels disagree — the wash-sale check used to read
+        // every account's orders while this list only read the active one.
         // Zero lots for imported broker positions is expected — those carry no
-        // acquisition date, and the page reports them as "unknown" rather than
-        // assuming a rate.
+        // acquisition date, and the page prices them with a labelled illustrative
+        // range rather than silently reporting $0.00.
         try {
-          const supabase = getSupabaseBrowserClient();
-          const { data: sessionData } = await supabase.auth.getSession();
-          const uid = sessionData?.session?.user?.id;
-          if (uid) {
-            let lotsQuery = supabase
-              .from('position_lots')
-              .select('id, ticker, qty, remaining_qty, price_at_fill, filled_at')
-              .eq('user_id', uid)
-              .gt('remaining_qty', 0)
-              .order('filled_at', { ascending: true });
-            lotsQuery = connectionId
-              ? lotsQuery.eq('account_id', connectionId)
-              : lotsQuery.is('account_id', null);
-            const { data: lotRows } = await lotsQuery;
-            if (!cancelled && Array.isArray(lotRows)) {
-              const grouped: Record<string, TaxLot[]> = {};
-              for (const row of lotRows as any[]) {
-                const ticker = String(row.ticker || '').toUpperCase();
-                if (!ticker) continue;
-                if (!grouped[ticker]) grouped[ticker] = [];
-                grouped[ticker].push({
-                  id: String(row.id),
-                  qty: Number(row.qty) || 0,
-                  remainingQty: Number(row.remaining_qty) || 0,
-                  priceAtFill: Number(row.price_at_fill) || 0,
-                  filledAt: String(row.filled_at || ''),
-                });
-              }
-              setLotsBySymbol(grouped);
+          const scope = connectionId
+            ? `connectionId=${encodeURIComponent(connectionId)}`
+            : 'demo=1';
+          const lotsRes = await fetch(`/api/strategies/tax-harvest/purchase-dates?${scope}`);
+          if (lotsRes.ok) {
+            const lotData = await lotsRes.json();
+            const rowsByTicker = (lotData?.lotsByTicker || {}) as Record<string, any[]>;
+            const grouped: Record<string, TaxLot[]> = {};
+            for (const [ticker, rows] of Object.entries(rowsByTicker)) {
+              const sym = String(ticker || '').toUpperCase();
+              if (!sym || !Array.isArray(rows)) continue;
+              grouped[sym] = rows.map((row: any) => ({
+                id: String(row?.id ?? ''),
+                qty: Number(row?.qty) || 0,
+                remainingQty: Number(row?.remainingQty) || 0,
+                priceAtFill: Number(row?.priceAtFill) || 0,
+                filledAt: String(row?.filledAt || ''),
+              }));
             }
+            if (!cancelled) setLotsBySymbol(grouped);
           }
-        } catch { /* no lot ledger available — every position reports unknown */ }
+        } catch { /* no purchase-date ledger available — every position reports unknown */ }
 
         // ── YTD baseline closes (prior-year close per symbol) ──
         if (posList.length > 0 && !cancelled) {
@@ -462,11 +463,14 @@ function TaxHarvestingPageInner() {
           const statuses: Record<string, WashSaleStatus> = {};
           await Promise.all(lossSymbols.map(async (sym) => {
             try {
-              const res = await fetch(`/api/strategies/tax-harvest/wash-sale-check?symbol=${sym}`);
+              const washScope = connectionId
+                ? `&connectionId=${encodeURIComponent(connectionId)}`
+                : '&demo=1';
+              const res = await fetch(`/api/strategies/tax-harvest/wash-sale-check?symbol=${sym}${washScope}`);
               if (res.ok) statuses[sym] = await res.json();
-              else statuses[sym] = { symbol: sym, isSafe: true, daysSinceLastTrade: Infinity, lastTradeDate: null };
+              else statuses[sym] = { symbol: sym, isSafe: true, daysSinceLastTrade: null, lastTradeDate: null, historyAvailable: undefined };
             } catch {
-              statuses[sym] = { symbol: sym, isSafe: true, daysSinceLastTrade: Infinity, lastTradeDate: null };
+              statuses[sym] = { symbol: sym, isSafe: true, daysSinceLastTrade: null, lastTradeDate: null, historyAvailable: undefined };
             }
           }));
           if (!cancelled) setWashSaleStatuses(statuses);
@@ -574,6 +578,24 @@ function TaxHarvestingPageInner() {
     [lossBreakdowns],
   );
 
+  // Losses we could NOT date (no purchase date on file). These keep an
+  // illustrative range so the page never reports a bare $0.00 — a portfolio
+  // estimate that reads as "no benefit exists" is worse than a labelled guess.
+  const illustrative = useMemo(
+    () => illustrativeEstimate(Object.values(lossBreakdowns)),
+    [lossBreakdowns],
+  );
+  const hasPrecise = taxSummary.estimatedSavings > 0;
+  // Headline: the precise figure when we have one, otherwise the illustrative low
+  // end of the range (never $0.00 while there are real harvestable losses).
+  const headlineLow = hasPrecise
+    ? taxSummary.estimatedSavings + (illustrative?.low ?? 0)
+    : (illustrative?.low ?? 0);
+  const headlineHigh = hasPrecise
+    ? taxSummary.estimatedSavings + (illustrative?.high ?? 0)
+    : (illustrative?.high ?? 0);
+  const showRange = !hasPrecise && !!illustrative;
+
   // ── Year-to-date unrealized P&L ─────────────────────────
   // Distinct from the since-inception Total on Insights: this measures what the
   // CURRENT holdings have done since the prior year's close.
@@ -591,10 +613,17 @@ function TaxHarvestingPageInner() {
     return { unrealized, covered, missing };
   }, [positions, ytdQuotes]);
 
-  // Recurring-year projection off the rate-corrected estimate.
+  // Recurring-year projection off the rate-corrected estimate. When nothing could
+  // be dated precisely we project off the illustrative midpoint instead of
+  // rendering an empty state — otherwise a data gap silently hides the section.
+  const savingsBasis = hasPrecise
+    ? taxSummary.estimatedSavings
+    : illustrative
+      ? (illustrative.low + illustrative.high) / 2
+      : 0;
   const savingsRange = useMemo(
-    () => annualSavingsRange(taxSummary.estimatedSavings),
-    [taxSummary.estimatedSavings],
+    () => annualSavingsRange(savingsBasis),
+    [savingsBasis],
   );
 
   // ─── Handlers ────────────────────────────────────────────
@@ -661,11 +690,23 @@ function TaxHarvestingPageInner() {
           daysSinceLastTrade: wash?.daysSinceLastTrade ?? null,
           washSaleStatus: wash
             ? (wash.isSafe
-                ? 'Clear'
+                ? wash.historyAvailable === false
+                  ? 'Not checked — no trade history on file for this account'
+                  : 'Clear'
                 : `Blocked — purchased ${wash.daysSinceLastTrade} day${wash.daysSinceLastTrade === 1 ? '' : 's'} ago`)
             : 'Not checked',
         };
       });
+      // Blended rate actually used for the headline figure. The old code sent
+      // `precise / totalLosses`, which is 0.00% whenever nothing could be dated —
+      // and a 0.00% "assumed rate" with a $0.00 savings line reads as "no tax
+      // benefit exists" rather than "we couldn't date these positions". Undated
+      // losses are now priced at the illustrative assumption and labelled.
+      const illustrativeMid = illustrative ? (illustrative.low + illustrative.high) / 2 : 0;
+      const effectiveRate = taxSummary.totalLosses > 0
+        ? (taxSummary.estimatedSavings + illustrativeMid) / taxSummary.totalLosses
+        : null;
+      const fallbackRate = (SHORT_TERM_ASSUMED_RATE + LONG_TERM_ASSUMED_RATE) / 2;
       const res = await apiPost('/api/strategies/tax-harvest/export', {
         accountName: accountLabel || (isDemo ? 'Demo Portfolio' : 'Portfolio'),
         broker: accountBroker,
@@ -673,12 +714,20 @@ function TaxHarvestingPageInner() {
         access: canTrade ? 'trading' : 'read-only',
         isDemo,
         taxYear: new Date().getFullYear(),
-        estimatedTaxRate: taxSummary.totalLosses > 0
-          ? taxSummary.estimatedSavings / taxSummary.totalLosses
+        estimatedTaxRate: effectiveRate && effectiveRate > 0 ? effectiveRate : fallbackRate,
+        preciseSavings: taxSummary.estimatedSavings,
+        illustrative: illustrative
+          ? {
+              loss: illustrative.loss,
+              low: illustrative.low,
+              high: illustrative.high,
+              positionCount: illustrative.positionCount,
+              note: illustrativeNote(illustrative),
+            }
           : null,
         positions: positionsPayload,
-        note: taxSummary.unknownLoss > 0
-          ? `${taxSummary.unclassifiedPositionCount} position(s) have no purchase date on file, so their holding period could not be determined and they are excluded from the savings estimate.`
+        note: illustrative
+          ? illustrativeNote(illustrative)
           : null,
       });
       if (!res.ok) {
@@ -703,7 +752,7 @@ function TaxHarvestingPageInner() {
     } finally {
       setDownloading(false);
     }
-  }, [downloading, lossPositions, lossBreakdowns, washSaleStatuses, accountLabel, accountBroker, accountEnvironment, isDemo, canTrade, taxSummary]);
+  }, [downloading, lossPositions, lossBreakdowns, washSaleStatuses, accountLabel, accountBroker, accountEnvironment, isDemo, canTrade, taxSummary, illustrative]);
 
   const handleSelectReplacement = useCallback((symbol: string, replacement: { symbol: string; name: string; price: number }) => {
     setSelectedReplacements(prev => {
@@ -879,9 +928,29 @@ function TaxHarvestingPageInner() {
               <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--v-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
                 Estimated Tax Savings on Harvestable Losses
               </div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--v-gain)', marginBottom: 10 }}>
-                ${taxSummary.estimatedSavings.toFixed(2)}
-              </div>
+              {showRange ? (
+                <>
+                  <div data-testid="tax-estimate-headline" style={{ fontSize: 20, fontWeight: 800, color: 'var(--v-gain)', marginBottom: 4 }}>
+                    ${illustrative!.low.toFixed(2)} – ${illustrative!.high.toFixed(2)}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.5, marginBottom: 10 }}>
+                    Illustrative range — no position has a purchase date on file yet, so this is priced at a general
+                    {' '}{Math.round(ILLUSTRATIVE_LOW_RATE * 100)}%–{Math.round(ILLUSTRATIVE_HIGH_RATE * 100)}% assumption rather than a per-position rate.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div data-testid="tax-estimate-headline" style={{ fontSize: 20, fontWeight: 800, color: 'var(--v-gain)', marginBottom: 4 }}>
+                    ${taxSummary.estimatedSavings.toFixed(2)}
+                  </div>
+                  {illustrative && (
+                    <div data-testid="tax-estimate-illustrative-total" style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.5, marginBottom: 10 }}>
+                      Plus an illustrative ${illustrative.low.toFixed(2)}–${illustrative.high.toFixed(2)} on {illustrative.positionCount} position{illustrative.positionCount === 1 ? '' : 's'} with no purchase date — total
+                      {' '}${(taxSummary.estimatedSavings + illustrative.low).toFixed(2)}–${(taxSummary.estimatedSavings + illustrative.high).toFixed(2)}.
+                    </div>
+                  )}
+                </>
+              )}
 
               {/* Rate split by holding period */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
@@ -901,20 +970,21 @@ function TaxHarvestingPageInner() {
                     ${taxSummary.longTermLoss.toFixed(2)} × {Math.round(LONG_TERM_ASSUMED_RATE * 100)}% = ${taxSummary.longTermSavings.toFixed(2)}
                   </span>
                 </div>
-                {taxSummary.unknownLoss > 0 && (
-                  <div data-testid="tax-rate-unknown" style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, fontSize: 12, color: 'var(--v-text-muted)' }}>
-                    <span>Holding period unknown</span>
-                    <span style={{ whiteSpace: 'nowrap' }}>${taxSummary.unknownLoss.toFixed(2)} — excluded</span>
+                {illustrative && (
+                  <div data-testid="tax-rate-unknown" style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, fontSize: 12, color: 'var(--v-text-secondary)' }}>
+                    <span>
+                      No purchase date <span style={{ color: 'var(--v-text-muted)' }}>(illustrative)</span>
+                    </span>
+                    <span style={{ color: 'var(--v-text-primary)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      ${illustrative.loss.toFixed(2)} × {Math.round(ILLUSTRATIVE_LOW_RATE * 100)}–{Math.round(ILLUSTRATIVE_HIGH_RATE * 100)}% = ${illustrative.low.toFixed(2)}–${illustrative.high.toFixed(2)}
+                    </span>
                   </div>
                 )}
               </div>
 
-              {taxSummary.unclassifiedPositionCount > 0 && (
-                <div style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.6, padding: '8px 10px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, marginBottom: 10 }}>
-                  {taxSummary.unclassifiedPositionCount} of {Object.keys(lossBreakdowns).length} loss positions have no purchase date on file
-                  (they weren&apos;t bought through Vantage, and your broker doesn&apos;t report an acquisition date per position), so their
-                  holding period can&apos;t be determined from the data we hold. Those losses are left out of the estimate rather than
-                  run through an assumed rate.
+              {illustrative && (
+                <div data-testid="tax-illustrative-note" style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.6, padding: '8px 10px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, marginBottom: 10 }}>
+                  {illustrativeNote(illustrative)}
                 </div>
               )}
 
@@ -930,7 +1000,9 @@ function TaxHarvestingPageInner() {
                       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-text-muted)' }}> / year</span>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.5 }}>
-                      A typical year of recurring opportunities: 25%–50% of the estimate above (a quiet vs. an active year).
+                      {hasPrecise
+                        ? 'A typical year of recurring opportunities: 25%–50% of the estimate above (a quiet vs. an active year).'
+                        : 'A typical year of recurring opportunities: 25%–50% of the illustrative range above (a quiet vs. an active year) — refined as soon as purchase dates are available.'}
                     </div>
                   </>
                 ) : (
@@ -958,6 +1030,7 @@ function TaxHarvestingPageInner() {
                   const isSelected = !!selectedHarvests[pos.symbol];
                   const wash = washSaleStatuses[pos.symbol];
                   const isWashBlocked = wash && !wash.isSafe;
+                  const washUnchecked = !!wash && wash.isSafe && wash.historyAvailable === false;
                   const replacement = selectedReplacements[pos.symbol];
                   const suggestions = getReplacementSuggestions(pos.sector);
                   const bd = lossBreakdowns[pos.symbol];
@@ -989,19 +1062,30 @@ function TaxHarvestingPageInner() {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, fontSize: 11, color: 'var(--v-text-muted)', marginBottom: 8 }}>
                         <span>Cost: ${pos.costBasis.toFixed(2)}</span>
                         <span>Current: ${pos.marketValue.toFixed(2)}</span>
-                        <span style={{ color: bd && bd.estimatedSavings > 0 ? 'var(--v-gain)' : 'var(--v-text-muted)' }}>
+                        <span style={{ color: bd && (bd.estimatedSavings > 0 || bd.unknownLoss > 0) ? 'var(--v-gain)' : 'var(--v-text-muted)' }}>
                           {bd && bd.estimatedSavings > 0
                             ? `Savings: $${bd.estimatedSavings.toFixed(2)}`
-                            : 'Savings: —'}
+                            : bd && bd.unknownLoss > 0
+                              // No purchase date for this position — show the labelled
+                              // illustrative range instead of a bare, misleading "—".
+                              ? `Savings: ~$${(bd.unknownLoss * ILLUSTRATIVE_LOW_RATE).toFixed(2)}–$${(bd.unknownLoss * ILLUSTRATIVE_HIGH_RATE).toFixed(2)} (illustrative)`
+                              : 'Savings: —'}
                         </span>
                       </div>
 
                       {/* Wash sale status */}
-                      <div style={{ fontSize: 11, color: isWashBlocked ? 'var(--v-warn)' : 'var(--v-gain)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <div data-testid={`wash-sale-${pos.symbol}`} style={{ fontSize: 11, color: isWashBlocked ? 'var(--v-warn)' : washUnchecked ? 'var(--v-text-muted)' : 'var(--v-gain)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
                         {isWashBlocked ? (
                           <>
                             <AlertTriangle size={12} />
                             <span>⚠️ Wash sale risk — bought {wash.daysSinceLastTrade} days ago</span>
+                          </>
+                        ) : washUnchecked ? (
+                          <>
+                            <AlertTriangle size={12} />
+                            {/* No trade history for THIS account ⇒ we cannot run the
+                                30-day window. Say so instead of claiming "safe". */}
+                            <span>Wash-sale window not available — no trade history on file for this account. Confirm with your broker before selling.</span>
                           </>
                         ) : (
                           <>
@@ -1110,6 +1194,13 @@ function TaxHarvestingPageInner() {
                 <p style={{ margin: 0 }}>
                   Vantage automatically checks your last 30 days of trades. Position cards marked with <span style={{ color: 'var(--v-loss)' }}>⚠️ Wash sale risk</span> have recent purchases.
                 </p>
+                {Object.values(washSaleStatuses).some(s => s.isSafe && s.historyAvailable === false) && (
+                  <p style={{ margin: '8px 0 0', color: 'var(--v-text-muted)' }}>
+                    This account has no trade history on file with Vantage — shares were imported from your broker, which doesn&apos;t
+                    report per-share purchase dates. The 30-day window can&apos;t be evaluated here, so those positions are labelled
+                    rather than marked safe; confirm before selling.
+                  </p>
+                )}
                 {/* Show blocked positions */}
                 {Object.entries(washSaleStatuses).filter(([, s]) => !s.isSafe).length > 0 && (
                   <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--v-warn-dim)', borderRadius: 6 }}>
