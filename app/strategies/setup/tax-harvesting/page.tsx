@@ -38,6 +38,7 @@ import {
   type PositionHoldingPerformance,
   type TaxLot,
 } from '@/lib/tax-harvest/holding-period';
+import type { UnknownStartInfo } from '@/lib/tax-harvest/lot-reconstruction';
 
 // ─── Types ─────────────────────────────────────────────────
 interface Position {
@@ -253,6 +254,10 @@ function TaxHarvestingPageInner() {
 
   // ── Holding-period + YTD data ──
   const [lotsBySymbol, setLotsBySymbol] = useState<Record<string, TaxLot[]>>({});
+  // Where those lots came from ('activities' = real broker transactions) and
+  // which positions include shares that predate the broker's history window.
+  const [lotsSource, setLotsSource] = useState<string | null>(null);
+  const [unknownStart, setUnknownStart] = useState<Record<string, UnknownStartInfo>>({});
   const [ytdQuotes, setYtdQuotes] = useState<Record<string, { yearStartClose: number; latestClose: number }>>({});
   const [ytdLoading, setYtdLoading] = useState(false);
 
@@ -399,22 +404,29 @@ function TaxHarvestingPageInner() {
         setPositions(posList);
 
         // ── Holding-period ledger: the FIFO lots behind each position ──
-        // ONE source of truth, shared with the wash-sale window below: the
-        // account-scoped purchase-dates endpoint (FIFO `position_lots`, falling
-        // back to raw buy `orders`). Reading either table directly from here is
-        // what let the two panels disagree — the wash-sale check used to read
-        // every account's orders while this list only read the active one.
-        // Zero lots for imported broker positions is expected — those carry no
-        // acquisition date, and the page prices them with a labelled illustrative
-        // range rather than silently reporting $0.00.
+        // ONE source of truth for the whole app: the account-scoped lots
+        // endpoint. Its primary source is the REAL broker activity history,
+        // FIFO-replayed into genuine lots (real trade date, real price). The
+        // synthetic `position_lots` backfill and raw buy orders are now only
+        // fallbacks, reported via `source` so a degraded feed is never
+        // mistaken for real acquisition data.
+        //
+        // Shares that predate the broker's history window get NO guessed
+        // purchase date — they come back under `unknownStartByTicker` and are
+        // disclosed prominently below instead of being silently mis-dated.
         try {
           const scope = connectionId
             ? `connectionId=${encodeURIComponent(connectionId)}`
             : 'demo=1';
-          const lotsRes = await fetch(`/api/strategies/tax-harvest/purchase-dates?${scope}`);
+          const lotsRes = await fetch(`/api/strategies/tax-harvest/lots?${scope}`);
           if (lotsRes.ok) {
             const lotData = await lotsRes.json();
             const rowsByTicker = (lotData?.lotsByTicker || {}) as Record<string, any[]>;
+            const unknown = (lotData?.unknownStartByTicker || {}) as Record<string, UnknownStartInfo>;
+            if (!cancelled) {
+              setLotsSource(typeof lotData?.source === 'string' ? lotData.source : null);
+              setUnknownStart(unknown);
+            }
             const grouped: Record<string, TaxLot[]> = {};
             for (const [ticker, rows] of Object.entries(rowsByTicker)) {
               const sym = String(ticker || '').toUpperCase();
@@ -599,19 +611,90 @@ function TaxHarvestingPageInner() {
   // ── Year-to-date unrealized P&L ─────────────────────────
   // Distinct from the since-inception Total on Insights: this measures what the
   // CURRENT holdings have done since the prior year's close.
+  //
+  // The baseline is per SHARE, not per position. Shares bought during the
+  // current tax year are measured from their REAL purchase price (the FIFO lot
+  // price from the reconstructed activity ledger); shares held longer are
+  // measured from the prior year's close. Shares that predate the broker's
+  // history window have no purchase date on file, so they fall back to the
+  // year-start close — and that assumption is disclosed, never hidden.
   const ytdStats = useMemo(() => {
+    const yearStart = Date.UTC(new Date().getUTCFullYear(), 0, 1);
     let unrealized = 0;
     let covered = 0;
     let missing = 0;
+    let unDatedPositions = 0;
+    let datedShares = 0;
+
     for (const p of positions) {
       const q = ytdQuotes[p.symbol];
       const price = p.currentPrice > 0 ? p.currentPrice : q?.latestClose || 0;
       if (!q || !(price > 0)) { missing += 1; continue; }
-      unrealized += (price - q.yearStartClose) * p.qty;
+
+      let remaining = Math.max(0, p.qty);
+      let costBasis = 0;
+      const lots = lotsBySymbol[p.symbol] || [];
+
+      for (const lot of lots) {
+        if (remaining <= 0) break;
+        const lotQty = Math.min(Math.max(0, lot.remainingQty), remaining);
+        if (!(lotQty > 0)) continue;
+        const filledAt = new Date(lot.filledAt).getTime();
+        const boughtThisYear = Number.isFinite(filledAt) && filledAt >= yearStart && lot.priceAtFill > 0;
+        // Real purchase price when we know the share was bought this year;
+        // otherwise the prior year's close.
+        costBasis += lotQty * (boughtThisYear ? lot.priceAtFill : q.yearStartClose);
+        if (boughtThisYear) datedShares += lotQty;
+        remaining -= lotQty;
+      }
+
+      // Shares the activity window cannot account for (or a position with no
+      // lots at all): baseline assumed at the prior year's close, disclosed.
+      if (remaining > 0.0001) {
+        costBasis += remaining * q.yearStartClose;
+        unDatedPositions += 1;
+      }
+
+      unrealized += price * Math.max(0, p.qty) - costBasis;
       covered += 1;
     }
-    return { unrealized, covered, missing };
-  }, [positions, ytdQuotes]);
+
+    return { unrealized, covered, missing, unDatedPositions, datedShares };
+  }, [positions, ytdQuotes, lotsBySymbol]);
+
+  // ── Unknown-start disclosure (prominent, never a footnote) ──
+  // These are the positions whose shares predate the broker's activity
+  // window. Their real purchase dates are UNKNOWABLE from the data we have,
+  // so the page says so everywhere the lot data feeds a number.
+  const unknownStartList = useMemo(
+    () =>
+      Object.values(unknownStart)
+        // Two ways a position qualifies: it HOLDS shares the window can't
+        // account for, or the window shows sells we never saw buys for
+        // (shares that were held before it).
+        .filter(
+          (u) => (u?.sharesHeldBeforeWindow ?? 0) > 0.0001 || (u?.oversoldUnits ?? 0) > 0.0001,
+        )
+        .sort(
+          (a, b) =>
+            Math.max(b.sharesHeldBeforeWindow ?? 0, b.oversoldUnits ?? 0) -
+            Math.max(a.sharesHeldBeforeWindow ?? 0, a.oversoldUnits ?? 0),
+        ),
+    [unknownStart],
+  );
+  /** Earliest activity date on file across the account — the retention boundary. */
+  const lotsWindowDate = useMemo(() => {
+    let earliest: string | null = null;
+    for (const u of Object.values(unknownStart)) {
+      const d = u?.windowStartDate || u?.earliestActivityDate;
+      if (!d) continue;
+      if (!earliest || new Date(d).getTime() < new Date(earliest).getTime()) earliest = d;
+    }
+    return earliest;
+  }, [unknownStart]);
+  const lotsWindowLabel = lotsWindowDate
+    ? new Date(lotsWindowDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : 'the earliest record on file';
 
   // Recurring-year projection off the rate-corrected estimate. When nothing could
   // be dated precisely we project off the illustrative midpoint instead of
@@ -863,6 +946,57 @@ function TaxHarvestingPageInner() {
         </div>
       )}
 
+      {/* ─── Unknown-start disclosure ───────────────────────────────
+          Shares that predate the broker's transaction history cannot be
+          dated. This is deliberately a top-of-page notice (not a footnote):
+          it changes how the holding-period split and the YTD baseline read
+          for real, long-held core positions. */}
+      {!loading && !loadError && unknownStartList.length > 0 && (
+        <div
+          data-testid="tlh-unknown-start-notice"
+          style={{ padding: '10px 14px', background: 'var(--v-warn-dim)', border: '1px dashed var(--v-warn)', borderRadius: 8, fontSize: 11, color: 'var(--v-warn)', marginBottom: 16, lineHeight: 1.6 }}
+        >
+          <div style={{ fontWeight: 800, marginBottom: 4 }}>
+            ⚠️ {unknownStartList.length} position{unknownStartList.length === 1 ? '' : 's'} include shares with no purchase date on file
+          </div>
+          <div>
+            This account&apos;s transaction history only goes back to {lotsWindowLabel}. Shares acquired before then
+            can&apos;t be dated, so they are left out of the short-term / long-term split and their year-to-date
+            baseline is assumed at the Dec 31 close instead of a real purchase price.
+          </div>
+          <div style={{ marginTop: 6, fontWeight: 600 }}>
+            {unknownStartList
+              .map((u) => {
+                // A position can qualify because it HOLDS undateable shares, or
+                // because the window contains sells of shares it never saw
+                // bought. Report whichever quantity is real.
+                const shares =
+                  (u.sharesHeldBeforeWindow ?? 0) > 0.0001
+                    ? u.sharesHeldBeforeWindow
+                    : u.oversoldUnits;
+                return `${u.ticker} — ${Number(shares).toLocaleString(undefined, {
+                  maximumFractionDigits: 4,
+                })} share${shares === 1 ? '' : 's'} ${u.label}`;
+              })
+              .join(' · ')}
+          </div>
+        </div>
+      )}
+
+      {/* Degraded-source disclosure: when the broker's activity history is
+          unavailable we fall back to the local lot ledger — say so rather
+          than presenting fallback dates as real acquisition data. */}
+      {!loading && !loadError && lotsSource !== null && lotsSource !== 'activities' && (
+        <div
+          data-testid="tlh-lots-source"
+          style={{ padding: '8px 14px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, fontSize: 11, color: 'var(--v-text-muted)', marginBottom: 16, lineHeight: 1.6 }}
+        >
+          {lotsSource === 'none'
+            ? 'No purchase dates are available for this account, so every harvest estimate below is illustrative.'
+            : 'Broker transaction history is unavailable for this account, so purchase dates come from the local lot ledger fallback.'}
+        </div>
+      )}
+
       {!loading && !loadError && (
         <>
           {/* ─── Section 0a: Year-to-Date ─────────────── */}
@@ -878,7 +1012,7 @@ function TaxHarvestingPageInner() {
                   </div>
                 </div>
                 <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.5 }}>
-                  <div>{ytdStats.covered} of {positions.length} positions priced since Dec 31</div>
+                  <div>Using each position&apos;s real purchase date for shares bought this year, or the Dec 31 close for shares held longer</div>
                   <div>Since Jan 1 &mdash; unrealized, on today&apos;s holdings</div>
                 </div>
               </div>
@@ -886,6 +1020,7 @@ function TaxHarvestingPageInner() {
                 This is this year&apos;s move only. The since-inception total you see on Insights includes earlier years.
                 {ytdLoading && ' Loading year-start prices…'}
                 {ytdStats.missing > 0 && ` ${ytdStats.missing} position${ytdStats.missing === 1 ? '' : 's'} had no year-start price available.`}
+                {ytdStats.unDatedPositions > 0 && ` ${ytdStats.unDatedPositions} position${ytdStats.unDatedPositions === 1 ? '' : 's'} include${ytdStats.unDatedPositions === 1 ? 's' : ''} shares with no purchase date on file — those shares are measured from the Dec 31 close by assumption.`}
               </div>
             </div>
           </Section>
@@ -1053,6 +1188,11 @@ function TaxHarvestingPageInner() {
                             {periodPill.text}
                             {bd && bd.lots.length > 0 && bd.unknownQty === 0 && bd.lots.length > 1 ? ` · ${bd.lots.length} lots` : ''}
                           </div>
+                          {unknownStart[pos.symbol] && (
+                            <div data-testid={`unknown-start-${pos.symbol}`} style={{ fontSize: 10, fontWeight: 700, color: 'var(--v-warn)', marginTop: 3, lineHeight: 1.4 }}>
+                              {unknownStart[pos.symbol].label}
+                            </div>
+                          )}
                         </div>
                         <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--v-loss)' }}>
                           -${Math.abs(pos.unrealizedPL).toFixed(2)} ({pos.unrealizedPLPct.toFixed(1)}%)

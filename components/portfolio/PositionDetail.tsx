@@ -14,10 +14,10 @@
 // pinned as a sticky footer so they are reachable without scrolling.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTabStore } from '@/store';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { usePositionLots } from '@/hooks/usePositionLots';
+import { useReconstructedLots } from '@/hooks/useReconstructedLots';
 import { useDisplayAccount } from '@/hooks/useDisplayAccount';
 import { getActiveLotCount, formatFIFOLabel } from '@/lib/fifo-engine';
+import { parseAccountScope } from '@/lib/account-scope';
 import { avatarColor, initials } from '@/lib/position-avatar';
 import { PositionDetailChart } from './PositionDetailChart';
 import type { Position } from '@/types';
@@ -95,8 +95,7 @@ function FundCell({ label, children }: { label: string; children: React.ReactNod
 
 export function PositionDetail() {
   const { positionDetail, closePositionDetail, setTab, requestTrade } = useTabStore();
-  const { user } = useAuth();
-  const { positions, loading, isReadOnly } = useDisplayAccount();
+  const { positions, loading, isReadOnly, activeAccountId, activeAccount } = useDisplayAccount();
   const [profile, setProfile] = useState<{ name?: string; sector?: string } | null>(null);
 
   // ── Canonical enrichment data (chart / fundamentals / news) ──
@@ -115,9 +114,32 @@ export function PositionDetail() {
     return (positions.find((p) => (p.symbol || '').toUpperCase() === up) as Position) || null;
   }, [symbol, positions]);
 
-  const { lots, loading: lotsLoading } = usePositionLots(user?.id as string | undefined, symbol, null, !!symbol);
+  // ── Account-scoped real lots ──
+  // The route wants the raw SnapTrade connection id (no `snaptrade:` prefix)
+  // for a live/paper account, or `demo=1` for the demo portfolio. Resolve the
+  // scope from the ACTIVE account so Detail never reads lots across accounts.
+  const accountScope = useMemo(() => parseAccountScope(activeAccountId), [activeAccountId]);
+  const activeConnectionId = accountScope && !accountScope.isDemo ? accountScope.connectionId : null;
+  const isDemoAccount =
+    (accountScope?.isDemo ?? false) ||
+    activeAccount?.isDemo === true ||
+    activeAccount?.environment === 'demo';
+
+  const { lots, unknownStart, windowStartDate, loading: lotsLoading } = useReconstructedLots({
+    connectionId: activeConnectionId,
+    isDemo: isDemoAccount,
+    symbol,
+    enabled: !!symbol,
+  });
   const activeLots = getActiveLotCount(lots);
-  const fifoLabel = formatFIFOLabel(activeLots, activeLots > 1);
+  // Known lots only tell part of the story when shares predate the activity
+  // window — never present the count as the whole position.
+  const knownLotsLabel = formatFIFOLabel(activeLots, activeLots > 1);
+  const fifoLabel = unknownStart
+    ? knownLotsLabel
+      ? `${knownLotsLabel}+`
+      : '1+' // only undated shares on file — at least one lot predates the window
+    : knownLotsLabel;
 
   // Hydrate company name / sector if the row didn't carry them.
   useEffect(() => {
@@ -220,6 +242,8 @@ export function PositionDetail() {
 
   const name = profile?.name || pos?.name || symbol;
   const sector = profile?.sector || pos?.sector;
+  // Current price drives the per-lot Gain/Loss column (same source the Total line uses).
+  const currentPrice = pos?.currentPrice ?? null;
   const marketValue = pos?.marketValue ?? (pos ? pos.qty * pos.currentPrice : 0);
   const costBasis = pos?.totalCost ?? (pos ? pos.qty * pos.avgCost : 0);
   const totalPnl = pos?.totalPnl ?? marketValue - costBasis;
@@ -410,22 +434,63 @@ export function PositionDetail() {
         )}
 
         {/* ── Lots & cost basis ── */}
-        {lots.length > 0 && (
+        {(lots.length > 0 || unknownStart) && (
           <div style={{ margin: '18px 20px 0' }}>
             <div style={{ ...SECTION_HEADING, marginBottom: 10 }}>LOTS &amp; COST BASIS</div>
-            <div style={{ background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 14, overflow: 'hidden' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1.4fr', gap: 4, padding: '8px 12px', borderBottom: '1px solid var(--v-card-border)', fontSize: 9, fontWeight: 700, color: 'var(--v-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                <span>Qty</span><span>Fill</span><span>Value</span><span>Date</span>
-              </div>
-              {lots.filter((l) => l.remaining_qty > 0).map((l) => (
-                <div key={l.id} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1.4fr', gap: 4, padding: '9px 12px', borderBottom: '1px solid var(--v-card-border)', fontSize: 12, color: 'var(--v-text-secondary)' }}>
-                  <span style={{ fontWeight: 700, color: 'var(--v-text-primary)' }}>{fmtQty(l.remaining_qty)}</span>
-                  <span>{fmt(l.price_at_fill)}</span>
-                  <span>{fmt(l.remaining_qty * l.price_at_fill)}</span>
-                  <span>{new Date(l.filled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
+
+            {/* Unknown-start disclosure — deliberately prominent, directly ABOVE the
+                table. Shares that predate the broker's transaction history have no
+                purchase date on file, so the lots below UNDERSTATE the position.
+                This is the long-held core-position case and must never be a footnote. */}
+            {unknownStart && (
+              <div
+                data-testid="position-detail-unknown-start"
+                style={{ padding: '10px 14px', background: 'var(--v-warn-dim)', border: '1px dashed var(--v-warn)', borderRadius: 10, fontSize: 11.5, color: 'var(--v-warn)', marginBottom: 10, lineHeight: 1.5 }}
+              >
+                <div style={{ fontWeight: 800, marginBottom: 4 }}>⚠️ {unknownStart.label}</div>
+                <div style={{ color: 'var(--v-text-secondary)' }}>
+                  {fmtQty(unknownStart.sharesHeldBeforeWindow)} shares in this position were held before your broker&apos;s
+                  transaction history begins
+                  {windowStartDate
+                    ? ` (${new Date(windowStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})`
+                    : ''}
+                  , so they have no purchase date on file and the lots below understate the position.
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+
+            {lots.length > 0 && (
+              <div
+                data-testid="position-detail-lots"
+                style={{ background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 14, overflow: 'hidden' }}
+              >
+                <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1fr 1.3fr 1.3fr 1.3fr', gap: 4, padding: '8px 12px', borderBottom: '1px solid var(--v-card-border)', fontSize: 9, fontWeight: 700, color: 'var(--v-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  <span>Qty</span><span>Fill</span><span>Cost basis</span><span>Date</span><span>Gain/Loss</span>
+                </div>
+                {lots.filter((l) => l.remaining_qty > 0).map((l) => {
+                  const lotPnl =
+                    currentPrice != null && Number.isFinite(currentPrice) && currentPrice > 0
+                      ? l.remaining_qty * (currentPrice - l.price_at_fill)
+                      : null;
+                  return (
+                    <div key={l.id} style={{ display: 'grid', gridTemplateColumns: '0.9fr 1fr 1.3fr 1.3fr 1.3fr', gap: 4, padding: '9px 12px', borderBottom: '1px solid var(--v-card-border)', fontSize: 12, color: 'var(--v-text-secondary)' }}>
+                      <span style={{ fontWeight: 700, color: 'var(--v-text-primary)' }}>{fmtQty(l.remaining_qty)}</span>
+                      <span>{fmt(l.price_at_fill)}</span>
+                      <span>{fmt(l.remaining_qty * l.price_at_fill)}</span>
+                      <span>{new Date(l.filled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          color: lotPnl == null ? 'var(--v-text-muted)' : lotPnl >= 0 ? 'var(--v-gain-label)' : 'var(--v-loss-label)',
+                        }}
+                      >
+                        {lotPnl == null ? '—' : `${lotPnl >= 0 ? '+' : '-'}$${Math.abs(lotPnl).toLocaleString('en-US', DOLLAR_FMT)}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
