@@ -5,7 +5,6 @@ import { apiGet, apiPost } from '@/lib/api-client';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, TrendingDown, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, Activity, Info } from 'lucide-react';
-import { usePortfolioStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getDemoAccount } from '@/lib/demo-data';
 import { returnToApp } from '@/lib/nav-back';
@@ -45,6 +44,58 @@ interface TradeSummary {
   realizedGains: number;
   realizedLosses: number;
   netPosition: number;
+}
+
+// ─── Broker position → harvestable position ────────────────
+// The app's canonical position shape is { qty, avgCost, marketValue, totalPnl,
+// totalPnlPercent } (types/index.ts). Reading broker-native field names
+// (`avg_entry_price`, `cost_basis`) returned undefined for every live position,
+// so costBasis became 0 and `unrealizedPL` became the FULL market value — every
+// position looked like a huge gain and the page reported "No harvestable
+// losses" while Holdings was showing real losses. Prefer the canonical numbers,
+// then derive from avgCost, and only then fall back to a quote-relative cost.
+function toHarvestPosition(
+  p: any,
+  price: number,
+  opts?: { fallbackCostRatio?: number; sector?: string },
+): Position {
+  const qty = Number(p?.qty) || Number(p?.units) || 0;
+  const livePrice = price > 0 ? price : Number(p?.currentPrice) || Number(p?.price) || 0;
+  const marketValue = Number(p?.marketValue) > 0 ? Number(p.marketValue) : livePrice * qty;
+  // Accept both the canonical store shape (avgCost / totalCost) and the raw
+  // broker shape (/api/broker/snaptrade/positions → costBasis, no per-unit cost).
+  const avgCost = Number(p?.avgCost) > 0
+    ? Number(p.avgCost)
+    : Number(p?.costBasis) > 0 && qty > 0
+      ? Number(p.costBasis) / qty
+      : NaN;
+  const costBasis = Number(p?.totalCost) > 0
+    ? Number(p.totalCost)
+    : Number(p?.costBasis) > 0
+      ? Number(p.costBasis)
+      : avgCost > 0
+        ? avgCost * qty
+        : (qty > 0 && opts?.fallbackCostRatio ? livePrice * opts.fallbackCostRatio * qty : 0);
+  // Canonical P&L is totalPnl; the broker route exposes it as openPnl.
+  const totalPnl = Number(p?.totalPnl ?? p?.openPnl);
+  const pnlPct = Number(p?.totalPnlPercent);
+  const unrealizedPL = Number.isFinite(totalPnl) ? totalPnl : marketValue - costBasis;
+  const unrealizedPLPct = Number.isFinite(pnlPct)
+    ? pnlPct
+    : costBasis > 0
+      ? ((marketValue - costBasis) / costBasis) * 100
+      : 0;
+  return {
+    symbol: p.symbol,
+    name: p.name || p.symbol,
+    qty,
+    costBasis,
+    currentPrice: livePrice,
+    marketValue,
+    unrealizedPL,
+    unrealizedPLPct,
+    sector: p.sector || opts?.sector || getSectorForSymbol(p.symbol),
+  };
 }
 
 // ─── Replacement Security Mappings ─────────────────────────
@@ -144,6 +195,11 @@ export default function TaxHarvestingPage() {
   const [toast, setToast] = useState('');
 
   // ─── Data Loading ────────────────────────────────────────
+  // /strategies/* routes are standalone (NOT wrapped in BrokerProvider), so the
+  // shared portfolio store is never populated here — reading it yielded an empty
+  // positions list and reported "No harvestable losses" even when the account
+  // held real losses (e.g. CHWY). Fetch positions directly, exactly like the
+  // sibling DCA setup page, and never fall back to demo holdings while connected.
   useEffect(() => {
     let cancelled = false;
 
@@ -152,19 +208,43 @@ export default function TaxHarvestingPage() {
         setLoading(true);
         setLoadError('');
 
-        const portfolioStore = usePortfolioStore.getState();
-        const account = portfolioStore.account;
+        // Resolve the active live account so we scope broker calls to it.
+        let connectionId: string | null = null;
+        let liveTradingEnabled = true;
+        try {
+          const acctRes = await apiGet('/api/accounts');
+          if (acctRes.ok) {
+            const data = await acctRes.json();
+            const accounts = (data as any)?.accounts;
+            const stored = typeof window !== 'undefined' ? localStorage.getItem('vantage:activeAccount') : null;
+            const live = Array.isArray(accounts)
+              ? (accounts.find((a: any) => a && a.id === stored && !a.isDemo)
+                  || accounts.find((a: any) => a && !a.isDemo))
+              : null;
+            if (live) {
+              liveTradingEnabled = live.tradingEnabled !== false;
+              if (typeof live.id === 'string' && live.id.startsWith('snaptrade:')) {
+                connectionId = live.id.slice('snaptrade:'.length);
+              }
+            }
+          }
+        } catch { /* fall through to demo */ }
 
-        // Check broker status
+        if (cancelled) return;
+
+        // Check broker status (scoped to the resolved connection when we have one).
         let connected = false;
         let readOnly = false;
         try {
-          const statusRes = await apiGet('/api/broker/status');
+          const statusUrl = connectionId
+            ? `/api/broker/status?connectionId=${encodeURIComponent(connectionId)}`
+            : '/api/broker/status';
+          const statusRes = await apiGet(statusUrl);
           if (statusRes.ok) {
             const status = await statusRes.json();
             connected = status.connected || status.isConnected || false;
             // Read-only (view-only) connections are connected but can't trade.
-            readOnly = connected && status.trading_enabled === false;
+            readOnly = connected && (status.trading_enabled === false || !liveTradingEnabled);
           }
         } catch { /* use demo fallback */ }
 
@@ -178,12 +258,31 @@ export default function TaxHarvestingPage() {
         let prices: Record<string, { price: number; changePct: number; name?: string }> = {};
 
         if (connected) {
-          // Use real portfolio data from store
-          if (account?.positions?.length) {
-            const symbols = account.positions.map((p: any) => p.symbol);
+          // Fetch real broker positions directly (the account call the store
+          // would have used is unavailable on standalone strategy routes).
+          let rawPositions: any[] = [];
+          try {
+            const posUrl = connectionId
+              ? `/api/broker/snaptrade/positions?connectionId=${encodeURIComponent(connectionId)}`
+              : '/api/broker/snaptrade/positions';
+            const posRes = await apiGet(posUrl);
+            if (posRes.ok) {
+              const data: unknown = await posRes.json();
+              rawPositions = Array.isArray(data)
+                ? (data as any[])
+                : Array.isArray((data as any)?.positions)
+                  ? (data as any).positions
+                  : [];
+            }
+          } catch { /* continue with whatever we have */ }
+
+          if (cancelled) return;
+
+          if (rawPositions.length > 0) {
+            const symbols = rawPositions.map((p: any) => p.symbol).filter(Boolean);
             // Fetch live prices
             try {
-              const qRes = await await apiPost('/api/market/quotes', { symbols });
+              const qRes = await apiPost('/api/market/quotes', { symbols });
               if (qRes.ok) {
                 const qData = await qRes.json();
                 Object.entries(qData.quotes || qData || {}).forEach(([sym, q]: [string, any]) => {
@@ -192,22 +291,9 @@ export default function TaxHarvestingPage() {
               }
             } catch { /* continue */ }
 
-            posList = account.positions.map((p: any) => {
-              const price = prices[p.symbol]?.price ?? 0;
-              const mktVal = price * p.qty;
-              const cost = p.avg_entry_price || p.cost_basis || 0;
-              const costTotal = cost * p.qty;
-              return {
-                symbol: p.symbol,
-                name: p.name || p.symbol,
-                qty: Number(p.qty) || 0,
-                costBasis: costTotal,
-                currentPrice: price,
-                marketValue: mktVal,
-                unrealizedPL: mktVal - costTotal,
-                unrealizedPLPct: costTotal > 0 ? ((mktVal - costTotal) / costTotal) * 100 : 0,
-              };
-            });
+            posList = rawPositions.map((p: any) =>
+              toHarvestPosition(p, prices[p.symbol]?.price ?? 0),
+            );
           }
         } else {
           // Demo data
@@ -224,23 +310,9 @@ export default function TaxHarvestingPage() {
               }
             } catch { /* continue */ }
 
-            posList = demoAccount.positions.map((p: any) => {
-              const price = prices[p.symbol]?.price ?? 0;
-              const mktVal = price * p.qty;
-              const cost = p.avg_entry_price || p.cost_basis || price * 0.9;
-              const costTotal = cost * p.qty;
-              return {
-                symbol: p.symbol,
-                name: p.name || p.symbol,
-                qty: Number(p.qty) || 0,
-                costBasis: costTotal,
-                currentPrice: price,
-                marketValue: mktVal,
-                unrealizedPL: mktVal - costTotal,
-                unrealizedPLPct: costTotal > 0 ? ((mktVal - costTotal) / costTotal) * 100 : 0,
-                sector: p.sector || getSectorForSymbol(p.symbol),
-              };
-            });
+            posList = demoAccount.positions.map((p: any) =>
+              toHarvestPosition(p, prices[p.symbol]?.price ?? 0, { fallbackCostRatio: 0.9 }),
+            );
           }
         }
 
@@ -303,6 +375,24 @@ export default function TaxHarvestingPage() {
 
   const selectedCount = Object.keys(selectedHarvests).length;
   const replacementCount = Object.keys(selectedReplacements).length;
+
+  // Assumed blended short-term capital-gains rate for illustrative estimates.
+  const ASSUMED_SHORT_TERM_RATE = 0.24;
+
+  // Projected annual tax-savings range, derived from the portfolio we already
+  // loaded (not hardcoded): a modest, recurring slice of the current
+  // harvestable-loss value. Low end = 25% of today's harvestable losses (a
+  // conservative "typical" year); high end = 50% (an active year). Both are
+  // multiplied by the assumed rate. Falls back to a stated static range when
+  // the portfolio has no market value to derive from.
+  const annualSavingsRange = useMemo(() => {
+    const totalLosses = lossPositions.reduce((s, p) => s + Math.abs(p.unrealizedPL), 0);
+    if (totalLosses <= 0) return null;
+    return {
+      low: totalLosses * 0.25 * ASSUMED_SHORT_TERM_RATE,
+      high: totalLosses * 0.50 * ASSUMED_SHORT_TERM_RATE,
+    };
+  }, [lossPositions]);
 
   // ─── Handlers ────────────────────────────────────────────
   const handleHarvest = useCallback((pos: Position) => {
@@ -429,6 +519,18 @@ export default function TaxHarvestingPage() {
 
       {!loading && !loadError && (
         <>
+          {/* ─── Section 0: Ongoing Monitoring ──────── */}
+          <Section icon={<Activity size={12} />} label="Ongoing Monitoring">
+            <div style={{ padding: '12px 14px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 10, fontSize: 12, color: 'var(--v-text-muted)', lineHeight: 1.6 }}>
+              <p style={{ margin: '0 0 8px' }}>
+                This page isn't a one-time snapshot. Vantage keeps watching your portfolio after you leave it — it scans your holdings as prices move and flags new harvest opportunities as they appear through the tax year.
+              </p>
+              <p style={{ margin: 0 }}>
+                When a position crosses into a meaningful unrealized loss, it surfaces here, along with any wash-sale restrictions on recently purchased shares. You review and decide; nothing is ever sold without your confirmation.
+              </p>
+            </div>
+          </Section>
+
           {/* ─── Section 1: YTD Summary ──────────────── */}
           <Section icon={<Activity size={12} />} label="YTD Summary">
             {tradeSummary.realizedGains === 0 && tradeSummary.realizedLosses === 0 ? (
@@ -443,12 +545,39 @@ export default function TaxHarvestingPage() {
                   <SummaryCard label="Net Position" value={tradeSummary.netPosition} color={tradeSummary.netPosition >= 0 ? 'var(--v-gain)' : 'var(--v-loss)'} />
                 </div>
                 {tradeSummary.realizedGains > 0 && (
-                  <div style={{ fontSize: 12, color: 'var(--v-text-secondary)', padding: '8px 12px', background: 'var(--v-card)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 12, color: 'var(--v-text-secondary)', padding: '8px 12px', background: 'var(--v-card)', borderRadius: 8, marginBottom: 10 }}>
                     Harvestable losses could save you approximately <strong style={{ color: 'var(--v-gain)' }}>${((tradeSummary.realizedGains - tradeSummary.realizedLosses) * 0.20).toFixed(2)}</strong> in taxes (est. 20% rate)
                   </div>
                 )}
               </>
             )}
+
+            {/* Projected annual tax savings — illustrative range */}
+            <div style={{ padding: '12px 14px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 10 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--v-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                Projected Annual Tax Savings
+              </div>
+              {annualSavingsRange ? (
+                <>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--v-gain)', marginBottom: 4 }}>
+                    ${annualSavingsRange.low.toFixed(0)} – ${annualSavingsRange.high.toFixed(0)}
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-text-muted)' }}> / year</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.5 }}>
+                    Illustrative estimate based on your current harvestable losses (${lossPositions.reduce((s, p) => s + Math.abs(p.unrealizedPL), 0).toFixed(0)}). Assumes a {Math.round(ASSUMED_SHORT_TERM_RATE * 100)}% short-term capital-gains rate and a typical year of recurring opportunities. Actual results vary with market conditions.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--v-gain)', marginBottom: 4 }}>
+                    $0 – $500<span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-text-muted)' }}> / year</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.5 }}>
+                    Illustrative estimate. No harvestable losses in the portfolio today to derive from, so this uses a conservative static range. Assumes a {Math.round(ASSUMED_SHORT_TERM_RATE * 100)}% short-term capital-gains rate. Actual results vary with market conditions.
+                  </div>
+                </>
+              )}
+            </div>
           </Section>
 
           {/* ─── Section 2: Loss Positions ───────────── */}

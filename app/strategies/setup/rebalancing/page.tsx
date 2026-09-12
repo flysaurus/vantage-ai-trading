@@ -221,6 +221,14 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
   const [alertOnDrift, setAlertOnDrift] = useState(false);
   const [driftThreshold, setDriftThreshold] = useState(5);
 
+  // Guard: only seed targets once per distinct portfolio state. Keyed by the
+  // portfolio's symbol signature so the two-phase demo load (avgCost prices,
+  // then live prices → same symbols) doesn't double-seed, while a genuinely
+  // different portfolio still seeds. Never re-seeds once the user has edited
+  // (see userEditedTargetsRef), so in-progress edits are never overwritten.
+  const defaultsSeededRef = useRef<string>('');
+  const userEditedTargetsRef = useRef(false);
+
   // Initialize targets from saved allocations or current positions
   useEffect(() => {
     const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -314,6 +322,8 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
             // (they keep their targetPct from session, or currentPct if no explicit target)
             setTargets(targetsFromSession);
             setTargetsSaved(false);
+            // Session provided targets — treat as explicit, don't auto-seed over them.
+            userEditedTargetsRef.current = true;
             setSessionLoading(false);
 
             // Clear fresh param from URL after loading
@@ -341,31 +351,61 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
     // Fresh mode: skip saved targets, use session-only data
     if (freshMode) {
       console.log('[rebalancing page] Skipping saved targets (fresh mode)');
+      // AI plan supplies its own targets — don't seed current allocations over them.
+      userEditedTargetsRef.current = true;
       return;
     }
 
-    // Load saved target allocations if available
+    // Note: target seeding runs in its own effect below, synchronously, so it
+    // always reflects the CURRENT portfolio (the two-phase demo load swaps the
+    // account object after live prices arrive).
+  }, [positions, totalValue]);
+
+  // Fetch the user's saved rebalance plan ONCE (independent of portfolio
+  // loading) and stash it; the seeding effect reads it. A partial saved plan
+  // is merged with current allocations so rows it doesn't cover aren't left at 0.
+  const savedAllocRef = useRef<Record<string, number> | null>(null);
+  const savedFetchedRef = useRef(false);
+  useEffect(() => {
+    if (savedFetchedRef.current) return;
+    savedFetchedRef.current = true;
     apiGet('/api/strategies/rebalancing/saved')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data?.saved?.targetAllocations?.length) {
-          const saved = data.saved;
           const alloc: Record<string, number> = {};
-          saved.targetAllocations.forEach((t: any) => {
-            alloc[t.symbol] = t.targetPercent;
-          });
-          setTargets(alloc);
-          setAlertOnDrift(saved.alertEnabled || false);
-          setDriftThreshold(saved.driftThreshold || 5);
+          data.saved.targetAllocations.forEach((t: any) => { alloc[t.symbol] = t.targetPercent; });
+          savedAllocRef.current = alloc;
+          setAlertOnDrift(data.saved.alertEnabled || false);
+          setDriftThreshold(data.saved.driftThreshold || 5);
           setTargetsSaved(true);
-          return;
         }
-        // No saved targets and no session — leave targets empty
-        // (user should use AI-suggested plans or set targets manually)
       })
-      .catch(() => {
-        // No saved targets — leave targets empty
-      });
+      .catch(() => { /* no saved plan — current allocations stand as defaults */ });
+  }, []);
+
+  // Seed the "Set Target Allocations" inputs from CURRENT allocation %.
+  // Runs synchronously whenever the portfolio signature changes, so it is
+  // immune to the async saved-plan fetch racing the two-phase demo load.
+  // Never re-seeds once the user has edited (in-progress edits are preserved).
+  useEffect(() => {
+    if (userEditedTargetsRef.current) return;
+    if (positions.length === 0 || totalValue <= 0) return; // empty portfolio / no value
+    // Signature includes symbols + total value so a live-price refresh (same
+    // symbols, new prices) re-seeds to the true current allocation — but only
+    // until the user edits (guarded above).
+    const portfolioSig = positions.map(p => `${p.symbol}:${p.marketValue}`).join('|') + `@${totalValue}`;
+    if (defaultsSeededRef.current === portfolioSig) return;
+
+    const currentAlloc: Record<string, number> = {};
+    positions.forEach(p => {
+      currentAlloc[p.symbol] = Math.round(((p.marketValue || 0) / totalValue) * 1000) / 10; // 1 decimal
+    });
+
+    // Merge saved plan (explicit targets win, incl. an explicit 0 = "sell");
+    // positions not covered by the saved plan keep their current %.
+    setTargets(savedAllocRef.current ? { ...currentAlloc, ...savedAllocRef.current } : currentAlloc);
+    defaultsSeededRef.current = portfolioSig;
   }, [positions, totalValue]);
 
   // Derived values
@@ -423,6 +463,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
 
   // ─── Handlers ────────────────────────────────────────────
   const handleTargetChange = (symbol: string, value: string) => {
+    userEditedTargetsRef.current = true;
     if (value === '') {
       // Completely remove the key so input goes blank
       setTargets(prev => {
@@ -441,6 +482,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
 
   const handleAddAsset = (symbol: string) => {
     if (!symbol || targetSelected(symbol)) return;
+    userEditedTargetsRef.current = true;
     setTargets(prev => ({ ...prev, [symbol.toUpperCase()]: 0 }));
     setTargetsSaved(false);
     setAddingSymbol('');
@@ -454,6 +496,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
   const targetSelected = (sym: string) => Object.keys(targets).includes(sym.toUpperCase());
 
   const removeTarget = (symbol: string) => {
+    userEditedTargetsRef.current = true;
     setTargets(prev => {
       const next = { ...prev };
       delete next[symbol];
@@ -491,6 +534,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
   const handleQuickFill = (presetKey: string) => {
     const preset = PRESETS[presetKey];
     if (!preset) return;
+    userEditedTargetsRef.current = true;
     const filled = preset.fill(symbolList);
     setTargets(filled);
     setTargetsSaved(false);
