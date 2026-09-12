@@ -94,7 +94,7 @@ export function QuickLinks({ items }: Props) {
       sub: 'Ask Rufus',
       branch: 'ask',
       cta: 'Ask Rufus →',
-      onClick: () => ask('How am I tracking against my investing goals?'),
+      onClick: () => ask('Help me set a savings/investing goal based on my current portfolio.'),
     },
   ];
 

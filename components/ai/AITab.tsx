@@ -917,15 +917,34 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
   // history visible (or an empty chat). Keying by identity makes hydration
   // deterministic and account-safe.
   const hydratedChatKeyRef = useRef<string | null>(null);
+  // Bumped on every send. The async DB-session hydration captures this at start
+  // and refuses to overwrite the thread if a turn has begun since — otherwise a
+  // programmatic prompt (quick-link / Ask Rufus) would be clobbered by the
+  // hydration setMessages, losing the user bubble and leaving only the answer.
+  const conversationEpochRef = useRef(0);
+  // Set when a message is in flight (or a pending prompt is queued) so DB
+  // hydration never CLOBBERS an optimistic user message that was appended
+  // just before the async fetch resolves (the quick-link / health / "Go
+  // deeper" trigger paths). Once set, hydration is skipped for this mount.
+  const suppressHydrationRef = useRef(false);
   useEffect(() => {
+    if (suppressHydrationRef.current) return;
     if (!userId) return;
     const hydrationKey = `${userId}:${accountId}`;
     if (hydratedChatKeyRef.current === hydrationKey) return;
     hydratedChatKeyRef.current = hydrationKey;
 
     let cancelled = false;
+    const epochAtHydrationStart = conversationEpochRef.current;
     fetchRecentSessions(userId, accountId, 10).then(sessions => {
       if (cancelled) return;
+      // A turn started while we were fetching (e.g. a programmatic prompt) — the
+      // live conversation wins. Never clobber it with stale session history.
+      if (conversationEpochRef.current !== epochAtHydrationStart) return;
+      // A send (or a pending programmatic prompt) may have started AND appended
+      // an optimistic user bubble while this fetch was in flight. Hydrating now
+      // would overwrite that bubble. Skip — the live thread is the source of truth.
+      if (suppressHydrationRef.current) return;
       let allSessions: DBSession[] = sessions;
 
       if (sessions.length === 0) {
@@ -1313,6 +1332,17 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
   ) => {
     if (!content.trim() || loadingRef.current) return;
 
+    // Mark this turn as programmatically-produced start-of-conversation so the
+    // async DB session hydration never overwrites an in-flight turn (which used
+    // to wipe the just-appended user bubble + streaming AI stub, leaving only
+    // the answer). Any send bumps the epoch; hydration skips if it changed.
+    conversationEpochRef.current += 1;
+
+    // Any real send owns the thread now — block DB hydration from overwriting
+    // the optimistic user bubble below. (Typed sends are unaffected: hydration
+    // usually resolves before the user can type.)
+    suppressHydrationRef.current = true;
+
     // ── "Go deeper" rerun ──
     // Reruns the exchange that produced `deepTargetId` on the deep-research
     // tier and REPLACES that answer in place (no new user bubble, no new
@@ -1389,6 +1419,10 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
 
     const userMessage = { role: 'user' as const, content, id: crypto.randomUUID() };
     // A deep rerun never appends a user bubble — the question is already in the thread.
+    // A send is now in flight for certain — pin the hydration guard so the
+    // async fetchRecentSessions callback (which may still be pending) cannot
+    // replace this optimistic user bubble with the DB snapshot.
+    suppressHydrationRef.current = true;
     const newMessages = deepTarget ? deepContext : [...messages, userMessage];
     if (!deepTarget) {
       setMessages(newMessages);
@@ -1910,6 +1944,16 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
     const { pendingPrompt, setPendingPrompt } = useTabStore.getState();
     if (pendingPrompt) {
       setPendingPrompt(null);
+      // Claim the turn epoch IMMEDIATELY (before the 50ms send) so the async
+      // DB-session hydration — which also runs on this mount — defers to the
+      // incoming programmatic turn instead of clobbering it. Bumping here (not
+      // only inside sendMessage) closes the race where hydration resolves in
+      // the 50ms gap and overwrites the empty thread, which would then make
+      // sendMessage append the user bubble to a stale, empty `messages` array.
+      conversationEpochRef.current += 1;
+      // A programmatic prompt is coming — block DB hydration from clobbering
+      // the user bubble that sendMessage appends. (sendMessage also sets this.)
+      suppressHydrationRef.current = true;
       // NOTE (Insights): do NOT return a cleanup that clears this timeout.
       // React 18 StrictMode mounts effects twice in dev; the simulated
       // unmount would clear the timer while `pendingPrompt` is already null,
@@ -2387,6 +2431,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             return (
               <div
                 key={i}
+                data-testid="chat-user-message"
                 style={{
                   alignSelf: 'flex-end',
                   maxWidth: '85%',
@@ -2419,6 +2464,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             <React.Fragment key={i}>
             <div
               ref={isLastAiMsg ? lastAiMessageRef : undefined}
+              data-testid="chat-ai-message"
               style={{
                 maxWidth: '100%',
                 fontSize: '14px',
@@ -2894,16 +2940,17 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                     title="Re-run this answer with the deep-research model (uses 2 messages)"
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 6,
-                      background: 'transparent',
-                      border: '1px solid var(--v-chat-accent-border)',
+                      background: busy ? 'var(--v-chat-accent-soft)' : '#0E8C99',
+                      border: '1px solid transparent',
                       borderRadius: '999px',
-                      padding: '6px 13px',
-                      color: busy ? 'var(--v-chat-text-3)' : ACCENT,
+                      padding: '7px 15px',
+                      color: busy ? ACCENT : '#ffffff',
                       fontSize: '12px',
                       fontWeight: 700,
                       cursor: busy || loading ? 'default' : 'pointer',
                       fontFamily: 'inherit',
-                      opacity: busy || loading ? 0.7 : 1,
+                      opacity: busy || loading ? 0.75 : 1,
+                      boxShadow: busy ? 'none' : '0 1px 4px rgba(14,140,153,0.28)',
                     }}
                   >
                     {busy ? 'Going deeper…' : '🔬 Go deeper'}

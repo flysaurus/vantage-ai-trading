@@ -119,13 +119,16 @@ export function parseClarifyingOptions(markdownContent: string): ClarifyingOptio
 
 // ── Chip renderer (shared by single-question and stepper) ───
 
+// Standard selectable option card — dark text on the app's card surface.
+// Matches every other selectable card in the app: card background, muted
+// card border, primary text token. Accent is reserved for the selected state.
 const CHIP_STYLE: React.CSSProperties = {
-  background: 'rgba(34,211,238,0.06)',
-  border: '1px solid rgba(34,211,238,0.2)',
+  background: 'var(--v-card)',
+  border: '1px solid var(--v-card-border)',
   borderRadius: '10px',
   padding: '10px 18px',
   cursor: 'pointer',
-  color: '#ffffff',
+  color: 'var(--v-text-primary)',
   fontFamily: 'var(--font-sans, inherit)',
   fontSize: '13.5px',
   fontWeight: 600,
@@ -136,15 +139,15 @@ const CHIP_STYLE: React.CSSProperties = {
   wordBreak: 'break-word' as const,
   opacity: 1,
   letterSpacing: '0.01em',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
 };
 
 const CHIP_TAPPED_STYLE: React.CSSProperties = {
-  background: 'rgba(34,211,238,0.2)',
-  borderColor: 'rgba(34,211,238,0.6)',
-  color: '#22d3ee',
+  background: 'var(--v-chat-accent-soft)',
+  borderColor: 'var(--v-chat-accent)',
+  color: 'var(--v-chat-accent)',
   transform: 'scale(0.97)',
-  boxShadow: '0 1px 4px rgba(34,211,238,0.25)',
+  boxShadow: '0 1px 4px rgba(14,140,153,0.25)',
 };
 
 interface ChipRowProps {
@@ -174,6 +177,7 @@ function ChipRow({ options, onSelect }: ChipRowProps) {
         return (
           <button
             key={i}
+            data-testid="clarify-option"
             onClick={() => handleTap(opt, i)}
             disabled={tapped !== null}
             style={{
@@ -193,9 +197,9 @@ function ChipRow({ options, onSelect }: ChipRowProps) {
             onMouseEnter={(e) => {
               if (tapped !== null) return;
               const t = e.currentTarget;
-              t.style.background = isAdjust ? 'rgba(250,204,21,0.12)' : 'rgba(34,211,238,0.14)';
-              t.style.borderColor = isAdjust ? 'rgba(250,204,21,0.4)' : 'rgba(34,211,238,0.45)';
-              t.style.boxShadow = '0 2px 8px rgba(34,211,238,0.15)';
+              t.style.background = isAdjust ? 'rgba(250,204,21,0.12)' : 'var(--v-chat-accent-soft)';
+              t.style.borderColor = isAdjust ? 'rgba(250,204,21,0.4)' : 'var(--v-chat-accent-border)';
+              t.style.boxShadow = '0 2px 8px rgba(14,140,153,0.15)';
               t.style.transform = 'translateY(-1px)';
             }}
             onMouseLeave={(e) => {
@@ -273,8 +277,8 @@ export function ClarifyStepper({ questions, step, onChipTap }: ClarifyStepperPro
       marginBottom: '6px',
       alignSelf: 'flex-start',
       maxWidth: '92%',
-      background: 'rgba(34,211,238,0.03)',
-      border: '1px solid rgba(34,211,238,0.12)',
+      background: 'var(--v-card)',
+      border: '1px solid var(--v-card-border)',
       borderRadius: '12px',
       padding: '14px 16px',
     }}>
@@ -299,7 +303,7 @@ export function ClarifyStepper({ questions, step, onChipTap }: ClarifyStepperPro
       {/* Question text — prominent, easy to scan */}
       <div style={{
         fontSize: '14.5px',
-        color: '#ffffff',
+        color: 'var(--v-text-primary)',
         lineHeight: '1.5',
         fontWeight: 700,
       }}>
@@ -315,7 +319,7 @@ export function ClarifyStepper({ questions, step, onChipTap }: ClarifyStepperPro
       ) : (
         <div style={{
           fontSize: '11.5px',
-          color: 'rgba(255,255,255,0.35)',
+          color: 'var(--v-text-muted)',
           fontStyle: 'italic',
           padding: '4px 0',
         }}>
