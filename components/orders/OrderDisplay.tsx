@@ -168,12 +168,12 @@ export function OrderStepper({ order }: { order: Order }) {
         .arrow { color: var(--v-text-secondary); font-size: 11px; line-height: 1; }
         .step { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.01em; }
         .step .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
-        .step.done { color: #3ddc97; }
-        .step.active { color: #f0b73f; }
+        .step.done { color: var(--v-gain-label); }
+        .step.active { color: var(--v-warn); }
         .step.active .dot { animation: pulse 1.6s ease-in-out infinite; }
         .step.future { color: var(--v-text-secondary); font-weight: 500; }
         .step.cancelled { color: var(--v-text-secondary); }
-        .step.rejected { color: #f97316; font-weight: 800; }
+        .step.rejected { color: var(--v-loss-label); font-weight: 800; }
         @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(240,183,63,0.4);} 50%{box-shadow:0 0 0 4px rgba(240,183,63,0);} }
       `}</style>
     </div>
@@ -211,13 +211,19 @@ export function orderShares(o: any): number {
 // Spec: SELL badge carries red (red's only meaning = sell); the card accent is
 // status-driven — cancelled is neutral slate/grey (NOT red), rejected is a
 // heavier, more saturated red-orange (more alarming than a normal sell).
+//
+// These are theme TOKENS, not literals: the old hardcoded Tailwind hexes
+// (#f97316 / #10b981 / #f59e0b / #64748b) are dark-surface colors and landed at
+// ~1.8–3.4:1 on the light sheet, below the AA floor for the 9–11px labels they
+// colour. The *_label / --v-warn / --v-text-muted tokens are the same hue with
+// a light-theme value that clears 4.5:1.
 export function getOrderBorderColor(order: any): string {
   const s = (order.status || '').toLowerCase();
-  if (s === 'rejected') return '#f97316'; // saturated red-orange
-  if (s === 'cancelled') return '#64748b'; // neutral slate/grey
-  if (s === 'filled') return '#10b981'; // success green
-  if (s === 'open' || s === 'pending' || s === 'submitted') return '#f59e0b'; // amber
-  return '#64748b';
+  if (s === 'rejected') return 'var(--v-loss-label)'; // saturated red-orange
+  if (s === 'cancelled') return 'var(--v-text-muted)'; // neutral slate/grey
+  if (s === 'filled') return 'var(--v-gain-label)'; // success green
+  if (s === 'open' || s === 'pending' || s === 'submitted') return 'var(--v-warn)'; // amber
+  return 'var(--v-text-muted)';
 }
 
 // ─── Shared OrderCard — THE single order card (4-row spec) ────────────────────
@@ -285,11 +291,11 @@ export function OrderCard({
   if (filled) {
     const fa = filledAmount(order);
     amountValue = fa != null && fa > 0 ? fa : orderAmount(order);
-    tag = { label: 'Actual', color: '#3ddc97' };
+    tag = { label: 'Actual', color: 'var(--v-gain-label)' };
   } else {
     amountValue = orderAmount(order);
     // qty (share) orders → the dollar amount is a derived estimate.
-    if (working && unit === 'shares') tag = { label: 'Est.', color: '#f0b73f' };
+    if (working && unit === 'shares') tag = { label: 'Est.', color: 'var(--v-warn)' };
   }
   const amountText = amountValue > 0 ? fmtDollars(amountValue) : '—';
 
@@ -428,8 +434,8 @@ export function OrderCard({
           border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700;
           letter-spacing: 0.04em; text-transform: uppercase; flex-shrink: 0;
         }
-        .side-badge.buy { background: rgba(16,185,129,0.18); color: #10b981; }
-        .side-badge.sell { background: rgba(239,68,68,0.18); color: #ef4444; }
+        .side-badge.buy { background: rgba(16,185,129,0.18); color: var(--v-gain-label); }
+        .side-badge.sell { background: rgba(239,68,68,0.18); color: var(--v-loss-label); }
         .row3 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
         .stepper-wrap { min-width: 0; flex: 1; }
         .date { font-size: 10px; color: var(--v-text-secondary); white-space: nowrap; flex-shrink: 0; }
@@ -438,11 +444,11 @@ export function OrderCard({
         .ref { font-size: 10px; color: var(--v-text-secondary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
         .origin { font-size: 9.5px; color: var(--v-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .reason { font-size: 11px; color: var(--v-text-secondary); margin-top: 8px; line-height: 1.4; }
-        .reason.rejected { color: #f97316; font-weight: 600; }
+        .reason.rejected { color: var(--v-loss-label); font-weight: 600; }
         .bracket { font-size: 10px; color: var(--v-text-secondary); margin-top: 6px; }
         .cancel-chip {
           background: none; border: 1px solid rgba(239,68,68,0.4); border-radius: 6px;
-          color: #ef4444; font-size: 11px; padding: 4px 10px; cursor: pointer;
+          color: var(--v-loss-label); font-size: 11px; padding: 4px 10px; cursor: pointer;
           font-family: inherit; font-weight: 600; flex-shrink: 0;
         }
       `}</style>
@@ -481,7 +487,7 @@ export function RequestedFilledBlocks({ order }: { order: Order }) {
         {hasFill ? (
           <>
             <div className="v">{fmtShares(fillQty)} sh @ {fmtDollars(fillPrice)}</div>
-            <div className="est-tag" style={{ color: '#3ddc97' }}>{fmtDollars(fillAmount)} total</div>
+            <div className="est-tag" style={{ color: 'var(--v-gain-label)' }}>{fmtDollars(fillAmount)} total</div>
           </>
         ) : (
           <div className="v muted">{openNow ? 'Awaiting broker' : 'Not filled'}</div>
@@ -494,7 +500,7 @@ export function RequestedFilledBlocks({ order }: { order: Order }) {
         .data-block .v { font-size: 14.5px; font-weight: 700; color: var(--v-text-primary); }
         .data-block .v.muted { color: var(--v-text-muted); font-weight: 600; font-size: 12.5px; font-style: italic; }
         .data-block.filled { border-color: rgba(61,220,151,0.3); background: rgba(61,220,151,0.04); }
-        .data-block.filled .v { color: #3ddc97; }
+        .data-block.filled .v { color: var(--v-gain-label); }
         .est-tag { font-size: 9px; color: var(--v-text-secondary); font-weight: 500; margin-top: 2px; }
       `}</style>
     </div>

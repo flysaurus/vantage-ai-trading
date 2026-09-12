@@ -457,11 +457,20 @@ export function TradeTab() {
         })}
       </div>
 
-      {investView === 'strategies' && (<>
+      {/* ── Trading-mode notice ──
+          Rendered for ALL THREE Invest sub-views (it used to sit inside the
+          Strategies branch only, so the Orders view — the one place orders are
+          actually placed — carried no disclosure at all).
 
-      {/* ── Paper-trading notice — informational, not alarmist ── */}
-      {!isShowingDemo && brokerMeta && !brokerMeta.tradingEnabled && (
-        <div style={{
+          Two genuinely different situations, two different sentences:
+            • a PAPER connection (Alpaca Paper) really does simulate orders  →
+              say so, wherever the user is looking;
+            • a read-only LIVE connection (Fidelity) does NOT simulate
+              anything — the old copy called it "paper-trading mode", which is
+              simply false about a real brokerage account. Say what's true:
+              trading isn't enabled, so nothing can be sent. */}
+      {!isShowingDemo && brokerMeta && (brokerMeta.environment === 'paper' || !brokerMeta.tradingEnabled) && (
+        <div data-testid="trading-mode-notice" style={{
           margin: '0 16px 16px 16px',
           padding: '10px 14px',
           background: 'var(--v-panel)',
@@ -472,10 +481,21 @@ export function TradeTab() {
           textAlign: 'center',
           lineHeight: 1.45,
         }}>
-          Paper-trading mode — orders here are simulated.<br/>
-          <span style={{ color: 'var(--v-text-muted)', fontSize: '11px' }}>Nothing is sent to your broker; live trading isn't enabled for this connection yet.</span>
+          {brokerMeta.environment === 'paper' ? (
+            <>
+              Paper-trading mode — orders here are simulated.<br/>
+              <span style={{ color: 'var(--v-text-muted)', fontSize: '11px' }}>Nothing is sent to your broker; live trading isn&apos;t enabled for this connection yet.</span>
+            </>
+          ) : (
+            <>
+              Read-only connection — trading isn&apos;t enabled for this account.<br/>
+              <span style={{ color: 'var(--v-text-muted)', fontSize: '11px' }}>Orders can&apos;t be sent to your broker from Vantage; your holdings and history stay view-only.</span>
+            </>
+          )}
         </div>
       )}
+
+      {investView === 'strategies' && (<>
 
       <div data-testid="strategies-section" style={{ margin: '0 16px 16px 16px' }} id="strategies-section">
         <div style={{ fontSize: '11px', color: 'var(--v-text-secondary)', letterSpacing: '0.1em', marginBottom: '12px' }}>
