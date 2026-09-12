@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
+import { TRADE_HISTORY_SELECT, toTradeInsert } from '@/lib/db/trade-history';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,11 +75,18 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
       }
 
       try {
-        // Check for existing trade by alpaca_order_id
+        // Dedupe on the trade itself — the table has no broker-order-id column
+        // (the old code selected `alpaca_order_id`, which errored every time,
+        // so nothing was ever deduped and every sync re-inserted).
+        const executedAt = order.filled_at || order.created_at;
         const { data: existing } = await (supabase as any)
           .from('trade_history')
-          .select('id')
-          .eq('alpaca_order_id', alpacaOrderId)
+          .select(TRADE_HISTORY_SELECT)
+          .eq('user_id', userId)
+          .eq('symbol', order.symbol)
+          .eq('action', order.side)
+          .eq('quantity', qty)
+          .eq('price', price)
           .maybeSingle();
 
         if (existing) {
@@ -89,22 +97,10 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
         // Insert new trade
         const { error: insertErr } = await (supabase as any)
           .from('trade_history')
-          .insert({
-            user_id: userId,
-            alpaca_order_id: alpacaOrderId,
-            symbol: order.symbol,
-            side: order.side,
-            action: order.side,
-            type: 'market',
-            qty,
-            quantity: qty,
-            filled_price: price,
-            price,
-            total_value: qty * price,
-            status: 'filled',
-            executed_at: order.filled_at || order.created_at,
-            filled_at: order.filled_at || order.created_at,
-          });
+          .insert(toTradeInsert(
+            { symbol: order.symbol, side: order.side, qty, price, commission: 0, executedAt },
+            { userId, connectionId: (ctx as any).connectionId ?? null },
+          ));
 
         if (insertErr) {
           console.warn('[trade-history/sync] Insert error for', order.symbol, order.id, insertErr);

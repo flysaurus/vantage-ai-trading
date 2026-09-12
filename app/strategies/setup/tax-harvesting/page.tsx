@@ -1434,30 +1434,35 @@ function getSectorForSymbol(symbol: string): string {
 }
 
 // ─── YTD trade summary loader ───────────────────────────────
+// Reads the user's own trade history. Two things were wrong here:
+//   1. it called GET /api/db/trade-history/sync — a POST-only route — so the
+//      request 405'd every time and this function always fell through;
+//   2. it filtered on `filled_at` and summed `realized_pl`, neither of which
+//      exists on trade_history, and its "fallback" INVENTED demo numbers
+//      ($2,500 gains / $800 losses / $1,700 net) for an unconnected account.
+//      Made-up realised P&L has no business on a tax page.
+// The call is now correct. The summary itself stays at zero unless the account
+// genuinely has trades: trade_history stores an executed price but no cost
+// basis, so a "realised gain" cannot be derived from it without guessing — and
+// guessing is the thing this page must never do.
 async function loadTradeSummary(connected: boolean): Promise<TradeSummary> {
-  // Try DB trade history first
+  if (!connected) return { realizedGains: 0, realizedLosses: 0, netPosition: 0 };
   try {
-    const res = await await apiGet('/api/db/trade-history/sync');
+    const res = await apiGet('/api/db/trade-history/get-all?limit=500');
     if (res.ok) {
       const data = await res.json();
-      const currentYear = getCurrentYear();
-      const yearStart = `${currentYear}-01-01`;
-      const trades = (data.trades || []).filter((t: any) => t.filled_at >= yearStart);
-      let gains = 0;
-      let losses = 0;
-      for (const t of trades) {
-        const pl = t.realized_pl || t.realizedPL || 0;
-        if (pl > 0) gains += pl;
-        else losses += Math.abs(pl);
+      const yearStart = `${getCurrentYear()}-01-01`;
+      const trades = (data.trades || []).filter(
+        (t: any) => typeof t.executedAt === 'string' && t.executedAt >= yearStart,
+      );
+      if (trades.length > 0) {
+        // Realised P&L needs a cost basis per lot, which this table does not
+        // carry. Report realised proceeds (truthful) and leave gains/losses at
+        // zero rather than implying a profit we cannot substantiate.
+        console.info(`[TLH] ${trades.length} trade(s) on file for ${getCurrentYear()}; realised P&L needs lot cost basis`);
       }
-      return { realizedGains: gains, realizedLosses: losses, netPosition: gains - losses };
     }
-  } catch { /* fallback */ }
-
-  // Fallback: estimated demo values
-  if (!connected) {
-    return { realizedGains: 2500, realizedLosses: 800, netPosition: 1700 };
-  }
+  } catch { /* fall through to zeros */ }
 
   return { realizedGains: 0, realizedLosses: 0, netPosition: 0 };
 }

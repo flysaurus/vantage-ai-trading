@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
+import { TRADE_HISTORY_SELECT, toTradeRecord } from '@/lib/db/trade-history';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const base = (supabase as any).from('trade_history').select('*', { count: 'exact', head: true }).eq('user_id', targetUserId);
     const { count } = connectionId ? await base.eq('connection_id', connectionId) : await base;
     let query = (supabase as any).from('trade_history')
-      .select('id, symbol, action, quantity, price, total_value, commission, notes, executed_at, created_at')
+      .select(TRADE_HISTORY_SELECT)
       .eq('user_id', targetUserId);
     if (connectionId) query = query.eq('connection_id', connectionId);
     const { data, error } = await query.order('executed_at', { ascending: false }).range(offset, offset + limit - 1);
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     if (error) return NextResponse.json({ error: 'Failed to fetch trades', detail: error.message }, { status: 500 });
 
     return NextResponse.json({
-      trades: (data || []).map((t: any) => ({ id: t.id, symbol: t.symbol, action: t.action, quantity: Number(t.quantity), price: Number(t.price), totalValue: Number(t.total_value), commission: t.commission, notes: t.notes, executedAt: t.executed_at, createdAt: t.created_at })),
+      trades: (data || []).map((t: any) => toTradeRecord(t)),
       total: count || 0,
     });
   } catch (err: any) {
