@@ -9,6 +9,7 @@ import {
   DollarSign, Activity, Layers, Calendar, Clock, Repeat,
 } from 'lucide-react';
 import { SymbolSearch } from '@/components/trade/SymbolSearch';
+import { returnToApp } from '@/lib/nav-back';
 
 // ─── Types ──────────────────────────────────────────────────
 interface StockDetails {
@@ -358,7 +359,7 @@ export default function DcaSetupPage() {
       {/* ─── Header ───────────────────────────────── */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button onClick={() => router.back()} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
+          <button onClick={() => returnToApp(router)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
             <ArrowLeft size={16} /> Back
           </button>
           <button onClick={() => router.push('/strategies')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--v-accent-label)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
@@ -549,7 +550,7 @@ export default function DcaSetupPage() {
           <button onClick={handleSubmit} disabled={!canSubmit || submitting} style={{ flex: 1, padding: 14, borderRadius: 10, border: 'none', background: canSubmit && !submitting ? 'linear-gradient(135deg, var(--v-accent), var(--v-accent))' : 'var(--v-disabled-bg)', color: canSubmit && !submitting ? 'var(--v-accent-text)' : 'var(--v-disabled-text)', fontSize: 15, fontWeight: 700, cursor: canSubmit && !submitting ? 'pointer' : 'not-allowed', fontFamily: 'inherit', transition: 'all 0.2s ease' }}>
             {isReadOnly ? 'Read-only — no trading' : (submitting ? 'Saving...' : editingSchedule ? 'Update DCA' : 'Schedule DCA')}
           </button>
-          <button onClick={() => { if (editingSchedule) { setEditingSchedule(null); setSelectedSymbol(''); setAmount(''); setQuantity(''); setFrequency(null); setDayOfWeek(null); setDayOfMonth(null); setStartDate(todayStr()); setEndDate(''); setStockDetails(null); } else { router.back(); } }} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+          <button onClick={() => { if (editingSchedule) { setEditingSchedule(null); setSelectedSymbol(''); setAmount(''); setQuantity(''); setFrequency(null); setDayOfWeek(null); setDayOfMonth(null); setStartDate(todayStr()); setEndDate(''); setStockDetails(null); } else { returnToApp(router); } }} data-testid="dca-cancel" style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             {editingSchedule ? 'Cancel Edit' : 'Cancel'}
           </button>
         </div>

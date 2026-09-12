@@ -11,6 +11,7 @@ import { getStyleContent } from '@/lib/content/investor-styles';
 import { getDemoSymbols, getDemoAccount, DEMO_PORTFOLIOS } from '@/lib/demo-data';
 import type { AccountSummary } from '@/types';
 import { SymbolSearch } from '@/components/trade/SymbolSearch';
+import { returnToApp } from '@/lib/nav-back';
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -590,7 +591,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
       setExecProgress('');
       setToast(`✓ ${total} orders simulated (demo mode)`);
       setSubmitting(false);
-      setTimeout(() => router.back(), 1500);
+      setTimeout(() => returnToApp(router), 1500);
       return;
     }
 
@@ -629,7 +630,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
       }
       setExecProgress('');
       setToast(`✓ ${placed} orders placed`);
-      setTimeout(() => router.back(), 1500);
+      setTimeout(() => returnToApp(router), 1500);
     } catch {
       setExecProgress('');
       setToast('Network error');
@@ -662,7 +663,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
       await new Promise(r => setTimeout(r, 800));
       setToast(`✓ ${trades.length} orders simulated (demo mode)`);
       setSubmitting(false);
-      setTimeout(() => router.back(), 1500);
+      setTimeout(() => returnToApp(router), 1500);
       return;
     }
 
@@ -693,7 +694,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
         return; // stay on page so failed legs can be retried
       }
       setToast(`✓ ${placed} orders placed`);
-      setTimeout(() => router.back(), 1500);
+      setTimeout(() => returnToApp(router), 1500);
     } catch {
       setToast('Network error. Please try again.');
     } finally {
@@ -980,7 +981,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button onClick={() => { setChatOpen(true); router.push('/'); }} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
+          <button onClick={() => { setChatOpen(true); returnToApp(router); }} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
             <ArrowLeft size={16} /> Back
           </button>
           <button onClick={() => router.push('/strategies')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--v-accent-label)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
@@ -1604,7 +1605,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
             <Download size={15} strokeWidth={2.2} aria-hidden />
             {downloading ? 'Preparing…' : 'Download .xlsx'}
           </button>
-          <button onClick={() => router.back()} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+          <button onClick={() => returnToApp(router)} data-testid="rebalance-cancel" style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             Cancel
           </button>
           </div>

@@ -8,6 +8,7 @@ import { ArrowLeft, TrendingDown, AlertTriangle, CheckCircle, ChevronDown, Chevr
 import { usePortfolioStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getDemoAccount } from '@/lib/demo-data';
+import { returnToApp } from '@/lib/nav-back';
 
 // ─── Types ─────────────────────────────────────────────────
 interface Position {
@@ -384,7 +385,7 @@ export default function TaxHarvestingPage() {
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button onClick={() => router.back()} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
+          <button onClick={() => returnToApp(router)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
             <ArrowLeft size={16} /> Back
           </button>
           <span style={{ padding: '4px 10px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 9999, fontSize: 11, fontWeight: 700, color: 'var(--v-text-muted)' }}>
@@ -664,7 +665,7 @@ export default function TaxHarvestingPage() {
           >
             {submitting ? 'Executing...' : isReadOnly ? 'Read-only — unavailable' : isConnected ? `Execute Harvest (${selectedCount})` : 'Connect Broker to Execute'}
           </button>
-          <button onClick={() => router.back()} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+          <button onClick={() => returnToApp(router)} data-testid="harvest-cancel" style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: 'var(--v-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             Cancel
           </button>
         </div>

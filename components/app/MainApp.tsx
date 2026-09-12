@@ -29,6 +29,7 @@ import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider
 import { AccountProvider, useAccounts } from '@/context/AccountContext';
 import { AccountSwitcher } from '@/components/accounts/AccountSwitcher';
 import AccountSelectScreen from '@/components/accounts/AccountSelectScreen';
+import { rememberTab } from '@/lib/nav-back';
 import { PortfolioProvider, useLivePortfolio } from '@/context/PortfolioContext';
 import { useAppState } from '@/lib/app-state';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
@@ -259,13 +260,29 @@ function AppShell() {
     // exactly once so it never disables account selection on future logins.
     if (typeof window !== 'undefined' && sessionStorage.getItem('vantage:skipAccountSelectOnce')) {
       sessionStorage.removeItem('vantage:skipAccountSelectOnce');
+      // Mark the picker as already handled for this tab session too: this mount
+      // IS the return-navigation, and a remount must not resurrect the picker.
+      try { sessionStorage.setItem('vantage:accountSelectShown', '1'); } catch { /* private mode */ }
       return;
     }
+
+    // One presentation per tab session. Without this, every sub-page that hands
+    // the user back to '/' (Cancel on a strategy setup, router.back() from a
+    // deep link, …) re-mounted MainApp and re-ran this effect — so Cancel looked
+    // like a jump back to the start of account selection.
+    if (sessionStorage.getItem('vantage:accountSelectShown')) return;
+
     // First login: show once unless user previously opted out
     if (typeof window !== 'undefined' && !localStorage.getItem('vantage:skipAccountSelect:v2')) {
+      try { sessionStorage.setItem('vantage:accountSelectShown', '1'); } catch { /* private mode */ }
       setShowAccountSelect(true);
     }
   }, []);
+
+  // ── Remember the active tab ────────────────────────────
+  // Sub-pages that live outside the shell (strategy setup, …) read this so
+  // "Cancel"/"Back" can hand the user back to the tab they left from.
+  useEffect(() => { rememberTab(activeTab); }, [activeTab]);
 
   // ── Account Select handlers ────────────────────────────
   const handleAccountSelect = useCallback((accountId: string) => {

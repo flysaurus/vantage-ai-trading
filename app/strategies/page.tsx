@@ -5,6 +5,7 @@ import { apiGet } from '@/lib/api-client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, TrendingUp, Activity } from 'lucide-react';
+import { returnToApp } from '@/lib/nav-back';
 
 const STRATEGIES = [
   { key: 'dca', name: 'Dollar Cost Averaging', icon: '🔄', desc: 'Invest a fixed amount on a recurring schedule', path: '/strategies/setup/dca', available: true },
@@ -53,7 +54,7 @@ export default function StrategiesPage() {
     <div className="strategy-page" style={{ height: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--v-canvas)', color: 'var(--v-text-primary)', padding: '16px 16px 120px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <button onClick={() => router.back()} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', marginBottom: 16, fontFamily: 'inherit' }}>
+        <button onClick={() => returnToApp(router)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--v-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', marginBottom: 16, fontFamily: 'inherit' }}>
           <ArrowLeft size={16} /> Back
         </button>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--v-text-primary)', margin: '0 0 6px' }}>Strategy Manager</h1>
