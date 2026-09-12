@@ -98,12 +98,47 @@ async function dropOptOut(page) {
   await page.evaluate((k) => { try { localStorage.removeItem(k); } catch {} }, SKIP_KEY);
 }
 
+/**
+ * The marketing intro (“The AI-powered advisor that fits in your pocket”)
+ * gates first-run sessions. Em's session is long past it; the harness may not be.
+ */
+async function passIntro(page) {
+  for (let i = 0; i < 3; i++) {
+    const txt = await page.evaluate(() => document.body.innerText).catch(() => '');
+    if (!/fits in your pocket/i.test(txt)) return;
+    const skip = page.getByRole('button', { name: /^Skip$/i }).first();
+    if (await skip.isVisible().catch(() => false)) await robustClick(page, skip);
+    else {
+      const cont = page.getByRole('button', { name: /Continue|Get started/i }).first();
+      if (await cont.isVisible().catch(() => false)) await robustClick(page, cont);
+    }
+    await page.waitForTimeout(5000);
+  }
+}
+
+/** Make sure the Invest tab (strategy grid) is on screen. */
+async function ensureInvestTab(page) {
+  const card = page.getByTestId('strategy-rebalancing');
+  if (await card.isVisible().catch(() => false)) return card;
+  const tab = page.getByText('Invest', { exact: true }).first();
+  if (await tab.isVisible().catch(() => false)) {
+    await robustClick(page, tab);
+    await page.waitForTimeout(6000);
+  }
+  if (await card.isVisible().catch(() => false)) return card;
+  return page.getByText('Portfolio Rebalancing', { exact: true }).first();
+}
+
 /** In-app (client-side) navigation into the rebalancing setup page. */
 async function openRebalancing(page) {
   await page.goto(`${BASE}/?tab=invest`, { waitUntil: 'domcontentloaded', timeout: 90000 });
   await page.waitForTimeout(5000);
-  await dropOptOut(page);
-  const card = page.getByText('Portfolio Rebalancing', { exact: true }).first();
+  await passIntro(page);
+  const card = await ensureInvestTab(page);
+  if (!(await card.isVisible().catch(() => false))) {
+    const txt = (await page.evaluate(() => document.body.innerText).catch(() => '')).replace(/\n+/g, ' | ').slice(0, 220);
+    console.log(`  [diag] invest grid not visible on ${BASE} — body: ${txt}`);
+  }
   await card.waitFor({ state: 'visible', timeout: 60000 });
   return clickInAppCard(page, card);
 }
@@ -141,6 +176,7 @@ async function clickInAppCard(page, card) {
   const cancelBtn = page.getByTestId('rebalance-cancel');
   await cancelBtn.waitFor({ state: 'visible', timeout: 20000 });
   await page.waitForTimeout(4000); // let hydration settle
+  await dropOptOut(page);          // Em's state: no persistent picker opt-out
   await clickAndWaitForUrlChange(page, cancelBtn);
   await page.waitForTimeout(2000);
   const url1 = page.url();
@@ -157,6 +193,7 @@ async function clickInAppCard(page, card) {
   const backBtn = page.getByRole('button', { name: 'Back', exact: true }).first();
   await backBtn.waitFor({ state: 'visible', timeout: 20000 });
   await page.waitForTimeout(4000);
+  await dropOptOut(page);
   await clickAndWaitForUrlChange(page, backBtn);
   await page.waitForTimeout(2000);
   const url2 = page.url();
@@ -168,7 +205,8 @@ async function clickInAppCard(page, card) {
   // ── Case 3: Tax Loss Harvesting bottom "Cancel" (same helper, different page) ──
   await page.goto(`${BASE}/?tab=invest`, { waitUntil: 'domcontentloaded', timeout: 90000 });
   await page.waitForTimeout(5000);
-  await dropOptOut(page);
+  await passIntro(page);
+  await ensureInvestTab(page);
   const harvestCard = page.getByTestId('strategy-taxharvest');
   await harvestCard.waitFor({ state: 'visible', timeout: 60000 });
   const navH = await clickInAppCard(page, harvestCard);
@@ -177,6 +215,7 @@ async function clickInAppCard(page, card) {
   const harvestCancel = page.getByTestId('harvest-cancel');
   const hVisible = await harvestCancel.isVisible().catch(() => false);
   if (hVisible) {
+    await dropOptOut(page);
     await clickAndWaitForUrlChange(page, harvestCancel);
     await page.waitForTimeout(2000);
     const shell4 = await waitForAppShell(page, 45000, /Offset gains and reduce your tax bill/);
