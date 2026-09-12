@@ -53,13 +53,14 @@ const Q2: Record<string, InvestorStyleKey> = {
   E: 'soros',
 };
 
-// A→buffett B→lynch C→lynch D→livermore E→munger
+// Q3 letters are intentionally NOT in the same archetype order as Q1/Q2/Q4.
+// A→lynch B→munger C→buffett D→soros E→livermore
 const Q3: Record<string, InvestorStyleKey> = {
-  A: 'buffett',
-  B: 'lynch',
-  C: 'lynch',
-  D: 'livermore',
-  E: 'munger',
+  A: 'lynch',
+  B: 'munger',
+  C: 'buffett',
+  D: 'soros',
+  E: 'livermore',
 };
 
 // A→munger B→lynch C→buffett D→livermore E→soros
@@ -189,11 +190,11 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
     label: 'HOW YOU SIZE UP',
     question: 'You have capital ready and five genuinely great ideas. How do you decide where the money goes?',
     options: [
-      { key: 'A', text: 'Heavy into my top one or two. Concentration is how you win big.' },
-      { key: 'B', text: "Spread across all five. I'd rather reduce risk than maximize any single bet." },
-      { key: 'C', text: 'Largest position in the one with the best earnings surprise potential.' },
-      { key: 'D', text: 'I follow the momentum. Best technical setup gets the most capital.' },
-      { key: 'E', text: 'The one with the strongest competitive moat and best management gets the most.' },
+      { key: 'A', text: "I'd rather own all five and let the winners run — missing the next big grower costs more than being spread thin." },
+      { key: 'B', text: "Most of the five probably don't survive my checklist. Whatever's left gets sized by conviction, not by habit." },
+      { key: 'C', text: "My best idea gets the biggest slice, but I still hold the rest — a few great businesses I understand beat one bet I don't." },
+      { key: 'D', text: 'When the odds are heavily skewed, I go big — undersized bets on a strong thesis are a waste of a good idea.' },
+      { key: 'E', text: 'I start small on all five, then add fast to whichever one starts moving. Let the market tell you where to put money.' },
     ],
   },
   {
@@ -203,7 +204,7 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
     options: [
       { key: 'A', text: 'Whether the competitive advantages will still be there in 10 years.' },
       { key: 'B', text: 'Earnings growth and how much of it the market has already priced in.' },
-      { key: 'C', text: "The gap between intrinsic value and price. If it's cheap enough, I don't need to be clever." },
+      { key: 'C', text: "Whether I can find a real reason NOT to do it. If I can't kill the idea after trying, that's the signal." },
       { key: 'D', text: 'Price action and momentum. The tape usually knows before the news does.' },
       { key: 'E', text: 'Where macro consensus is wrong. The biggest trades live in that gap.' },
     ],
