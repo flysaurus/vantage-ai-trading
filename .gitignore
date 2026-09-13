@@ -47,3 +47,12 @@ supabase/.temp/
 *.env.preview.test\n*.env.prod.test
 .env.preview.test
 .env.prod.test
+
+# Local QA scratch — never shipped
+app/qa-*-probe/
+app/qa-style-quiz/
+diag-brief.mjs
+qa-agent/.generated/
+qa-agent/*.cjs
+qa-agent/screenshots-washsale/
+tmp-shots/
