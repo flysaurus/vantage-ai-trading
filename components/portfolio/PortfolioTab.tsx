@@ -1112,7 +1112,7 @@ export function PortfolioTab() {
             {filteredPositions.filter((pos: any) => !basketSymbolMap.has(pos.symbol)).length > 0 && (
               <div
                 data-testid="positions-list"
-                style={{ margin: '0 20px', background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 16, overflow: 'hidden' }}
+                style={{ margin: '0 20px', background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 16, overflow: 'hidden' }}
               >
                 {filteredPositions
                   .filter((pos: any) => !basketSymbolMap.has(pos.symbol))

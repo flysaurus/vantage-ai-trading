@@ -358,7 +358,8 @@ export function PositionDetail() {
         </div>
 
         {/* ── Stats ── */}
-        <div style={{ margin: '14px 20px 0', background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 16, padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 16px' }}>
+        <div style={{ margin: '14px 20px 0', background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', // locked elevation
+          border: '0.5px solid var(--v-card-border)', borderRadius: 16, padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 16px' }}>
           <StatCell label="Shares" value={pos ? fmtQty(pos.qty) : '—'} />
           <StatCell label="Avg Cost" value={pos ? fmt(pos.avgCost) : '—'} />
           <StatCell label="Cost Basis" value={pos ? fmt(costBasis) : '—'} />
@@ -380,7 +381,8 @@ export function PositionDetail() {
         {hasFund && fundamentals && (
           <div data-testid="position-detail-fundamentals" style={{ margin: '18px 20px 0' }}>
             <div style={{ ...SECTION_HEADING, marginBottom: 10 }}>FUNDAMENTALS</div>
-            <div style={{ background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 16, padding: 16 }}>
+            <div style={{ background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', // locked elevation
+              border: '0.5px solid var(--v-card-border)', borderRadius: 16, padding: 16 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 16px' }}>
                 {fundamentals.marketCap != null && <FundCell label="Mkt Cap">{fmtCap(fundamentals.marketCap)}</FundCell>}
                 {fundamentals.pe != null && <FundCell label="P/E">{fundamentals.pe.toFixed(1)}</FundCell>}
@@ -463,7 +465,7 @@ export function PositionDetail() {
             {lots.length > 0 && (
               <div
                 data-testid="position-detail-lots"
-                style={{ background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 14, overflow: 'hidden' }}
+                style={{ background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 14, overflow: 'hidden' }}
               >
                 <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1fr 1.3fr 1.3fr 1.3fr', gap: 4, padding: '8px 12px', borderBottom: '1px solid var(--v-card-border)', fontSize: 9, fontWeight: 700, color: 'var(--v-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   <span>Qty</span><span>Fill</span><span>Cost basis</span><span>Date</span><span>Gain/Loss</span>
@@ -504,7 +506,8 @@ export function PositionDetail() {
                 Sentiment reflects article tone, not investment advice.
               </span>
             </div>
-            <div style={{ background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 14, overflow: 'hidden' }}>
+            <div style={{ background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', // locked elevation
+              border: '0.5px solid var(--v-card-border)', borderRadius: 14, overflow: 'hidden' }}>
               {newsItems.map((item, i) => {
                 const daysAgo = item.pubDate
                   ? Math.round((Date.now() - new Date(item.pubDate).getTime()) / (1000 * 60 * 60 * 24))

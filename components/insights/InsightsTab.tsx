@@ -422,7 +422,8 @@ export function InsightsTab() {
             title={crossedSymbols.join(', ')}
             style={{
               display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-              background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)',
+              background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', // locked elevation
+              border: '0.5px solid var(--v-card-border)',
               borderRadius: 12, padding: '11px 14px', cursor: 'pointer',
               fontFamily: 'inherit', textAlign: 'left',
             }}

@@ -402,6 +402,7 @@ export function OrderCard({
       <style jsx>{`
         .order-card {
           background: var(--v-card);
+          box-shadow: var(--v-shadow-card); /* locked elevation */
           border: 1px solid var(--v-card-border);
           border-left-width: 3px;
           border-left-style: solid;

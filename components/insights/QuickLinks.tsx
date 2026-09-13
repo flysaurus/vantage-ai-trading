@@ -112,6 +112,7 @@ export function QuickLinks({ items }: Props) {
             style={{
               textAlign: 'left',
               background: 'var(--v-card)',
+              boxShadow: 'var(--v-shadow-card)', // locked elevation
               border: '0.5px solid var(--v-card-border)',
               borderRadius: 14,
               padding: '14px 14px 13px',

@@ -92,7 +92,8 @@ export function SectorAllocation({
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--v-text-muted)', marginBottom: 10 }}>
         SECTOR ALLOCATION
       </div>
-      <div style={{ background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 16, padding: 16 }}>
+      <div style={{ background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', // locked elevation
+        border: '0.5px solid var(--v-card-border)', borderRadius: 16, padding: 16 }}>
         {/* Stacked bar */}
         <div
           data-testid="sector-bar"

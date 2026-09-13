@@ -2168,7 +2168,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
             {/* Order summary card */}
             <div style={{
-              background: 'var(--v-card)', borderRadius: '16px', padding: '20px', marginBottom: '16px',
+              background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', // locked elevation
+              borderRadius: '16px', padding: '20px', marginBottom: '16px',
             }}>
               <div style={{ color: 'var(--v-text-primary)', fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>
                 {basketDisplayName || selectedCurated.name}

@@ -237,7 +237,7 @@ export default function BulkSellSheet({ items, baskets, onClose, onConfirm }: Bu
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--v-text-muted)', marginBottom: 8 }}>
                 POSITIONS
               </div>
-              <div style={{ background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 14, overflow: 'hidden' }}>
+              <div style={{ background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 14, overflow: 'hidden' }}>
                 {items.map((it, idx) => {
                   const consumed = consumedLotsFor(it.symbol, it.qty)
                   const totalAvail = (lotsBySymbol[it.symbol] || [])
@@ -298,7 +298,7 @@ export default function BulkSellSheet({ items, baskets, onClose, onConfirm }: Bu
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--v-text-muted)', marginBottom: 8 }}>
                 BASKETS
               </div>
-              <div style={{ background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 14, overflow: 'hidden' }}>
+              <div style={{ background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '0.5px solid var(--v-card-border)', borderRadius: 14, overflow: 'hidden' }}>
                 {baskets.map((b, idx) => (
                   <div
                     key={b.id}
