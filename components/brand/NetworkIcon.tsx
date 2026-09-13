@@ -4,12 +4,14 @@
 //
 // `badge` (default true) paints the mark on a #17323B rounded chip. This is
 // required: the bright teal ramp is a "glow-on-dark" treatment and must not sit
-// directly on the light canvas (#F5F7F4) where it would lose contrast. Set
+// directly on the light canvas (#EAEFEC) where it would lose contrast. Set
 // `badge={false}` only when placing the mark on a surface you have already
 // made dark. With badge={false} the colours flip per theme (like NetworkMark).
 //
-// Same LOCKED teal ramp as NetworkMark / the FULL mark:
-//   #9FF0F4 highlight · #0E8C99 accent · #0A5A62 deep · #17323B dark-chip.
+// Same LOCKED teal ramp as NetworkMark / the FULL mark, read from the orb family
+// tokens in app/theme.css — no per-theme pair hardcoded in this file:
+//   --v-orb-node / --v-orb-hub / --v-orb-edge         (theme-keyed)
+//   --v-orb-*-onchip / --v-orb-chip                   (chip treatment, same in both themes)
 
 import React from 'react';
 
@@ -47,23 +49,19 @@ const RING = SATELLITES.map((n, i) => {
 
 const ICON_CSS = `
 .v-network-icon {
-  --ni-edge: rgba(14, 140, 153, 0.50); /* #0E8C99 @ 50% */
-  --ni-node: #0E8C99;
-  --ni-hub: #0A5A62;
+  --ni-edge: var(--v-orb-edge, rgba(14, 140, 153, 0.50));
+  --ni-node: var(--v-orb-node, #0E8C99);
+  --ni-hub: var(--v-orb-hub, #0A5A62);
   --ni-chip: transparent;
 }
-[data-theme='dark'] .v-network-icon {
-  --ni-edge: rgba(95, 216, 222, 0.50); /* #5FD8DE @ 50% */
-  --ni-node: #5FD8DE;
-  --ni-hub: #9FF0F4;
-}
-/* Badge mode wins over both theme rules (compound selector, declared last):
-   the on-chip treatment is the bright ramp on #17323B in BOTH themes. */
+/* Badge mode — the bright ramp on the #17323B chip, from its own token set, so
+   it no longer needs to out-specify the theme rules: the on-chip treatment is
+   the same in both themes by design. */
 .v-network-icon.v-network-icon--badge {
-  --ni-edge: rgba(95, 216, 222, 0.50);
-  --ni-node: #5FD8DE;
-  --ni-hub: #9FF0F4;
-  --ni-chip: #17323B;
+  --ni-edge: var(--v-orb-edge-onchip, rgba(95, 216, 222, 0.50));
+  --ni-node: var(--v-orb-node-onchip, #5FD8DE);
+  --ni-hub: var(--v-orb-hub-onchip, #9FF0F4);
+  --ni-chip: var(--v-orb-chip, #17323B);
 }
 `;
 

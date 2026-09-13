@@ -99,7 +99,37 @@
 
   /* orb + glow */
   --v-orb: radial-gradient(circle at 32% 30%, #9ff0f4 0%, #0e8c99 55%, #0a5a62 100%);
+  /* Flat tiers of the same locked ramp — the identity marks (NetworkMark
+     MEDIUM, NetworkIcon ICON) paint their node/hub/edge from these instead of
+     hardcoding their own per-theme pairs, so the ramp has one source of truth.
+     The `onchip` set is the bright treatment for the #17323B chip, identical in
+     both themes by design (bright ramp on a dark chip never varies). */
+  --v-orb-node: #0e8c99;
+  --v-orb-hub: #0a5a62;
+  --v-orb-edge: rgba(14, 140, 153, 0.5);
+  --v-orb-chip: #17323b;
+  --v-orb-node-onchip: #5fd8de;
+  --v-orb-hub-onchip: #9ff0f4;
+  --v-orb-edge-onchip: rgba(95, 216, 222, 0.5);
   --v-glow: rgba(95, 216, 222, 0.16);
+  --v-violet-label: #6d28d9; /* AA-safe violet for small text — the violet member of the -label register */
+
+  /* Onboarding StyleReveal — the archetype halo behind the emoji. Same four
+     hues in both themes; on the light canvas they are deeper and quieter
+     (a neon halo over #eaefec reads as washed-out haze). Three alpha tiers per
+     hue: radial core, near shadow, far shadow. */
+  --v-glow-cyan: rgba(14, 140, 153, 0.32);
+  --v-glow-cyan-strong: rgba(14, 140, 153, 0.26);
+  --v-glow-cyan-soft: rgba(14, 140, 153, 0.12);
+  --v-glow-green: rgba(30, 158, 90, 0.32);
+  --v-glow-green-strong: rgba(30, 158, 90, 0.26);
+  --v-glow-green-soft: rgba(30, 158, 90, 0.12);
+  --v-glow-purple: rgba(124, 77, 196, 0.32);
+  --v-glow-purple-strong: rgba(124, 77, 196, 0.26);
+  --v-glow-purple-soft: rgba(124, 77, 196, 0.12);
+  --v-glow-amber: rgba(169, 116, 31, 0.32);
+  --v-glow-amber-strong: rgba(169, 116, 31, 0.26);
+  --v-glow-amber-soft: rgba(169, 116, 31, 0.12);
 
   /* ask-rufus bar */
   --v-ask-bg: #ffffff;
@@ -183,7 +213,32 @@
      NOTE: design-tokens-context.md's "dark uses #9FF0F4 → #5FD8DE → #1B7D82"
      line predates the lock; the locked ramp above is authoritative. */
   --v-orb: radial-gradient(circle at 32% 30%, #9ff0f4 0%, #5fd8de 55%, #0a5a62 100%);
+  /* Flat tiers — luminance inverts per theme (deepest on light, brightest on
+     dark) exactly as the gradient does; see the light block for the contract. */
+  --v-orb-node: #5fd8de;
+  --v-orb-hub: #9ff0f4;
+  --v-orb-edge: rgba(95, 216, 222, 0.5);
+  --v-orb-chip: #17323b;
+  --v-orb-node-onchip: #5fd8de;
+  --v-orb-hub-onchip: #9ff0f4;
+  --v-orb-edge-onchip: rgba(95, 216, 222, 0.5);
   --v-glow: rgba(95, 216, 222, 0.2); /* #5FD8DE — unchanged, consistent with the mid stop */
+  --v-violet-label: #c084fc;
+
+  /* Same four archetype hues, in the neon register the dark canvas was
+     designed around (byte-identical to the values the component used to carry). */
+  --v-glow-cyan: rgba(34, 211, 238, 0.35);
+  --v-glow-cyan-strong: rgba(34, 211, 238, 0.30);
+  --v-glow-cyan-soft: rgba(34, 211, 238, 0.15);
+  --v-glow-green: rgba(16, 185, 129, 0.35);
+  --v-glow-green-strong: rgba(16, 185, 129, 0.30);
+  --v-glow-green-soft: rgba(16, 185, 129, 0.15);
+  --v-glow-purple: rgba(168, 85, 247, 0.35);
+  --v-glow-purple-strong: rgba(168, 85, 247, 0.30);
+  --v-glow-purple-soft: rgba(168, 85, 247, 0.15);
+  --v-glow-amber: rgba(245, 158, 11, 0.35);
+  --v-glow-amber-strong: rgba(245, 158, 11, 0.30);
+  --v-glow-amber-soft: rgba(245, 158, 11, 0.15);
 
   --v-ask-bg: #0f1626;
   --v-ask-border: #141c2e;

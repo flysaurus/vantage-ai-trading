@@ -10,11 +10,12 @@
 //
 // Colours come from the LOCKED teal ramp (qa-agent/design-tokens-context.md):
 //   #9FF0F4 highlight · #0E8C99 accent · #0A5A62 deep · #17323B dark-chip.
-// Theme is read off the <html data-theme> attribute (see app/theme.css) via a
-// scoped <style> block, so the mark follows Light/Dark/System for free. The
-// mapping inverts LUMINANCE per theme (deepest element on the light canvas,
-// brightest on the dark canvas) so the mark keeps the same visual weight in
-// both — see MARK_CSS below.
+// The flat tiers live in app/theme.css as the orb family (`--v-orb-node`,
+// `--v-orb-hub`, `--v-orb-edge`) — reconciled with the `--v-orb` gradient, one
+// source of truth, no per-theme pair hardcoded here. Theme is read off the
+// <html data-theme> attribute by those tokens. The mapping inverts LUMINANCE per
+// theme (deepest element on the light canvas, brightest on the dark canvas) so
+// the mark keeps the same visual weight in both.
 
 import React from 'react';
 
@@ -46,16 +47,14 @@ const RING = NODES.map((n, i) => {
   return { x1: n.x, y1: n.y, x2: m.x, y2: m.y };
 });
 
+// Token-driven — all three tiers come from app/theme.css (the orb family), so
+// the ramp has one source of truth. Fallbacks mirror the light values so the
+// mark still renders if the tokens are absent (e.g. an isolated preview).
 const MARK_CSS = `
 .v-network-mark {
-  --nm-edge: rgba(14, 140, 153, 0.50); /* #0E8C99 @ 50% — must read at 48px */
-  --nm-node: #0E8C99;
-  --nm-hub: #0A5A62;
-}
-[data-theme='dark'] .v-network-mark {
-  --nm-edge: rgba(95, 216, 222, 0.50); /* #5FD8DE @ 50% */
-  --nm-node: #5FD8DE;
-  --nm-hub: #9FF0F4;
+  --nm-edge: var(--v-orb-edge, rgba(14, 140, 153, 0.50));
+  --nm-node: var(--v-orb-node, #0E8C99);
+  --nm-hub: var(--v-orb-hub, #0A5A62);
 }
 `;
 
