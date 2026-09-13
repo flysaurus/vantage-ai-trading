@@ -21,6 +21,12 @@
   --v-canvas: #eaefec;
   /* LOCKED elevation: the one card shadow. Applied via var() — never inline the literal. */
   --v-shadow-card: 0 1px 3px rgba(10, 20, 20, 0.08), 0 1px 2px rgba(10, 20, 20, 0.05);
+  /* LOCKED elevation, floating tier: surfaces that sit ABOVE the page (toasts,
+     snackbars, floating action bars). Deliberately heavier than --v-shadow-card
+     — never flatten a floating surface down to the card value. Currently the
+     same ramp as --v-ask-shadow (the modal tier); widen it here if the two
+     tiers ever need to diverge. */
+  --v-shadow-toast: 0 6px 18px rgba(16, 24, 43, 0.15);
   --v-card: #ffffff;
   /* "Your Portfolio" card ONLY — soft teal tint. Do not promote this to
      general --v-card: Health Score, quick-links, More from Rufus and
@@ -153,6 +159,8 @@
 
   --v-canvas: #000814;
   --v-shadow-card: 0 1px 3px rgba(10, 20, 20, 0.08), 0 1px 2px rgba(10, 20, 20, 0.05);
+  /* floating tier — see the light block for the contract */
+  --v-shadow-toast: 0 10px 32px rgba(0, 0, 0, 0.38);
   --v-card: #0a0f1e;
   --v-card-border: #141c2e;
   /* "Your Portfolio" card — dark theme keeps today's plain card fill */
