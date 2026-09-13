@@ -6,6 +6,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { NetworkMark } from '@/components/brand/NetworkMark';
 
 interface CompassBurstProps {
   size?: number;
@@ -60,7 +61,7 @@ export function CompassBurst({
             left: '50%',
             width: '2px',
             height: `${particleLength}px`,
-            background: '#22d3ee',
+            background: 'var(--v-orb-node)',
             transformOrigin: 'bottom center',
             transform: `translate(-50%, -100%) rotate(${angle}deg)`,
             opacity: started ? undefined : 0,
@@ -70,29 +71,7 @@ export function CompassBurst({
       ))}
 
       {/* Compass rose SVG */}
-      <svg
-        width={size}
-        height={size}
-        viewBox="0 0 64 64"
-        className={started ? 'compass-animate' : ''}
-        style={{
-          position: 'relative',
-          zIndex: 1,
-          transform: 'scale(1.2)',
-          opacity: 1,
-          filter: 'drop-shadow(0 0 20px rgba(34,211,238,0.3))',
-          transition: 'transform 200ms ease-in-out',
-        }}
-      >
-        <circle cx="32" cy="32" r="28" fill="none" stroke="#22d3ee" strokeWidth="1.2" opacity="0.3" />
-        <line x1="32" y1="4" x2="32" y2="60" stroke="#22d3ee" strokeWidth="1.5" opacity="0.6" />
-        <line x1="4" y1="32" x2="60" y2="32" stroke="#22d3ee" strokeWidth="1.5" opacity="0.6" />
-        <line x1="12" y1="12" x2="52" y2="52" stroke="#22d3ee" strokeWidth="0.8" opacity="0.25" />
-        <line x1="52" y1="12" x2="12" y2="52" stroke="#22d3ee" strokeWidth="0.8" opacity="0.25" />
-        <polygon points="32,10 28,18 36,18" fill="#22d3ee" opacity="0.9" />
-        <polygon points="32,54 28,46 36,46" fill="#22d3ee" opacity="0.3" />
-        <circle cx="32" cy="32" r="2.5" fill="#22d3ee" />
-      </svg>
+      <NetworkMark size={Math.round(size * 0.75)} />
 
       <style>{`
         @keyframes compassSettle {

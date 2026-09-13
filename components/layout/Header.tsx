@@ -4,7 +4,7 @@ import { apiGet, apiPost } from '@/lib/api-client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, Settings, X } from 'lucide-react';
-import { VantageOrb } from '@/components/brand/VantageOrb';
+import { NetworkIcon } from '@/components/brand/NetworkIcon';
 import { useTabStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
 import { useAccounts } from '@/context/AccountContext';
@@ -138,7 +138,7 @@ export function Header() {
       {/* ── Left: Orb + Wordmark ── */}
       <div className="header-left">
         <div style={{ width: 32, height: 32, flexShrink: 0 }}>
-          <VantageOrb size={32} animate showEntrance={false} />
+          <NetworkIcon size={32} minimal />
         </div>
         <span className="header-wordmark">VANTAGE</span>
       </div>

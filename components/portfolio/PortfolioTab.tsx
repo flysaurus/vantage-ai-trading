@@ -102,7 +102,7 @@ function AccountHero({ account, isConnected }: { account: AccountSummary; isConn
           <span
             aria-hidden="true"
             data-testid="balance-orb"
-            style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--v-orb)', flexShrink: 0 }}
+            style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--v-orb-node)', flexShrink: 0 }}
           />
           <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--v-text-muted)' }}>
             PORTFOLIO VALUE

@@ -1,5 +1,6 @@
 'use client';
 
+import { NetworkIcon } from '@/components/brand/NetworkIcon';
 // ─── Masthead ───────────────────────────────────────────────
 // THE shared screen header (PART 3). One implementation used by BOTH the
 // Insights screen and Holdings ("Portfolio") so they read as the same product:
@@ -37,10 +38,7 @@ export function Masthead({ accountName, brokerLabel, dotColor, isReadOnly, style
       <div style={{ padding: '14px 20px 0' }} data-testid={testIds.masthead}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <span
-              aria-hidden="true"
-              style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0, background: 'var(--v-orb)' }}
-            />
+            <NetworkIcon size={18} minimal />
             <span
               data-testid={testIds.wordmark}
               style={{

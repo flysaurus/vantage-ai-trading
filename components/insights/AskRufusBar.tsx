@@ -15,6 +15,7 @@
 'use client';
 
 import { useTabStore } from '@/store';
+import { NetworkMark } from '@/components/brand/NetworkMark';
 
 /**
  * The bar is rendered by <PageScrollArea> (components/layout/PageScrollArea.tsx),
@@ -40,7 +41,7 @@ export function AskRufusBar({
         data-testid="ask-rufus-bar"
       >
         <span className="ask-rufus-placeholder">Ask about your portfolio...</span>
-        <span className="ask-rufus-orb" aria-hidden="true" />
+        <span className="ask-rufus-orb" aria-hidden="true"><NetworkMark size={30} /></span>
       </button>
       <style>{`
         .ask-rufus-bar {
@@ -75,7 +76,9 @@ export function AskRufusBar({
           height: 30px;
           border-radius: 50%;
           flex-shrink: 0;
-          background: var(--v-orb);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           box-shadow: 0 0 14px rgba(95, 216, 222, 0.45);
         }
         @media (min-width: 1024px) {

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import CompassIcon from '@/components/CompassIcon';
+import { NetworkIcon } from '@/components/brand/NetworkIcon';
 
 const MESSAGES: Record<string, string[]> = {
   health: [
@@ -74,7 +74,7 @@ export default function AIThinkingIndicator({ mode = 'general' }: { mode?: strin
 
   return (
     <div className="flex items-center gap-3 px-4 py-2">
-      <CompassIcon size={22} color="white" animated={true} />
+      <NetworkIcon size={22} minimal />
       <p className="text-slate-300 text-sm">
         {messages[idx]} —
       </p>

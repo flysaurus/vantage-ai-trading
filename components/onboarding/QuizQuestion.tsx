@@ -14,7 +14,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft } from 'lucide-react';
-import { VantageOrb } from '@/components/brand/VantageOrb';
+import { NetworkIcon } from '@/components/brand/NetworkIcon';
 import type { QuizQuestion as QuizQuestionType } from '@/lib/onboarding/quiz-logic';
 
 // ── Two-line question splits ──────────────────────────────
@@ -174,7 +174,7 @@ export function QuizQuestion({
             paddingTop: 'env(safe-area-inset-top, 0px)',
           }}
         >
-          <VantageOrb size={44} animate showEntrance={false} />
+          <NetworkIcon size={44} />
         </div>
 
 

@@ -9,7 +9,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { VantageOrb } from '@/components/brand/VantageOrb';
+import { NetworkMark } from '@/components/brand/NetworkMark';
 import type { UserProfile } from '@/lib/app-state';
 import { estDateOnly } from '@/lib/demo-utils';
 
@@ -145,7 +145,7 @@ export default function DemoCounterPage({
         width: '100%', display: 'flex', alignItems: 'center',
         justifyContent: 'center', minHeight: '36px',
       }}>
-        <VantageOrb size={32} animate />
+        <NetworkMark size={32} />
       </div>
 
       <p style={{

@@ -13,7 +13,7 @@
 
 import { useState, useCallback } from 'react';
 import { ChevronLeft, Link, Loader2, ExternalLink } from 'lucide-react';
-import { VantageOrb } from '@/components/brand/VantageOrb';
+import { NetworkIcon } from '@/components/brand/NetworkIcon';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -206,7 +206,7 @@ export function USStockBrokersPage({
             paddingTop: 'env(safe-area-inset-top, 0px)',
           }}
         >
-          <VantageOrb size={44} animate showEntrance={false} />
+          <NetworkIcon size={44} />
         </div>
       </div>
 

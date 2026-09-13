@@ -9,7 +9,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
-import { VantageOrb } from '@/components/brand/VantageOrb';
+import { NetworkIcon } from '@/components/brand/NetworkIcon';
 import Input from '@/components/ui/Input';
 import PasswordStrength from '@/components/ui/PasswordStrength';
 import { createClient } from '@/lib/supabase';
@@ -143,7 +143,7 @@ export default function ResetPasswordPage() {
       <PageShell>
         {/* Top Bar */}
         <div style={{ height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <VantageOrb size={44} animate={false} showEntrance={false} />
+          <NetworkIcon size={44} />
         </div>
 
         <div style={{
@@ -234,7 +234,7 @@ export default function ResetPasswordPage() {
     return (
       <PageShell>
         <div style={{ height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <VantageOrb size={44} animate={false} showEntrance={false} />
+          <NetworkIcon size={44} />
         </div>
 
         <div style={{
@@ -313,7 +313,7 @@ export default function ResetPasswordPage() {
       <div onKeyDown={handleKeyDown} style={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* Top Bar */}
         <div style={{ height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <VantageOrb size={44} animate={false} showEntrance={false} />
+          <NetworkIcon size={44} />
         </div>
 
         {/* Scrollable content */}

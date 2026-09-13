@@ -12,7 +12,7 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { VantageOrb } from '@/components/brand/VantageOrb';
+import { NetworkIcon } from '@/components/brand/NetworkIcon';
 
 // ── Spinner sub-component ─────────────────────────────────
 
@@ -113,7 +113,7 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
           paddingTop: 'env(safe-area-inset-top, 0px)',
         }}
       >
-        <VantageOrb size={44} animate showEntrance={false} />
+        <NetworkIcon size={44} />
       </div>
 
       {/* ═══ HEADLINE ═══ */}

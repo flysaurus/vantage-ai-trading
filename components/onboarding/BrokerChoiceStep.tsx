@@ -9,7 +9,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { VantageOrb } from '@/components/brand/VantageOrb';
+import { NetworkIcon } from '@/components/brand/NetworkIcon';
 
 // ── Props ───────────────────────────────────────────────────
 
@@ -102,7 +102,7 @@ export default function BrokerChoiceStep({
             transform: 'translate(-50%, -50%)',
           }}
         >
-          <VantageOrb size={44} animate showEntrance />
+          <NetworkIcon size={44} />
         </div>
 
         {/* Right: spacer for balance */}

@@ -11,7 +11,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Link, Loader2, TrendingUp, Zap } from 'lucide-react';
-import { VantageOrb } from '@/components/brand/VantageOrb';
+import { NetworkMark } from '@/components/brand/NetworkMark';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -160,7 +160,7 @@ export function BrokerConnect({ onBack }: BrokerConnectProps) {
 
         {/* Spacer + Center Orb */}
         <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-          <VantageOrb size={36} animate showEntrance={false} />
+          <NetworkMark size={36} />
         </div>
 
         {/* Balance the layout (same width as back button) */}
