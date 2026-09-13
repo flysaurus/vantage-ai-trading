@@ -90,7 +90,7 @@ export function OnboardingWelcome({ onNext, onSkip }: Props) {
           style={{
             background: 'none',
             border: 'none',
-            color: 'var(--text-muted)',
+            color: 'var(--v-text-muted)',
             fontSize: 12,
             cursor: 'pointer',
             textDecoration: 'underline',

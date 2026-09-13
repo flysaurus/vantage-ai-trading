@@ -121,7 +121,7 @@ export function BootSplash({ onComplete }: BootSplashProps) {
           position: 'absolute',
           bottom: '44px',
           fontSize: '12px',
-          color: 'var(--v-text-faint)',
+          color: 'var(--v-text-muted)',
           fontFamily: 'var(--font-sans)',
         }}
       >

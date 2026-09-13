@@ -103,7 +103,7 @@ export function FeatureSplash({ onComplete }: FeatureSplashProps) {
           right: '24px',
           background: 'none',
           border: 'none',
-          color: 'var(--v-text-faint)',
+          color: 'var(--v-text-muted)',
           fontSize: '13px',
           cursor: 'pointer',
           fontFamily: 'var(--font-sans)',
