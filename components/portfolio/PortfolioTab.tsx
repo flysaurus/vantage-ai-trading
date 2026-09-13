@@ -1,5 +1,7 @@
 'use client';
 
+import { AnalystConsensus, ANALYST_UNAVAILABLE } from '@/components/shared/AnalystConsensus';
+import type { AnalystSummary } from '@/lib/market-data';
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
@@ -48,6 +50,7 @@ const SORT_OPTIONS = [
   { key: 'pnl', short: 'P&L %', label: 'P&L (%)' },
   { key: 'qty', short: 'Qty', label: 'Quantity' },
   { key: 'alpha', short: 'A–Z', label: 'Alphabetical (ticker)' },
+  { key: 'upside', short: 'Upside', label: 'Analyst Upside' },
 ] as const;
 
 const formatCurrency = (n: number) => {
@@ -179,13 +182,22 @@ function PositionCard({
   // ── Sparkline state ──
   const [sparkline, setSparkline] = useState<{ points: { t: number; c: number }[]; high52w: number; low52w: number } | null>(null);
   const [sparklineLoading, setSparklineLoading] = useState(false);
-  const [fundamentals, setFundamentals] = useState<{
+const NULL_FUNDAMENTALS = {
+  eps: null, pe: null, dividendYield: null, dividendRate: null,
+  recommendation: null, numAnalysts: null, marketCap: null,
+  volume: null, avgVolume: null, dayHigh: null, dayLow: null,
+  beta: null, nextEarningsDate: null,
+  analyst: ANALYST_UNAVAILABLE,
+} as const;
+
+    const [fundamentals, setFundamentals] = useState<{
     eps: number|null; pe: number|null; dividendYield: number|null;
     dividendRate: number|null; recommendation: string|null;
     numAnalysts: number|null; marketCap: number|null;
     volume: number|null; avgVolume: number|null;
     dayHigh: number|null; dayLow: number|null;
     beta: number|null; nextEarningsDate: string|null;
+    analyst: AnalystSummary | null;
   } | null>(null);
   const [newsItems, setNewsItems] = useState<{ title: string; link: string; publisher: string; pubDate: string; sentiment?: { label: 'positive' | 'negative' | 'neutral'; score: number } }[]>([]);
   const [newsLoaded, setNewsLoaded] = useState(false);
@@ -219,8 +231,15 @@ function PositionCard({
               volume: fData.volume, avgVolume: fData.avgVolume,
               dayHigh: fData.dayHigh, dayLow: fData.dayLow,
               beta: fData.beta, nextEarningsDate: fData.nextEarningsDate,
+              analyst: fData.analyst ?? ANALYST_UNAVAILABLE,
             });
+          } else if (!cancelled) {
+            setFundamentals({ ...NULL_FUNDAMENTALS });
           }
+        } else if (!cancelled) {
+          // Provider unreachable (503/401/network). That is NOT "no coverage"
+          // — say so rather than letting the row disappear.
+          setFundamentals({ ...NULL_FUNDAMENTALS });
         }
         if (newsRes?.ok) {
           const nData = await newsRes.json();
@@ -575,30 +594,10 @@ function PositionCard({
                     : '—'}
                 </div>
               </div>
-              {fundamentals.recommendation ? (
-                <div>
-                  <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Analyst</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{
-                      fontSize: 12, fontWeight: 700, textTransform: 'capitalize',
-                      padding: '1px 8px', borderRadius: 4,
-                      color: fundamentals.recommendation === 'buy' || fundamentals.recommendation === 'strong_buy' ? '#10b981'
-                           : fundamentals.recommendation === 'sell' || fundamentals.recommendation === 'strong_sell' ? '#ef4444'
-                           : '#fbbf24',
-                      background: fundamentals.recommendation === 'buy' || fundamentals.recommendation === 'strong_buy' ? 'rgba(16,185,129,0.12)'
-                                 : fundamentals.recommendation === 'sell' || fundamentals.recommendation === 'strong_sell' ? 'rgba(239,68,68,0.12)'
-                                 : 'rgba(251,191,36,0.12)',
-                    }}>
-                      {fundamentals.recommendation.replace('_', ' ')}
-                    </span>
-                    {fundamentals.numAnalysts != null && (
-                      <span style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
-                        · {fundamentals.numAnalysts} analysts
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ) : <div />}
+              {/* Analyst consensus — the shared component, same real source
+                  (recommendationTrend[0] buckets + financialData targets) and the
+                  same no-coverage / temporarily-unavailable states as everywhere else. */}
+                <AnalystConsensus analyst={fundamentals.analyst} testId="analyst-inline" />
             </div>
           )}
 
@@ -855,7 +854,7 @@ export function PortfolioTab() {
   // ── Sort (Task 9, Part 4) ──
   // The chip row above is FILTERS (All/Gainers/Losers). Sorting is a separate
   // control: one dropdown (which field) + one direction toggle (asc/desc).
-  const [sortKey, setSortKey] = useState<'value' | 'gainloss' | 'pnl' | 'qty' | 'alpha'>('value');
+  const [sortKey, setSortKey] = useState<'value' | 'gainloss' | 'pnl' | 'qty' | 'alpha' | 'upside'>('value');
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
   const [sortOpen, setSortOpen] = useState(false);
 
@@ -1127,6 +1126,37 @@ export function PortfolioTab() {
   // ── Derived values ──
   const displayPositions = enrichedPositions.length > 0 ? enrichedPositions : positions;
 
+  // ── Analyst coverage per symbol (Upside sort + Strong Buy pill) ──
+  // Fundamentals are cached 24h server-side, so this is one cheap request per
+  // held symbol (capped). `null` = no coverage (index ETFs) — a real answer,
+  // and the reason uncovered rows sort to the END rather than as 0%.
+  // Declared AFTER displayPositions: it is keyed off the held symbols.
+  const [analystBySymbol, setAnalystBySymbol] = useState<
+    Record<string, { upside: number | null; consensus: string | null } | null>
+  >({});
+  useEffect(() => {
+    const held = Array.from(new Set(displayPositions.map((p) => p.symbol).filter(Boolean)));
+    const missing = held.filter((s) => !(s in analystBySymbol)).slice(0, 25);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const out: Record<string, { upside: number | null; consensus: string | null } | null> = {};
+      await Promise.all(
+        missing.map(async (s) => {
+          try {
+            const r = await fetch(`/api/stock/fundamentals?symbol=${encodeURIComponent(s)}`);
+            if (!r.ok) { out[s] = null; return; }
+            const j = await r.json();
+            const a = j?.analyst;
+            out[s] = a && a.coverage ? { upside: a.upsidePct ?? null, consensus: a.consensus ?? null } : null;
+          } catch { out[s] = null; }
+        })
+      );
+      if (!cancelled) setAnalystBySymbol((prev) => ({ ...prev, ...out }));
+    })();
+    return () => { cancelled = true; };
+  }, [displayPositions, analystBySymbol]);
+
   // Symbol → hydrated company name (used to enrich basket position rows).
   const nameBySymbol = useMemo(() => {
     const m = new Map<string, string>();
@@ -1158,6 +1188,12 @@ export function PortfolioTab() {
     const base =
       filter === 'gainers' ? displayPositions.filter(p => calcPnL(p) >= 0)
       : filter === 'losers' ? displayPositions.filter(p => calcPnL(p) < 0)
+      // "Strong Buy" = consensus Buy or Strong Buy. Positions with no coverage
+      // (ETFs) are excluded entirely — not shown, not counted.
+      : filter === 'strongbuy' ? displayPositions.filter(p => {
+          const c = analystBySymbol[p.symbol]?.consensus;
+          return c === 'Buy' || c === 'Strong Buy';
+        })
       : displayPositions;
 
     // ── Sort (Task 9, Part 4) ──
@@ -1181,6 +1217,24 @@ export function PortfolioTab() {
     });
 
     const dir = sortDir === 'asc' ? 1 : -1;
+
+    // "Analyst Upside" — uncovered positions are pinned to the end of the list
+    // in BOTH directions (never ranked as if they were 0% upside).
+    if (sortKey === 'upside') {
+      const covered = base.filter((p) => analystBySymbol[p.symbol]?.upside != null);
+      const uncovered = base
+        .filter((p) => analystBySymbol[p.symbol]?.upside == null)
+        .slice()
+        .sort((a, b) => (a.symbol || '').localeCompare(b.symbol || ''));
+      const sorted = covered.slice().sort((a, b) => {
+        const av = analystBySymbol[a.symbol]?.upside ?? 0;
+        const bv = analystBySymbol[b.symbol]?.upside ?? 0;
+        if (av === bv) return 0;
+        return av < bv ? -dir : dir;
+      });
+      return [...sorted, ...uncovered];
+    }
+
     return keyed
       .slice()
       .sort((a, b) => {
@@ -1194,7 +1248,7 @@ export function PortfolioTab() {
         return av < bv ? -dir : dir;
       })
       .map(([p]) => p);
-  }, [displayPositions, filter, sortKey, sortDir]);
+  }, [displayPositions, filter, sortKey, sortDir, analystBySymbol]);
 
   // ── Threshold crossings → inline badges on the affected position rows ──
   // Crossings used to be list items; they belong next to the position instead.
@@ -1385,6 +1439,7 @@ export function PortfolioTab() {
               { key: 'all', label: 'All' },
               { key: 'gainers', label: 'Gainers' },
               { key: 'losers', label: 'Losers' },
+              { key: 'strongbuy', label: 'Strong Buy' },
             ] as const).map(({ key, label }) => {
               const active = filter === key;
               return (

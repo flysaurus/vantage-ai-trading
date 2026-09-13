@@ -8,7 +8,8 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-import { yahooFundamentals } from '@/lib/market-data';
+import { yahooFundamentals, yahooCooldownRemainingMs } from '@/lib/market-data';
+import type { AnalystSummary } from '@/lib/market-data';
 
 interface FundamentalsResponse {
   symbol: string;
@@ -25,11 +26,18 @@ interface FundamentalsResponse {
   dayLow: number | null;
   beta: number | null;
   nextEarningsDate: string | null;
+  /** Analyst consensus block (aggregate — see AnalystSummary in lib/market-data.ts). */
+  analyst: AnalystSummary | null;
   source: string;
 }
 
 const cache = new Map<string, { data: FundamentalsResponse; ts: number }>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+// Short negative cache: after a 429/401 burst we do NOT want every portfolio
+// render to re-hit the provider (that is what causes the burst).
+const unavailable = new Map<string, number>();
+const UNAVAILABLE_TTL_MS = 60 * 1000;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -47,12 +55,39 @@ export async function GET(request: Request) {
     });
   }
 
+  // Recently rate-limited -> don't touch the provider.
+  const parkedAt = unavailable.get(symbol);
+  if (parkedAt && Date.now() - parkedAt < UNAVAILABLE_TTL_MS) {
+    if (cached) {
+      return Response.json(cached.data, { headers: { 'X-Cache': 'STALE', 'Cache-Control': 'no-store' } });
+    }
+    return Response.json(
+      { error: 'Analyst data temporarily unavailable', retryAfterSeconds: 60 },
+      { status: 503, headers: { 'Retry-After': '60', 'Cache-Control': 'no-store' } }
+    );
+  }
+
   try {
     const fundamentals = await yahooFundamentals(symbol);
 
     if (!fundamentals) {
-      return Response.json({ error: 'No fundamentals data for symbol' }, { status: 404 });
+      // null == the PROVIDER failed (429/401/no crumb) - NOT "no coverage".
+      // A genuinely uncovered symbol comes back as an all-null payload with
+      // 200 (see emptyFundamentals), so 404 here would be a lie that makes the
+      // UI say "No analyst coverage" for a stock that simply wasn't fetched.
+      unavailable.set(symbol, Date.now());
+      if (cached) {
+        // Serve stale rather than blank the card out.
+        return Response.json(cached.data, { headers: { 'X-Cache': 'STALE', 'Cache-Control': 'no-store' } });
+      }
+      const cooldown = Math.ceil((yahooCooldownRemainingMs() || 60000) / 1000);
+      return Response.json(
+        { error: 'Analyst data temporarily unavailable', retryAfterSeconds: cooldown },
+        { status: 503, headers: { 'Retry-After': String(cooldown), 'Cache-Control': 'no-store' } }
+      );
     }
+
+    unavailable.delete(symbol);
 
     const response: FundamentalsResponse = {
       symbol: fundamentals.symbol,
@@ -69,6 +104,7 @@ export async function GET(request: Request) {
       dayLow: fundamentals.dayLow,
       beta: fundamentals.beta,
       nextEarningsDate: fundamentals.nextEarningsDate,
+      analyst: fundamentals.analyst ?? null,
       source: fundamentals.source,
     };
 

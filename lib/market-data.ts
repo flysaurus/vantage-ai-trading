@@ -1,9 +1,9 @@
 // ─── Market Data Service (Multi-Source with Fallback Chain) ──
 //
 // Sources (in priority order):
-//   1. Finnhub.io     – real-time quotes, profiles, fundamentals (60 req/min free)
-//   2. Alpaca Markets  – real-time quotes, bars, snapshots (API key required)
-//   3. Yahoo Finance   – free, no key needed (last resort fallback)
+//   1. Finnhub.io     - real-time quotes, profiles, fundamentals (60 req/min free)
+//   2. Alpaca Markets  - real-time quotes, bars, snapshots (API key required)
+//   3. Yahoo Finance   - free, no key needed (last resort fallback)
 //
 // For quotes:            Finnhub → Alpaca → Yahoo
 // For company profiles:  Finnhub → Yahoo (Alpaca lacks profile data)
@@ -60,6 +60,110 @@ export interface Candle {
   volume: number;
 }
 
+/**
+ * Analyst consensus, as exposed by Yahoo's `recommendationTrend` +
+ * `financialData` modules in ONE request.
+ *
+ * Deliberately AGGREGATE: Yahoo's `upgradeDowngradeHistory` module does carry
+ * per-firm rows, but an audit (Sep 2026) showed them unusable as a consensus
+ * source - the median "latest rating per firm" was 1441 days old, grade
+ * strings come in 14 spellings (incl. "" and "Perform"), and the per-row
+ * `currentPriceTarget` contains literal 0s that drag any recomputed average
+ * far below the provider's own aggregate. So: no per-analyst dedupe here.
+ */
+export interface AnalystDistribution {
+  strongBuy: number;
+  buy: number;
+  hold: number;
+  sell: number;
+  strongSell: number;
+}
+
+export interface AnalystSummary {
+  /** false when the provider has no analyst data at all (index ETFs: SPY/VOO/XLF/XLP). */
+  coverage: boolean;
+  /** Null when `coverage` is false - never a synthetic all-zero distribution. */
+  distribution: AnalystDistribution | null;
+  /** Yahoo period bucket the distribution belongs to, e.g. '0m' (current month). */
+  distributionPeriod: string | null;
+  /** Sum of the distribution buckets - the counts the UI renders. */
+  analystCount: number | null;
+  consensus: string | null;
+  currentPrice: number | null;
+  targetLow: number | null;
+  targetMean: number | null;
+  targetMedian: number | null;
+  targetHigh: number | null;
+  /** (targetMean - currentPrice) / currentPrice * 100 */
+  upsidePct: number | null;
+  /**
+   * Distinct firms that published a rating action in the last 90 days
+   * (recency-filtered count from `upgradeDowngradeHistory`). Directional
+   * colour only - NOT a consensus aggregate, no dedupe of grades involved.
+   * Null when the module is missing or nothing landed in the window.
+   */
+  recentFirmCount90d: number | null;
+  /** Date (YYYY-MM-DD) of the most recent rating action, any age. */
+  latestRatingDate: string | null;
+  /**
+   * UI-only flag: the lookup itself failed (rate limit / network), so the row
+   * reads "temporarily unavailable" rather than implying no coverage exists.
+   * Never set by a successful provider response.
+   */
+  unavailable?: boolean;
+  provider: string;
+  /** Date this snapshot was fetched (the distribution itself is a monthly bucket). */
+  asOf: string;
+}
+
+/**
+ * Recency summary over Yahoo's `upgradeDowngradeHistory` rows.
+ *
+ * Counts DISTINCT firms that published any rating action in the last 90 days -
+ * a directional signal, deliberately not a grade aggregate (per-firm grades and
+ * per-row price targets are unusable, see AnalystSummary). Rows are tolerated in
+ * any shape: missing/unparseable `epochGradeDate` and blank `firm` are skipped,
+ * never coerced to 0 or "Unknown".
+ *
+ * Returns `{ recentFirmCount90d: null, latestRatingDate: null }` when the module
+ * is absent entirely (e.g. non-array), which is different from `0` (the module
+ * exists but nobody acted in the window).
+ */
+export function summarizeRatingActivity(
+  history: unknown,
+  now: number = Date.now()
+): { recentFirmCount90d: number | null; latestRatingDate: string | null } {
+  if (!Array.isArray(history) || history.length === 0) {
+    return { recentFirmCount90d: null, latestRatingDate: null };
+  }
+  const cutoff = now - 90 * 24 * 60 * 60 * 1000;
+  const firms = new Set<string>();
+  let latest = 0;
+  for (const row of history) {
+    const epoch = (row as { epochGradeDate?: unknown })?.epochGradeDate;
+    if (typeof epoch !== 'number' || !Number.isFinite(epoch) || epoch <= 0) continue;
+    latest = Math.max(latest, epoch);
+    const rawFirm = (row as { firm?: unknown })?.firm;
+    const firm = typeof rawFirm === 'string' ? rawFirm.trim() : '';
+    if (firm && epoch * 1000 >= cutoff) firms.add(firm.toLowerCase());
+  }
+  return {
+    recentFirmCount90d: firms.size,
+    latestRatingDate: latest > 0 ? new Date(latest * 1000).toISOString().split('T')[0] : null,
+  };
+}
+
+/** Weighted 5-point score → label. Matches lib/external-data.ts getAnalystData. */
+export function consensusFromDistribution(d: AnalystDistribution): string | null {
+  const total = d.strongBuy + d.buy + d.hold + d.sell + d.strongSell;
+  if (total <= 0) return null;
+  const score = (d.strongBuy * 5 + d.buy * 4 + d.hold * 3 + d.sell * 2 + d.strongSell) / total;
+  if (score >= 4.5) return 'Strong Buy';
+  if (score >= 3.5) return 'Buy';
+  if (score >= 2.5) return 'Hold';
+  return 'Sell';
+}
+
 export interface FundamentalMetrics {
   symbol: string;
   eps: number | null;
@@ -77,6 +181,7 @@ export interface FundamentalMetrics {
   numAnalysts: number | null;
   recommendation: string | null;
   nextEarningsDate: string | null;
+  analyst?: AnalystSummary | null;
   source: 'finnhub' | 'yahoo';
 }
 
@@ -121,7 +226,7 @@ async function finnhubQuote(symbol: string, timeout = 5000): Promise<Quote | nul
       high: data.h ?? 0,
       low: data.l ?? 0,
       open: data.o ?? 0,
-      // 52-week range is NOT available on Finnhub /quote — enriched separately via /stock/metric
+      // 52-week range is NOT available on Finnhub /quote - enriched separately via /stock/metric
       source: 'finnhub',
       timestamp: (data.t || 0) * 1000,
     };
@@ -331,7 +436,7 @@ async function alpacaBatchQuotes(symbols: string[], timeout = 8000): Promise<Map
       });
     }
   } catch {
-    // swallow — results will be empty
+    // swallow - results will be empty
   }
   return results;
 }
@@ -440,7 +545,7 @@ export async function yahooQuote(symbol: string, timeout = 5000): Promise<Quote 
 
 async function yahooBatchQuotes(symbols: string[], timeout = 10000): Promise<Map<string, Quote>> {
   const results = new Map<string, Quote>();
-  // Yahoo v8 chart doesn't support batch — fetch individually with concurrency
+  // Yahoo v8 chart doesn't support batch - fetch individually with concurrency
   const batchSize = 5;
   for (let i = 0; i < symbols.length; i += batchSize) {
     const batch = symbols.slice(i, i + batchSize);
@@ -476,7 +581,7 @@ async function yahooProfile(symbol: string, timeout = 5000): Promise<CompanyProf
 
     return {
       ticker: meta.symbol || symbol.toUpperCase(),
-      // Prefer longName — Yahoo's shortName is truncated for longer names
+      // Prefer longName - Yahoo's shortName is truncated for longer names
       // (e.g. "State Street Industrial Select " vs the full longName).
       name: meta.longName || meta.shortName || '',
       industry: meta.sector || meta.industry || '',
@@ -720,7 +825,7 @@ export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quo
             }
           }
         } catch { /* keep quote as-is */ }
-      } catch { /* non-critical — keep quote as-is */ }
+      } catch { /* non-critical - keep quote as-is */ }
       if (i < symArr.length - 1) await new Promise(r => setTimeout(r, 50));
     }
     console.log('[quotes] 52-week enrichment: finnhub=' + enriched + ' yahoo=' + yahooFallback + ' total=' + symArr.length);
@@ -758,7 +863,7 @@ export async function getCompanyProfile(symbol: string): Promise<CompanyProfile 
 // for the process lifetime. Used at order-placement time (execute-trade /
 // execute-basket) and by the one-time backfill so names are persisted onto the
 // order record instead of being re-fetched on every render.
-// Chain: Finnhub → Yahoo (Yahoo only as a fallback — fragile from Vercel IPs).
+// Chain: Finnhub → Yahoo (Yahoo only as a fallback - fragile from Vercel IPs).
 
 const _companyNameCache = new Map<string, string | null>();
 
@@ -777,7 +882,7 @@ export async function resolveCompanyName(symbol: string): Promise<string | null>
   return name;
 }
 
-/** Batch-resolve names (small batches — placement paths, backfill helper). */
+/** Batch-resolve names (small batches - placement paths, backfill helper). */
 export async function resolveCompanyNames(symbols: string[]): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   const unique = Array.from(new Set(symbols.map((s) => s.toUpperCase()).filter(Boolean)));
@@ -792,6 +897,27 @@ export async function resolveCompanyNames(symbols: string[]): Promise<Record<str
 // ─── Yahoo Crumb Auth (needed for v10/v11 quoteSummary) ─────
 
 let yahooCrumb: { crumb: string; cookie: string; expires: number } | null = null;
+
+/**
+ * Rate-limit circuit breaker.
+ *
+ * Yahoo answers a rapid burst from one IP with `401 Invalid Crumb` (cookie/crumb
+ * pair invalidated) and, under heavier load, `429 Too Many Requests`. Retrying
+ * into either one makes it worse, so a failure parks the provider for a cooldown
+ * window and callers get a fast `null` (= "provider unavailable", which the API
+ * route reports as 503) instead of a 404 ("no coverage") or a retry storm.
+ */
+const YAHOO_COOLDOWN_MS = 5 * 60 * 1000;
+let yahooCooldownUntil = 0;
+
+/** Milliseconds left in the Yahoo cooldown window (0 = provider usable). */
+export function yahooCooldownRemainingMs(): number {
+  return Math.max(0, yahooCooldownUntil - Date.now());
+}
+
+function parkYahoo(ms: number) {
+  yahooCooldownUntil = Math.max(yahooCooldownUntil, Date.now() + ms);
+}
 
 async function getYahooCrumb(): Promise<{ crumb: string; cookie: string } | null> {
   // Reuse cached crumb for up to 4 hours
@@ -825,30 +951,88 @@ async function getYahooCrumb(): Promise<{ crumb: string; cookie: string } | null
   }
 }
 
+/** All-null payload for symbols the provider has no fundamentals for. */
+function emptyFundamentals(symbol: string): FundamentalMetrics {
+  return {
+    symbol: symbol.toUpperCase(),
+    eps: null, pe: null, high52w: null, low52w: null, beta: null,
+    dividendYield: null, dividendRate: null, marketCap: null,
+    volume: null, avgVolume: null, dayHigh: null, dayLow: null,
+    numAnalysts: null, recommendation: null, nextEarningsDate: null,
+    analyst: {
+      coverage: false,
+      distribution: null,
+      distributionPeriod: null,
+      analystCount: null,
+      consensus: null,
+      currentPrice: null,
+      targetLow: null, targetMean: null, targetMedian: null, targetHigh: null,
+      upsidePct: null,
+      recentFirmCount90d: null,
+      latestRatingDate: null,
+      provider: 'Yahoo Finance',
+      asOf: new Date().toISOString().split('T')[0],
+    },
+    source: 'yahoo' as const,
+  };
+}
+
 /**
  * Yahoo Finance fundamentals via v10 quoteSummary.
  * Returns EPS, P/E, dividend yield, and analyst consensus.
  */
 export async function yahooFundamentals(symbol: string): Promise<FundamentalMetrics | null> {
-  const auth = await getYahooCrumb();
-  if (!auth) return null;
+  // Fast-fail while the provider is parked after a 401/429 burst.
+  if (yahooCooldownRemainingMs() > 0) return null;
+
+  let auth = await getYahooCrumb();
+  if (!auth) { parkYahoo(60 * 1000); return null; }
 
   const ySymbol = yahooSymbol(symbol.toUpperCase());
-  const modules = 'defaultKeyStatistics,summaryDetail,financialData,calendarEvents,recommendationTrend';
+  // upgradeDowngradeHistory rides along in the SAME request (no extra upstream
+  // call) - the route only needs it for the 90-day "firms updated" count.
+  const modules = 'defaultKeyStatistics,summaryDetail,financialData,calendarEvents,recommendationTrend,upgradeDowngradeHistory';
+  const quoteSummaryUrl = (crumb: string) =>
+    `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ySymbol)}?modules=${modules}&crumb=${encodeURIComponent(crumb)}`;
+  const callOnce = (a: { crumb: string; cookie: string }) =>
+    fetch(quoteSummaryUrl(a.crumb), {
+      headers: { 'User-Agent': YAHOO_UA, 'Cookie': a.cookie },
+      signal: AbortSignal.timeout(8000),
+    });
 
   try {
-    const res = await fetch(
-      `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ySymbol)}?modules=${modules}&crumb=${auth.crumb}`,
-      {
-        headers: { 'User-Agent': YAHOO_UA, 'Cookie': auth.cookie },
-        signal: AbortSignal.timeout(8000),
-      }
-    );
-    if (!res.ok) return null;
+    let res = await callOnce(auth);
+
+    if (res.status === 401) {
+      // Stale cookie/crumb pair - re-mint ONCE and retry with the fresh pair.
+      yahooCrumb = null;
+      const fresh = await getYahooCrumb();
+      if (!fresh) { parkYahoo(60 * 1000); return null; }
+      auth = fresh;
+      res = await callOnce(auth);
+    }
+
+    if (res.status === 429) {
+      parkYahoo(YAHOO_COOLDOWN_MS);
+      console.warn(`[yahoo] 429 rate-limited on ${symbol} - parking fundamentals for ${YAHOO_COOLDOWN_MS / 60000}m`);
+      return null;
+    }
+    if (res.status === 401) {
+      // Still invalid after a refresh: back off briefly rather than hammer.
+      parkYahoo(60 * 1000);
+      return null;
+    }
+    if (!res.ok) {
+      // Upstream 404 = the provider has no fundamentals for this symbol at all
+      // (index ETFs: SPY/VOO/QQQ/XLF/XLP). That is a real, reportable state -
+      // "no analyst coverage" - not a fetch failure, so return a well-formed
+      // all-null payload instead of null. Any other status stays null.
+      return res.status === 404 ? emptyFundamentals(symbol) : null;
+    }
 
     const json = await res.json();
     const result = json?.quoteSummary?.result?.[0];
-    if (!result) return null;
+    if (!result) return emptyFundamentals(symbol);
 
     const dks = result.defaultKeyStatistics || {};
     const sd = result.summaryDetail || {};
@@ -869,7 +1053,76 @@ export async function yahooFundamentals(symbol: string): Promise<FundamentalMetr
     const dividendRate = getRaw(sd, 'dividendRate');
     const recommendationKey = typeof fd?.recommendationKey === 'string' ? fd.recommendationKey : null;
     const numAnalysts = getRaw(fd, 'numberOfAnalystOpinions');
-    
+
+    // ── Analyst consensus (recommendationTrend is fetched above, previously discarded) ──
+    const trend0 = result.recommendationTrend?.trend?.[0];
+    const num = (v: any) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+    const distribution = {
+      strongBuy: num(trend0?.strongBuy),
+      buy: num(trend0?.buy),
+      hold: num(trend0?.hold),
+      sell: num(trend0?.sell),
+      strongSell: num(trend0?.strongSell),
+    };
+    const analystCount = distribution.strongBuy + distribution.buy + distribution.hold + distribution.sell + distribution.strongSell;
+    const currentPrice = getRaw(fd, 'currentPrice');
+    const targetLow = getRaw(fd, 'targetLowPrice');
+    const targetMean = getRaw(fd, 'targetMeanPrice');
+    const targetMedian = getRaw(fd, 'targetMedianPrice');
+    const targetHigh = getRaw(fd, 'targetHighPrice');
+    const upsidePct =
+      targetMean != null && currentPrice != null && currentPrice > 0
+        ? ((targetMean - currentPrice) / currentPrice) * 100
+        : null;
+    // ── Recent rating activity (recency-filtered distinct firms, last 90d) ──
+    // Purely directional: we count WHICH firms acted recently, never aggregate
+    // their grades (per-firm grades + per-row price targets are unusable - see
+    // the AnalystSummary docblock).
+    const { recentFirmCount90d, latestRatingDate } = summarizeRatingActivity(
+      result.upgradeDowngradeHistory?.history
+    );
+
+    // Coverage means someone is actually covering the symbol - i.e. the
+    // current-month recommendation trend carries at least one bucket. Index
+    // ETFs have no trend buckets, no targets → coverage:false.
+    const coverage = analystCount > 0;
+    const analyst: AnalystSummary = coverage
+      ? {
+          coverage: true,
+          distribution,
+          distributionPeriod: typeof trend0?.period === 'string' ? trend0.period : null,
+          analystCount,
+          consensus: consensusFromDistribution(distribution),
+          currentPrice,
+          targetLow,
+          targetMean,
+          targetMedian,
+          targetHigh,
+          upsidePct,
+          recentFirmCount90d,
+          latestRatingDate,
+          provider: 'Yahoo Finance',
+          asOf: new Date().toISOString().split('T')[0],
+        }
+      : {
+          // No coverage → every number is null (never coerced to 0).
+          coverage: false,
+          distribution: null,
+          distributionPeriod: null,
+          analystCount: null,
+          consensus: null,
+          currentPrice: null,
+          targetLow: null,
+          targetMean: null,
+          targetMedian: null,
+          targetHigh: null,
+          upsidePct: null,
+          recentFirmCount90d: null,
+          latestRatingDate: null,
+          provider: 'Yahoo Finance',
+          asOf: new Date().toISOString().split('T')[0],
+        };
+
     // Part 5 — new fields
     const marketCap = getRaw(sd, 'marketCap') ?? getRaw(dks, 'marketCap');
     const volume = getRaw(sd, 'regularMarketVolume');
@@ -877,7 +1130,7 @@ export async function yahooFundamentals(symbol: string): Promise<FundamentalMetr
     const dayHigh = getRaw(sd, 'regularMarketDayHigh');
     const dayLow = getRaw(sd, 'regularMarketDayLow');
     const beta = getRaw(dks, 'beta');
-    
+
     // Next earnings date
     let nextEarningsDate: string | null = null;
     const ed = ce?.earnings?.earningsDate;
@@ -904,6 +1157,7 @@ export async function yahooFundamentals(symbol: string): Promise<FundamentalMetr
       numAnalysts: numAnalysts ?? null,
       recommendation: recommendationKey,
       nextEarningsDate,
+      analyst,
       source: 'yahoo' as const,
     };
   } catch {
@@ -966,7 +1220,7 @@ export async function getStockNews(symbol: string, count = 3): Promise<NewsItem[
     );
     if (!res.ok) return [];
     const xml = await res.text();
-    
+
     // Parse RSS XML (lightweight, no external deps)
     const items: NewsItem[] = [];
     const itemRegex = /<item>[\s\S]*?<\/item>/g;
@@ -1081,7 +1335,7 @@ const YAHOO_QUOTE_SUMMARY_BASE = 'https://query2.finance.yahoo.com/v10/finance/q
 /**
  * Fund-level profile fields, live-sourced. All percentage fields are
  * stored as percentages (e.g. 0.09 = 0.09% expense ratio, 12.34 = 12.34%
- * trailing return) — NOT raw fractions.
+ * trailing return) - NOT raw fractions.
  */
 export interface EtfProfile {
   symbol: string;
@@ -1173,7 +1427,7 @@ export async function getEtfProfile(symbol: string): Promise<EtfProfile | null> 
       : (typeof priceMod?.shortName === 'string' ? priceMod.shortName : symbol.toUpperCase());
     const description = typeof fp?.description === 'string' ? fp.description : null;
 
-    // Trailing returns — Yahoo `fundPerformance.trailingReturns` is an OBJECT keyed
+    // Trailing returns - Yahoo `fundPerformance.trailingReturns` is an OBJECT keyed
     // by period (ytd, oneMonth, threeMonth, oneYear, threeYear, fiveYear, tenYear),
     // each a { raw, fmt }. `performanceOverview` is the alternate shape.
     let returnYtdPct: number | null = null;

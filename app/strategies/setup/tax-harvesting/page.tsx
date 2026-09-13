@@ -4,13 +4,14 @@ import { apiGet, apiPost } from '@/lib/api-client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, TrendingDown, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, Activity, Info, Download } from 'lucide-react';
+import { ArrowLeft, TrendingDown, AlertTriangle, CheckCircle, Activity, Info, Download } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getDemoAccount } from '@/lib/demo-data';
 import { returnToApp } from '@/lib/nav-back';
 import { AccountProvider } from '@/context/AccountContext';
 import TradeTicket from '@/components/portfolio/TradeTicket';
 import TaxHarvestDisclosureGate from '@/components/disclosure/TaxHarvestDisclosureGate';
+import { ExpandableRow } from '@/components/shared/ExpandableRow';
 import {
   TLH_DISCLOSURE_BANNER_TEXT,
   isDisclosureAccepted,
@@ -1316,17 +1317,18 @@ function TaxHarvestingPageInner() {
 
           {/* ─── Section 3: Wash Sale Rule ───────────── */}
           <Section icon={<AlertTriangle size={12} />} label="Wash Sale Rule">
-            <button
-              onClick={() => setShowWashRule(!showWashRule)}
-              style={{ width: '100%', padding: '10px 14px', background: 'var(--v-warn-dim)', border: '1px solid var(--v-warn-dim)', borderRadius: 8, color: 'var(--v-warn)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+            <ExpandableRow
+              tone="warn"
+              testId="wash-sale-accordion"
+              panelTestId="wash-sale-accordion-panel"
+              expanded={showWashRule}
+              onToggle={() => setShowWashRule(!showWashRule)}
+              header={
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <AlertTriangle size={12} /> Wash Sale Rule
+                </span>
+              }
             >
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <AlertTriangle size={12} /> Wash Sale Rule
-              </span>
-              {showWashRule ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </button>
-            {showWashRule && (
-              <div style={{ padding: '12px 14px', marginTop: 8, background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.6 }}>
                 <p style={{ margin: '0 0 8px' }}>
                   <strong style={{ color: 'var(--v-warn)' }}>You cannot repurchase the same security</strong> within 30 days before or after selling it for a loss.
                   If you do, the IRS disallows the loss deduction.
@@ -1352,8 +1354,7 @@ function TaxHarvestingPageInner() {
                     ))}
                   </div>
                 )}
-              </div>
-            )}
+            </ExpandableRow>
           </Section>
 
           {/* ─── Section 4: Harvest Summary ──────────── */}

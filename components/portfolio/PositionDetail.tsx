@@ -18,6 +18,8 @@ import { useReconstructedLots } from '@/hooks/useReconstructedLots';
 import { useDisplayAccount } from '@/hooks/useDisplayAccount';
 import { useAccountLotsScope } from '@/hooks/useAccountLotsScope';
 import { getActiveLotCount, formatFIFOLabel } from '@/lib/fifo-engine';
+import { AnalystConsensus, NO_ANALYST_COVERAGE, ANALYST_UNAVAILABLE } from '@/components/shared/AnalystConsensus';
+import type { AnalystSummary } from '@/lib/market-data';
 import { avatarColor, initials } from '@/lib/position-avatar';
 import { PositionDetailChart } from './PositionDetailChart';
 import type { Position } from '@/types';
@@ -61,7 +63,23 @@ interface Fundamentals {
   dayLow: number | null;
   beta: number | null;
   nextEarningsDate: string | null;
+  /** Analyst consensus block from the provider (aggregate, no per-analyst dedupe). */
+  analyst: AnalystSummary | null;
 }
+
+/**
+ * Fundamentals object with every numeric field null. Used for symbols the
+ * provider genuinely has no fundamentals for (index ETFs) - the analyst block
+ * then carries `coverage:false` so the card renders a lone "No analyst
+ * coverage" row instead of disappearing. Pass ANALYST_UNAVAILABLE when the
+ * lookup itself failed, so the row reads "temporarily unavailable" instead.
+ */
+const emptyFundamentals = (analyst: AnalystSummary = NO_ANALYST_COVERAGE): Fundamentals => ({
+  eps: null, pe: null, dividendYield: null, dividendRate: null,
+  recommendation: null, numAnalysts: null, marketCap: null,
+  volume: null, avgVolume: null, dayHigh: null, dayLow: null,
+  beta: null, nextEarningsDate: null, analyst,
+});
 
 interface NewsItem {
   title: string;
@@ -193,6 +211,7 @@ export function PositionDetail() {
               dividendRate: fData.dividendRate ?? null,
               recommendation: fData.recommendation ?? null,
               numAnalysts: fData.numAnalysts ?? null,
+              analyst: fData.analyst ?? NO_ANALYST_COVERAGE,
               marketCap: fData.marketCap ?? null,
               volume: fData.volume ?? null,
               avgVolume: fData.avgVolume ?? null,
@@ -201,9 +220,17 @@ export function PositionDetail() {
               beta: fData.beta ?? null,
               nextEarningsDate: fData.nextEarningsDate ?? null,
             });
+          } else if (!cancelled) {
+            setFundamentals(emptyFundamentals());
           }
+        } else if (!cancelled) {
+          // 503/network failure or a request that never resolved. Say so - it
+          // must NOT masquerade as "No analyst coverage".
+          setFundamentals(emptyFundamentals(ANALYST_UNAVAILABLE));
         }
-      } catch { /* silent */ }
+      } catch {
+        if (!cancelled) setFundamentals(emptyFundamentals(ANALYST_UNAVAILABLE));
+      }
 
       try {
         if (newsRes.status === 'fulfilled' && newsRes.value.ok && !cancelled) {
@@ -264,14 +291,8 @@ export function PositionDetail() {
       fundamentals.volume,
       fundamentals.beta,
       fundamentals.nextEarningsDate,
+      fundamentals.analyst,
     ].some((v) => v != null);
-
-  const recColor = (rec: string) => {
-    const r = rec.toLowerCase();
-    if (r.includes('buy')) return { fg: 'var(--v-gain-label)', bg: 'var(--v-gain-dim)' };
-    if (r.includes('sell')) return { fg: 'var(--v-loss-label)', bg: 'var(--v-loss-dim)' };
-    return { fg: 'var(--v-warn)', bg: 'var(--v-warn-dim)' };
-  };
 
   return (
     <div
@@ -374,32 +395,16 @@ export function PositionDetail() {
                     ? `$${fundamentals.dividendRate.toFixed(2)}/yr`
                     : '—'}
                 </FundCell>
-                {fundamentals.recommendation ? (
-                  <FundCell label="Analyst">
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      <span
-                        style={{
-                          fontSize: 11.5,
-                          fontWeight: 700,
-                          textTransform: 'capitalize',
-                          padding: '2px 8px',
-                          borderRadius: 5,
-                          color: recColor(fundamentals.recommendation).fg,
-                          background: recColor(fundamentals.recommendation).bg,
-                        }}
-                      >
-                        {fundamentals.recommendation.replace(/_/g, ' ')}
-                      </span>
-                      {fundamentals.numAnalysts != null && (
-                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v-text-secondary)' }}>
-                          · {fundamentals.numAnalysts} analysts
-                        </span>
-                      )}
-                    </span>
-                  </FundCell>
-                ) : (
-                  <div />
-                )}
+
+                {/* Analyst row — full width, its own line in the grid (two lines
+                    collapsed, distribution + target range when expanded).
+                    This is the single analyst surface: the old ad-hoc
+                    recommendation badge was folded into this row. */}
+                <AnalystConsensus
+                  analyst={fundamentals.analyst}
+                  buttonStyle={{ gridColumn: '1 / -1', padding: '10px 12px', borderRadius: 10 }}
+                  panelStyle={{ gridColumn: '1 / -1' }}
+                />
               </div>
 
               {(fundamentals.dayHigh != null || fundamentals.volume != null || fundamentals.beta != null || fundamentals.nextEarningsDate) && (

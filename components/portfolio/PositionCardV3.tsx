@@ -1,5 +1,7 @@
 'use client';
 
+import { AnalystConsensus, ANALYST_UNAVAILABLE } from '@/components/shared/AnalystConsensus';
+import type { AnalystSummary } from '@/lib/market-data';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { Position } from '@/types';
 import { useReconstructedLots } from '@/hooks/useReconstructedLots';
@@ -96,7 +98,15 @@ export default function PositionCardV3({
     low52w: number;
   } | null>(null);
   const [sparklineLoading, setSparklineLoading] = useState(false);
-  const [fundamentals, setFundamentals] = useState<{
+const NULL_FUNDAMENTALS = {
+  eps: null, pe: null, dividendYield: null, dividendRate: null,
+  recommendation: null, numAnalysts: null, marketCap: null,
+  volume: null, avgVolume: null, dayHigh: null, dayLow: null,
+  beta: null, nextEarningsDate: null,
+  analyst: ANALYST_UNAVAILABLE,
+} as const;
+
+    const [fundamentals, setFundamentals] = useState<{
     eps: number | null;
     pe: number | null;
     dividendYield: number | null;
@@ -110,6 +120,7 @@ export default function PositionCardV3({
     dayLow: number | null;
     beta: number | null;
     nextEarningsDate: string | null;
+    analyst: AnalystSummary | null;
   } | null>(null);
   const [newsItems, setNewsItems] = useState<
     {
@@ -166,8 +177,15 @@ export default function PositionCardV3({
               dayLow: fData.dayLow,
               beta: fData.beta,
               nextEarningsDate: fData.nextEarningsDate,
+              analyst: fData.analyst ?? ANALYST_UNAVAILABLE,
             });
+          } else if (!cancelled) {
+            setFundamentals({ ...NULL_FUNDAMENTALS });
           }
+        } else if (!cancelled) {
+          // Provider unreachable (503/401/network). That is NOT "no coverage"
+          // — say so rather than letting the row disappear.
+          setFundamentals({ ...NULL_FUNDAMENTALS });
         }
         if (newsRes?.ok) {
           const nData = await newsRes.json();
@@ -1225,49 +1243,10 @@ export default function PositionCardV3({
                       : '—'}
                   </div>
                 </div>
-                {fundamentals.recommendation ? (
-                  <div>
-                    <div style={{ fontSize: 10, color: 'var(--faint, #8794a8)', marginBottom: 2 }}>
-                      Analyst
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          textTransform: 'capitalize',
-                          padding: '1px 8px',
-                          borderRadius: 4,
-                          color:
-                            fundamentals.recommendation === 'buy' ||
-                            fundamentals.recommendation === 'strong_buy'
-                              ? '#10b981'
-                              : fundamentals.recommendation === 'sell' ||
-                                fundamentals.recommendation === 'strong_sell'
-                              ? '#ef4444'
-                              : '#fbbf24',
-                          background:
-                            fundamentals.recommendation === 'buy' ||
-                            fundamentals.recommendation === 'strong_buy'
-                              ? 'rgba(16,185,129,0.12)'
-                              : fundamentals.recommendation === 'sell' ||
-                                fundamentals.recommendation === 'strong_sell'
-                              ? 'rgba(239,68,68,0.12)'
-                              : 'rgba(251,191,36,0.12)',
-                        }}
-                      >
-                        {fundamentals.recommendation.replace('_', ' ')}
-                      </span>
-                      {fundamentals.numAnalysts != null && (
-                        <span style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
-                          · {fundamentals.numAnalysts} analysts
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div />
-                )}
+                {/* Analyst consensus — the shared component, same real source
+                  (recommendationTrend[0] buckets + financialData targets) and the
+                  same no-coverage / temporarily-unavailable states as everywhere else. */}
+                <AnalystConsensus analyst={fundamentals.analyst} testId="analyst-card" />
               </div>
 
               {/* Additional metrics row */}
