@@ -191,6 +191,7 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
             background: demoLoading
               ? 'var(--v-canvas)'
               : 'var(--v-card)',
+            boxShadow: 'var(--v-shadow-card)', // locked elevation
             border: demoLoading
               ? '1px solid var(--v-card-border)'
               : '1px solid var(--v-card-border)',
@@ -297,6 +298,7 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
             background: connectLoading
               ? 'var(--v-canvas)'
               : 'var(--v-card)',
+            boxShadow: 'var(--v-shadow-card)', // locked elevation
             border: connectLoading
               ? '1px solid var(--v-card-border)'
               : '1px solid var(--v-card-border)',

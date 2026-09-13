@@ -309,6 +309,7 @@ export function USStockBrokersPage({
                 background: isLoading
                   ? 'var(--v-disabled-bg)'
                   : 'var(--v-card)',
+                boxShadow: 'var(--v-shadow-card)', // locked elevation
                 border: '1px solid var(--v-card-border)',
                 borderRadius: '16px',
                 cursor: isLoading || isOtherLoading ? 'default' : 'pointer',

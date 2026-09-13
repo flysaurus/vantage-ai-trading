@@ -191,7 +191,7 @@ export default function BrokerSelectScreen({
     return (
       <div className="max-w-md mx-auto py-6 px-4">
         <div
-          className="rounded-2xl border border-[var(--v-card-border)] bg-[var(--v-card)] p-6 space-y-5"
+          className="rounded-2xl border border-[var(--v-card-border)] bg-[var(--v-card)] shadow-[var(--v-shadow-card)] p-6 space-y-5"
         >
           {/* Broker header */}
           <div className="flex items-center gap-3">

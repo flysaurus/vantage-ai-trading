@@ -200,6 +200,7 @@ export default function ConcentrationStep({
                   background: isSuggested || isHovered
                     ? 'var(--v-accent-dim)'
                     : 'var(--v-card)',
+                  boxShadow: 'var(--v-shadow-card)', // locked elevation
                   cursor: 'pointer',
                   transition: 'border-color 0.2s, background 0.2s',
                   textAlign: 'left' as const,
