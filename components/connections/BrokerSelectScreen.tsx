@@ -295,7 +295,7 @@ export default function BrokerSelectScreen({
             </button>
             <button
               onClick={handleConfirm}
-              className="flex-1 py-2.5 px-4 rounded-xl bg-[var(--v-accent)] border border-[var(--v-accent)] text-sm font-medium text-[var(--v-accent-text)] hover:opacity-90 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+              className="flex-1 py-2.5 px-4 rounded-xl bg-[var(--v-accent-button)] border border-[var(--v-accent)] text-sm font-medium text-[var(--v-accent-text)] hover:opacity-90 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
             >
               <ArrowLeftRight className="h-4 w-4" />
               Connect

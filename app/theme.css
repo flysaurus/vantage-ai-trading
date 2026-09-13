@@ -78,6 +78,11 @@
 
   /* semantic */
   --v-accent: #0e8c99;
+  /* Fill-only companion for SOLID CTAs that carry white text. Same hue and
+     saturation as --v-accent, lightness reduced 0.327 -> 0.297 so white text
+     clears AA: white on #0e8c99 = 4.02:1 (fail), white on #0d7f8b = 4.75:1.
+     Never use it for text, borders, icons, links or gradients. */
+  --v-accent-button: #0d7f8b;
   --v-accent-text: #ffffff;
   --v-gain: #1e9e5a;
   --v-loss: #d64545;
@@ -196,6 +201,9 @@
   --v-text-faint: #7c8aa0;
 
   --v-accent: #5fd8de;
+  /* identical to --v-accent in dark: the dark CTA pairs the light cyan fill
+     with dark text, so no darkening is needed and dark visuals are unchanged */
+  --v-accent-button: #5fd8de;
   --v-accent-text: #00272b;
   --v-gain: #3ddc84;
   --v-loss: #f0716b;

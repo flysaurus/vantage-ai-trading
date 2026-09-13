@@ -192,8 +192,8 @@ export default function SetupMfaPage() {
 
   const buttonStyle: React.CSSProperties = {
     width: '100%',
-    background: '#06b6d4',
-    color: '#0a0f1e',
+    background: 'var(--v-accent-button)',
+    color: 'var(--v-accent-text)',
     border: 'none',
     borderRadius: '10px',
     padding: '14px 24px',
@@ -449,8 +449,8 @@ export default function SetupMfaPage() {
             style={{
               width: '100%',
               maxWidth: '220px',
-              background: '#06b6d4',
-              color: '#0a0f1e',
+              background: 'var(--v-accent-button)',
+              color: 'var(--v-accent-text)',
               border: 'none',
               borderRadius: '10px',
               padding: '14px 24px',

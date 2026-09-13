@@ -787,7 +787,7 @@ export function PortfolioTab() {
                   onClick={() => setFilter(key)}
                   style={{
                     padding: '6px 12px', borderRadius: 999,
-                    background: active ? 'var(--v-accent)' : 'transparent',
+                    background: active ? 'var(--v-accent-button)' : 'transparent',
                     border: active ? '1px solid var(--v-accent)' : '1px solid var(--v-card-border)',
                     color: active ? 'var(--v-accent-text)' : 'var(--v-text-secondary)',
                     fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 12,

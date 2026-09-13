@@ -593,7 +593,7 @@ export function PositionDetail() {
             onClick={() => requestTrade(symbol, 'BUY')}
             style={{
               flex: 1, padding: '13px 0', borderRadius: 12, border: 'none',
-              background: 'var(--v-accent)', color: 'var(--v-accent-text)',
+              background: 'var(--v-accent-button)', color: 'var(--v-accent-text)',
               fontFamily: 'var(--font-sans)', fontWeight: 800, fontSize: 14, cursor: 'pointer',
             }}
           >

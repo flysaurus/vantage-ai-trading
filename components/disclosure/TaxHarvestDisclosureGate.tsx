@@ -131,7 +131,7 @@ export default function TaxHarvestDisclosureGate({
             onClick={onAccept}
             style={{
               flex: 1.4, padding: '13px 16px', borderRadius: 12,
-              background: 'var(--v-accent)',
+              background: 'var(--v-accent-button)',
               border: 'none',
               color: 'var(--v-accent-text)',
               fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-sans)',

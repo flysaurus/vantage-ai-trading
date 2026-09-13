@@ -173,7 +173,7 @@ export default function VerifyMfaPage() {
 
   const buttonStyle: React.CSSProperties = {
     width: '100%',
-    background: 'var(--v-accent)',
+    background: 'var(--v-accent-button)',
     color: 'var(--v-accent-text)',
     border: 'none',
     borderRadius: '10px',

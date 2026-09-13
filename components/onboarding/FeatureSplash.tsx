@@ -204,7 +204,7 @@ export function FeatureSplash({ onComplete }: FeatureSplashProps) {
             height: '56px',
             borderRadius: 'var(--radius-pill)',
             border: 'none',
-            background: 'var(--v-accent)',
+            background: 'var(--v-accent-button)',
             color: 'var(--v-accent-text)',
             fontSize: '17px',
             fontWeight: 700,

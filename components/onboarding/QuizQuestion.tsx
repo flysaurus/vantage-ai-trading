@@ -445,7 +445,7 @@ export function QuizQuestion({
             height: '56px',
             borderRadius: 'var(--radius-pill)',
             border: 'none',
-            background: selectedKey ? 'var(--v-accent)' : 'var(--v-disabled-bg)',
+            background: selectedKey ? 'var(--v-accent-button)' : 'var(--v-disabled-bg)',
             color: selectedKey ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
             fontSize: '17px',
             fontWeight: 700,

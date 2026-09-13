@@ -404,7 +404,7 @@ export function StyleReveal({
             })
           }
           style={{
-            background: showCta ? 'var(--v-accent)' : 'var(--v-disabled-bg)',
+            background: showCta ? 'var(--v-accent-button)' : 'var(--v-disabled-bg)',
             color: showCta ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
             opacity: showCta ? 1 : 0,
             pointerEvents: showCta ? 'auto' : 'none',

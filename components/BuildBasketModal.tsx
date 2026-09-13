@@ -745,7 +745,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               Could not load baskets: {curatedError}
             </p>
             <button onClick={() => setStep('custom_theme')} style={{
-              background: 'var(--v-accent)', border: 'none', borderRadius: '8px',
+              background: 'var(--v-accent-button)', border: 'none', borderRadius: '8px',
               color: 'var(--v-accent-text)', fontSize: '12px', fontWeight: '600', padding: '8px 16px', cursor: 'pointer',
             }}>Build Custom Instead</button>
           </div>
@@ -766,7 +766,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               Build a custom basket instead.
             </p>
             <button onClick={() => setStep('custom_theme')} style={{
-              background: 'var(--v-accent)', border: 'none', borderRadius: '8px',
+              background: 'var(--v-accent-button)', border: 'none', borderRadius: '8px',
               color: 'var(--v-accent-text)', fontSize: '13px', fontWeight: '600', padding: '10px 20px', cursor: 'pointer', marginTop: '8px',
             }}>✏️ Build Custom Basket</button>
           </div>
@@ -1216,7 +1216,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           <div style={{ textAlign: 'center', padding: '32px 0' }}>
             <p style={{ fontSize: '14px', color: 'var(--v-loss)', marginBottom: '12px' }}>{error}</p>
             <button onClick={generateBasket} style={{
-              background: 'var(--v-accent)', border: 'none', borderRadius: '10px',
+              background: 'var(--v-accent-button)', border: 'none', borderRadius: '10px',
               color: 'var(--v-accent-text)', fontSize: '14px', fontWeight: '600', padding: '12px 24px', cursor: 'pointer',
             }}>Try Again</button>
           </div>
@@ -1371,7 +1371,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '10px',
         }}>
           <button onClick={addToPortfolio} style={{
-            width: '100%', background: 'var(--v-accent)', border: 'none', borderRadius: '10px',
+            width: '100%', background: 'var(--v-accent-button)', border: 'none', borderRadius: '10px',
             color: 'var(--v-accent-text)', fontSize: '14px', fontWeight: '600', padding: '14px 0', cursor: 'pointer',
           }}>Add to Portfolio</button>
           <button onClick={generateBasket} style={{
@@ -2115,13 +2115,13 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '16px' }}>
               {executionResult.success && (
                 <button onClick={() => onClose()} style={{
-                  background: 'var(--v-accent)', border: 'none', borderRadius: '10px',
+                  background: 'var(--v-accent-button)', border: 'none', borderRadius: '10px',
                   color: 'var(--v-accent-text)', fontSize: '14px', fontWeight: '600', padding: '12px 24px', cursor: 'pointer',
                 }}>View Portfolio</button>
               )}
               {!executionResult.success && (
                 <button onClick={handleConfirmOrder} style={{
-                  background: 'var(--v-accent)', border: 'none', borderRadius: '10px',
+                  background: 'var(--v-accent-button)', border: 'none', borderRadius: '10px',
                   color: 'var(--v-accent-text)', fontSize: '14px', fontWeight: '600', padding: '12px 24px', cursor: 'pointer',
                 }}>Try Again</button>
               )}

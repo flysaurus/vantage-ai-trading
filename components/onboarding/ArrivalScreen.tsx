@@ -258,7 +258,7 @@ export function ArrivalScreen({ onFindStyle, onSignIn }: ArrivalScreenProps) {
               height: '58px',
               borderRadius: '999px',
               border: 'none',
-              background: 'var(--v-accent)',
+              background: 'var(--v-accent-button)',
               color: 'var(--v-accent-text)',
               fontSize: '17px',
               fontWeight: 700,

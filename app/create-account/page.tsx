@@ -1261,7 +1261,7 @@ export default function CreateAccountPage() {
           height: '56px',
           borderRadius: '999px',
           border: 'none',
-          background: canSubmit && !submitting ? 'var(--v-accent)' : 'var(--v-disabled-bg)',
+          background: canSubmit && !submitting ? 'var(--v-accent-button)' : 'var(--v-disabled-bg)',
           color: canSubmit && !submitting ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
           fontSize: '17px',
           fontWeight: 700,

@@ -255,7 +255,7 @@ export default function ConnectionLoadingPage({
               height: '48px',
               borderRadius: '999px',
               border: 'none',
-              background: 'var(--v-accent)',
+              background: 'var(--v-accent-button)',
               color: 'var(--v-accent-text)',
               fontSize: '16px',
               fontWeight: 600,

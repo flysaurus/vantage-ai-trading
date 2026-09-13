@@ -630,7 +630,7 @@ export default function LoginPage() {
                 border: 'none',
                 background:
                   !resetSending && isValidEmail(resetEmail)
-                    ? 'var(--v-accent)'
+                    ? 'var(--v-accent-button)'
                     : 'var(--v-disabled-bg)',
                 color: !resetSending && isValidEmail(resetEmail) ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
                 fontSize: '15px',
@@ -756,7 +756,7 @@ export default function LoginPage() {
                   height: '56px',
                   borderRadius: '999px',
                   border: 'none',
-                  background: canSubmit ? 'var(--v-accent)' : 'var(--v-disabled-bg)',
+                  background: canSubmit ? 'var(--v-accent-button)' : 'var(--v-disabled-bg)',
                   color: canSubmit ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
                   fontSize: '17px',
                   fontWeight: 700,
