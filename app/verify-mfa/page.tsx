@@ -16,6 +16,12 @@ import { Loader2, Shield, Smartphone, Mail, ChevronRight } from 'lucide-react';
 
 type MfaStep = 'loading' | 'code-entry' | 'verifying' | 'success';
 
+// ── Gradient ───────────────────────────────────────────────
+
+// Locked light/dark system: soft top accent wash over the themed canvas
+// (the wash is the --v-accent hue). Resolves per html[data-theme] — no JS.
+const GRADIENT = `radial-gradient(ellipse 120% 60% at 50% -10%, rgba(14,140,153,0.10) 0%, transparent 55%), var(--v-canvas)`;
+
 export default function VerifyMfaPage() {
   const router = useRouter();
 
@@ -139,22 +145,23 @@ export default function VerifyMfaPage() {
   // ── Styles ───────────────────────────────────────────
   const pageStyle: React.CSSProperties = {
     minHeight: '100dvh',
-    background: 'linear-gradient(180deg, #0b0f1d 0%, #131a2e 100%)',
+    background: GRADIENT,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    color: '#e2e8f0',
+    color: 'var(--v-text-primary)',
     fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
     padding: '80px 24px 40px',
   };
 
   const codeInputStyle: React.CSSProperties = {
     width: '100%',
-    background: '#0f1324',
-    border: '1px solid #2d3550',
+    background: 'var(--v-card)',
+    border: '1px solid var(--v-card-border)',
+    boxShadow: 'var(--v-shadow-card)',
     borderRadius: '10px',
     padding: '18px 16px',
-    color: '#f8fafc',
+    color: 'var(--v-text-primary)',
     fontSize: '32px',
     fontFamily: "'SF Mono', 'Fira Code', monospace",
     letterSpacing: '12px',
@@ -166,8 +173,8 @@ export default function VerifyMfaPage() {
 
   const buttonStyle: React.CSSProperties = {
     width: '100%',
-    background: '#06b6d4',
-    color: '#0a0f1e',
+    background: 'var(--v-accent)',
+    color: 'var(--v-accent-text)',
     border: 'none',
     borderRadius: '10px',
     padding: '14px 24px',
@@ -181,7 +188,7 @@ export default function VerifyMfaPage() {
   if (step === 'loading') {
     return (
       <div style={pageStyle}>
-        <Loader2 size={32} color="#06b6d4" style={{ animation: 'spin 1s linear infinite', marginTop: '80px' }} />
+        <Loader2 size={32} color="var(--v-accent)" style={{ animation: 'spin 1s linear infinite', marginTop: '80px' }} />
       </div>
     );
   }
@@ -190,14 +197,14 @@ export default function VerifyMfaPage() {
   if (step === 'success') {
     return (
       <div style={pageStyle}>
-        <Shield size={64} color="#22c55e" style={{ marginBottom: '24px' }} />
-        <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: '#f8fafc', textAlign: 'center' }}>
+        <Shield size={64} color="var(--v-gain)" style={{ marginBottom: '24px' }} />
+        <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: 'var(--v-text-primary)', textAlign: 'center' }}>
           Verified
         </h1>
-        <p style={{ fontSize: '14px', color: '#94a3b8', textAlign: 'center', margin: '0 0 24px' }}>
+        <p style={{ fontSize: '14px', color: 'var(--v-text-secondary)', textAlign: 'center', margin: '0 0 24px' }}>
           Redirecting...
         </p>
-        <Loader2 size={24} color="#06b6d4" style={{ animation: 'spin 1s linear infinite' }} />
+        <Loader2 size={24} color="var(--v-accent)" style={{ animation: 'spin 1s linear infinite' }} />
       </div>
     );
   }
@@ -209,14 +216,14 @@ export default function VerifyMfaPage() {
   const isWrong = errorCode === 'WRONG_CODE';
 
   return (
-    <div style={pageStyle}>
-      <Shield size={48} color="#06b6d4" style={{ marginBottom: '24px' }} />
+    <div className="auth-shell" style={pageStyle}>
+      <Shield size={48} color="var(--v-accent)" style={{ marginBottom: '24px' }} />
 
-      <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: '#f8fafc', textAlign: 'center' }}>
+      <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: 'var(--v-text-primary)', textAlign: 'center' }}>
         {useBackupCode ? 'Enter backup code' : 'Verify your identity'}
       </h1>
 
-      <p style={{ fontSize: '14px', color: '#94a3b8', textAlign: 'center', margin: '0 0 32px', lineHeight: 1.6, maxWidth: '360px' }}>
+      <p style={{ fontSize: '14px', color: 'var(--v-text-secondary)', textAlign: 'center', margin: '0 0 32px', lineHeight: 1.6, maxWidth: '360px' }}>
         {useBackupCode
           ? 'Enter one of your saved backup codes to sign in.'
           : isTotp
@@ -256,12 +263,12 @@ export default function VerifyMfaPage() {
           maxWidth: '280px',
           marginTop: '12px',
           background: isExpired || isLocked
-            ? 'rgba(210,153,34,0.1)'
-            : 'rgba(218,54,51,0.1)',
-          border: `1px solid ${isExpired || isLocked ? '#d29922' : '#da3633'}`,
+            ? 'var(--v-warn-dim)'
+            : 'var(--v-loss-dim)',
+          border: `1px solid ${isExpired || isLocked ? 'var(--v-warn)' : 'var(--v-loss-label)'}`,
           borderRadius: '10px',
           padding: '12px 16px',
-          color: '#e6edf3',
+          color: 'var(--v-text-primary)',
           fontSize: '13px',
           textAlign: 'center',
         }}>
@@ -298,7 +305,7 @@ export default function VerifyMfaPage() {
             marginTop: '16px',
             background: 'transparent',
             border: 'none',
-            color: '#06b6d4',
+            color: 'var(--v-accent)',
             fontSize: '14px',
             fontWeight: 600,
             cursor: 'pointer',
@@ -320,7 +327,7 @@ export default function VerifyMfaPage() {
             marginTop: '12px',
             background: 'transparent',
             border: 'none',
-            color: '#06b6d4',
+            color: 'var(--v-accent)',
             fontSize: '14px',
             fontWeight: 600,
             cursor: 'pointer',
@@ -339,7 +346,7 @@ export default function VerifyMfaPage() {
             marginTop: '16px',
             background: 'transparent',
             border: 'none',
-            color: resending ? '#94a3b8' : '#06b6d4',
+            color: resending ? 'var(--v-text-secondary)' : 'var(--v-accent)',
             fontSize: '14px',
             fontWeight: 600,
             cursor: resending ? 'wait' : 'pointer',
