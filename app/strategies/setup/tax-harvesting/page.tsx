@@ -990,7 +990,7 @@ function TaxHarvestingPageInner() {
       {!loading && !loadError && lotsSource !== null && lotsSource !== 'activities' && (
         <div
           data-testid="tlh-lots-source"
-          style={{ padding: '8px 14px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, fontSize: 11, color: 'var(--v-text-muted)', marginBottom: 16, lineHeight: 1.6 }}
+          style={{ padding: '8px 14px', background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, fontSize: 11, color: 'var(--v-text-muted)', marginBottom: 16, lineHeight: 1.6 }}
         >
           {lotsSource === 'none'
             ? 'No purchase dates are available for this account, so every harvest estimate below is illustrative.'
@@ -1002,7 +1002,7 @@ function TaxHarvestingPageInner() {
         <>
           {/* ─── Section 0a: Year-to-Date ─────────────── */}
           <Section icon={<Activity size={12} />} label="Year to Date">
-            <div data-testid="ytd-unrealized" style={{ padding: '12px 14px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 10 }}>
+            <div data-testid="ytd-unrealized" style={{ padding: '12px 14px', background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '1px solid var(--v-card-border)', borderRadius: 10 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--v-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
@@ -1028,7 +1028,7 @@ function TaxHarvestingPageInner() {
 
           {/* ─── Section 0: Ongoing Monitoring ──────── */}
           <Section icon={<Activity size={12} />} label="Ongoing Monitoring">
-            <div style={{ padding: '12px 14px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 10, fontSize: 12, color: 'var(--v-text-muted)', lineHeight: 1.6 }}>
+            <div style={{ padding: '12px 14px', background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '1px solid var(--v-card-border)', borderRadius: 10, fontSize: 12, color: 'var(--v-text-muted)', lineHeight: 1.6 }}>
               <p style={{ margin: '0 0 8px' }}>
                 This page isn't a one-time snapshot. Vantage keeps watching your portfolio after you leave it — it scans your holdings as prices move and flags new harvest opportunities as they appear through the tax year.
               </p>
@@ -1060,7 +1060,7 @@ function TaxHarvestingPageInner() {
             )}
 
             {/* Tax estimate — per-position holding period, not one flat rate */}
-            <div data-testid="tax-rate-breakdown" style={{ padding: '12px 14px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 10 }}>
+            <div data-testid="tax-rate-breakdown" style={{ padding: '12px 14px', background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '1px solid var(--v-card-border)', borderRadius: 10 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--v-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
                 Estimated Tax Savings on Harvestable Losses
               </div>
@@ -1119,7 +1119,7 @@ function TaxHarvestingPageInner() {
               </div>
 
               {illustrative && (
-                <div data-testid="tax-illustrative-note" style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.6, padding: '8px 10px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, marginBottom: 10 }}>
+                <div data-testid="tax-illustrative-note" style={{ fontSize: 11, color: 'var(--v-text-muted)', lineHeight: 1.6, padding: '8px 10px', background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, marginBottom: 10 }}>
                   {illustrativeNote(illustrative)}
                 </div>
               )}
@@ -1179,7 +1179,7 @@ function TaxHarvestingPageInner() {
                         : { text: 'Holding period unknown', color: 'var(--v-text-muted)' };
 
                   return (
-                    <div key={pos.symbol} style={{ padding: 12, background: 'var(--v-card)', border: `1px solid ${isSelected ? 'var(--v-accent)' : 'var(--v-card-border)'}`, borderRadius: 10, transition: 'border-color 0.2s' }}>
+                    <div key={pos.symbol} style={{ padding: 12, background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: `1px solid ${isSelected ? 'var(--v-accent)' : 'var(--v-card-border)'}`, borderRadius: 10, transition: 'border-color 0.2s' }}>
                       {/* Position info */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                         <div>
@@ -1360,7 +1360,7 @@ function TaxHarvestingPageInner() {
           {/* ─── Section 4: Harvest Summary ──────────── */}
           {selectedCount > 0 && (
             <Section icon={<Info size={12} />} label="Harvest Summary">
-              <div style={{ padding: 14, background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 10 }}>
+              <div style={{ padding: 14, background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '1px solid var(--v-card-border)', borderRadius: 10 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
                   Selected Harvests
                 </div>
@@ -1550,7 +1550,7 @@ function Section({ icon, label, children }: { icon: React.ReactNode; label: stri
 
 function SummaryCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div style={{ padding: '10px 12px', background: 'var(--v-card)', borderRadius: 8, textAlign: 'center' }}>
+    <div style={{ padding: '10px 12px', background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', borderRadius: 8, textAlign: 'center' }}>
       <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--v-text-secondary)', marginBottom: 4, textTransform: 'uppercase' }}>{label}</div>
       <div style={{ fontSize: 16, fontWeight: 800, color }}>
         {value < 0 ? '-' : ''}${Math.abs(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

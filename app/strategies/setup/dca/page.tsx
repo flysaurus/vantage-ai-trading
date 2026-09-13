@@ -352,7 +352,7 @@ export default function DcaSetupPage() {
       {/* Toast */}
       {toast && (
         <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, animation: 'dcaToastIn 0.25s ease-out' }}>
-          <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 600, color: 'var(--v-text-primary)', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, padding: '8px 18px', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}>{toast}</span>
+          <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 600, color: 'var(--v-text-primary)', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, padding: '8px 18px', boxShadow: 'var(--v-shadow-toast)' }}>{toast}</span>
         </div>
       )}
 
@@ -493,7 +493,7 @@ export default function DcaSetupPage() {
 
       {/* ─── Section 5: Preview ──────────────────────── */}
       {selectedSymbol && effectiveAmount > 0 && frequency && (
-        <div style={{ background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
+        <div style={{ background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '1px solid var(--v-card-border)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--v-accent-label)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
             <Clock size={12} style={{ marginRight: 6, display: 'inline' }} />Preview
           </div>
@@ -591,7 +591,7 @@ function ErrorBox({ message }: { message: string }) {
 
 function StockCard({ details, changeColor, position }: { details: StockDetails; changeColor: string; position: any }) {
   return (
-    <div style={{ background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 12, padding: 16 }}>
+    <div style={{ background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '1px solid var(--v-card-border)', borderRadius: 12, padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--v-text-primary)' }}>{details.symbol}</div>

@@ -119,6 +119,7 @@ export default function StrategiesPage() {
             style={{
               padding: '14px 16px',
               background: 'var(--v-card)',
+              boxShadow: 'var(--v-shadow-card)', // locked elevation
               border: '1px solid var(--v-card-border)',
               borderRadius: 12,
               cursor: s.available ? 'pointer' : 'default',

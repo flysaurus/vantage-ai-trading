@@ -976,7 +976,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
       {/* Toast */}
       {toast && (
         <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, animation: 'dcaToastIn 0.25s ease-out' }}>
-          <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 600, color: 'var(--v-text-primary)', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, padding: '8px 18px', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}>{toast}</span>
+          <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 600, color: 'var(--v-text-primary)', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, padding: '8px 18px', boxShadow: 'var(--v-shadow-toast)' }}>{toast}</span>
         </div>
       )}
 
@@ -1296,7 +1296,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
         >
           {savingTargets ? 'Saving...' : targetsSaved ? '✓ Allocation Saved' : '💾 Save Allocation'}
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--v-card)', border: `1px solid ${isBalanced ? 'var(--v-gain)' : 'var(--v-loss)'}`, borderRadius: 8, marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: `1px solid ${isBalanced ? 'var(--v-gain)' : 'var(--v-loss)'}`, borderRadius: 8, marginBottom: 12 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--v-text-muted)' }}>Total Allocation</span>
           <span style={{ fontSize: 16, fontWeight: 800, color: isBalanced ? 'var(--v-gain)' : 'var(--v-loss)' }}>
             {totalTarget.toFixed(1)}%
@@ -1343,7 +1343,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
               ))}
 
               {/* Summary */}
-              <div style={{ padding: '10px 12px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, marginTop: 8 }}>
+              <div style={{ padding: '10px 12px', background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '1px solid var(--v-card-border)', borderRadius: 8, marginTop: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--v-text-muted)', marginBottom: 4 }}>
                   <span>Total trades</span>
                   <span style={{ fontWeight: 600, color: 'var(--v-text-primary)' }}>{trades.length}</span>
@@ -1533,7 +1533,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
               </div>
 
               {/* Queue Summary */}
-              <div style={{ padding: '12px 14px', background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 10, marginTop: 10 }}>
+              <div style={{ padding: '12px 14px', background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '1px solid var(--v-card-border)', borderRadius: 10, marginTop: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 12, color: 'var(--v-text-muted)' }}>
                   <span>Total Buys</span>
                   <span style={{ fontWeight: 600, color: 'var(--v-gain)' }}>{buyOrders.length} orders · ${totalBuys.toFixed(2)}</span>
@@ -1579,7 +1579,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
                 Place Individually
               </div>
               {trades.map((t, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', marginBottom: 6, background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: 8 }}>
+                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', marginBottom: 6, background: 'var(--v-card)', boxShadow: 'var(--v-shadow-card)', border: '1px solid var(--v-card-border)', borderRadius: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: t.action === 'BUY' ? 'var(--v-gain-dim)' : 'var(--v-loss-dim)', color: t.action === 'BUY' ? 'var(--v-gain)' : 'var(--v-loss)' }}>
                       {t.action}
@@ -1638,7 +1638,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
       </Section>
 
       {/* ─── Bottom Bar ────────────────────────────── */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'var(--v-canvas)', padding: '12px 16px 84px', borderTop: '1px solid var(--v-card-border)', boxShadow: '0 -8px 20px rgba(0,0,0,0.06)' }}>
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'var(--v-canvas)', padding: '12px 16px 84px', borderTop: '1px solid var(--v-card-border)', boxShadow: 'var(--v-shadow-toast)' }}>
         {/* Demo mode warning */}
         {!isConnected && (
           <div style={{ fontSize: 10, color: 'var(--v-warn)', textAlign: 'center', marginBottom: 8, fontWeight: 500 }}>
