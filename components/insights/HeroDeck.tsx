@@ -171,7 +171,7 @@ export function HeroDeck({ cards, positions, isReadOnly, onDismiss, onOpenTeaser
               position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 120,
               zIndex: 9999, background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)',
               borderRadius: 14, padding: 6, display: 'flex', flexDirection: 'column', gap: 2,
-              minWidth: 200, boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
+              minWidth: 200, boxShadow: 'var(--v-shadow-toast)',
             }}
           >
             {SNOOZE_OPTIONS.map((opt) => (

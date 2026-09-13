@@ -386,7 +386,7 @@ function AppShell() {
           style={{
             position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', zIndex: 99997,
             background: 'var(--v-card)', border: '1px solid var(--v-card-border)', borderRadius: '12px',
-            padding: '12px 18px', maxWidth: '90vw', boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
+            padding: '12px 18px', maxWidth: '90vw', boxShadow: 'var(--v-shadow-toast)',
             animation: 'welcomeSlideDown 0.4s ease-out',
           }}
         >
@@ -401,7 +401,7 @@ function AppShell() {
             position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', zIndex: 99997,
             background: '#1a2235', border: '1px solid rgba(34,211,238,0.3)', borderRadius: '12px',
             padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '10px',
-            boxShadow: '0 4px 24px rgba(0,0,0,0.4)', animation: 'welcomeSlideDown 0.4s ease-out',
+            boxShadow: 'var(--v-shadow-toast)', animation: 'welcomeSlideDown 0.4s ease-out',
           }}>
             <span style={{ fontSize: '18px' }}>👋</span>
             <span style={{ color: '#ffffff', fontSize: '14px', fontWeight: '500' }}>
