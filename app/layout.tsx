@@ -33,7 +33,9 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#0f172a',
+  // PWA/status-bar theme colour = the identity mark's dark chip (#17323B),
+  // matching public/manifest.json and the favicon/PWA icons.
+  themeColor: '#17323B',
 };
 
 export default function RootLayout({

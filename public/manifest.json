@@ -4,8 +4,8 @@
   "description": "AI-first stock trading platform",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "background_color": "#17323B",
+  "theme_color": "#17323B",
   "icons": [
     {
       "src": "/icon-192.png",

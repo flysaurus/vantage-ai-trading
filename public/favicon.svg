@@ -1,9 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-<rect width="32" height="32" fill="black"/>
-<circle cx="16" cy="16" r="14" stroke="white" stroke-width="1.5" fill="none"/>
-<polygon points="16,3 17.8,16 16,19 14.2,16" fill="white"/>
-<polygon points="16,29 17,16 16,13 15,16" fill="white" opacity="0.6"/>
-<polygon points="29,16 16,14.2 13,16 16,17.8" fill="white" opacity="0.5"/>
-<polygon points="3,16 16,14.2 19,16 16,17.8" fill="white" opacity="0.5"/>
-<circle cx="16" cy="16" r="1.5" fill="white"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="32" height="32" role="img" aria-label="Vantage">
+  <title>Vantage</title>
+  <!-- ICON tier identity mark — 4 hub-nodes (1 hub + 3 satellites) on the
+       dark #17323B chip. LOCKED teal ramp only:
+       #9FF0F4 highlight · #0E8C99 accent · #0A5A62 deep · #17323B chip.
+       Strokes/nodes are slightly bolder than the live component so the glyph
+       still resolves at 16–32px favicon sizes. -->
+  <rect x="0" y="0" width="100" height="100" rx="24" fill="#17323B"/>
+  <g stroke="rgba(95,216,222,0.5)" stroke-width="4" stroke-linecap="round" fill="none">
+    <!-- spokes -->
+    <line x1="50" y1="57.5" x2="50" y2="26.5"/>
+    <line x1="50" y1="57.5" x2="77" y2="74"/>
+    <line x1="50" y1="57.5" x2="23" y2="74"/>
+    <!-- outer ring -->
+    <line x1="50" y1="26.5" x2="77" y2="74"/>
+    <line x1="77" y1="74" x2="23" y2="74"/>
+    <line x1="23" y1="74" x2="50" y2="26.5"/>
+  </g>
+  <!-- satellite nodes -->
+  <circle cx="50" cy="26.5" r="9" fill="#5FD8DE"/>
+  <circle cx="77" cy="74" r="9" fill="#5FD8DE"/>
+  <circle cx="23" cy="74" r="9" fill="#5FD8DE"/>
+  <!-- hub -->
+  <circle cx="50" cy="57.5" r="13.5" fill="#9FF0F4"/>
 </svg>
