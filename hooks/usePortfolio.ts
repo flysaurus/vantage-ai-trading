@@ -250,17 +250,25 @@ const RETRY_DELAY = 3000;
 // 8-22s (26-position Alpaca Paper book), so this leaves ~2-3x headroom and only
 // fires on a genuine stall, never on "slow".
 const LOAD_TIMEOUT = 45000;
+// PART 4 — DISCONNECT WATCHDOG. Shorter than LOAD_TIMEOUT on purpose: on this
+// path we never even issue a request (the broker status probe says the account
+// is not connected), so there is nothing to be "slow" about. The wait exists
+// only to let a transient status blip self-heal before we surface the error.
+const DISCONNECT_TIMEOUT = 12000;
 
 export function usePortfolio() {
   const store = usePortfolioStore();
   const { account, setAccount, clearAccount, setLoading, updatePosition } = store;
-  const { broker, isConnected } = useBroker();
+  const { broker, isConnected, isInitialized: isBrokerInitialized } = useBroker();
   const { user } = useAuth();
   const { activeAccountId } = useAccounts();
   const [error, setError] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // PART 4 — the bail-out watchdog (see refresh()): kept in a ref so a later
+  // attempt, an account switch, or unmount can always cancel it.
+  const bailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── PART 2: account-switch guard ──────────────────────────────────
   // The resolved `account` belongs to the accountId it was fetched for
@@ -288,6 +296,11 @@ export function usePortfolio() {
   useEffect(() => {
     if (isConnected) {
       console.error('[usePortfolio] isConnected → true — clearing stale account, setting loading');
+      // PART 4 — the connection recovered, so drop any pending bail-out watchdog.
+      if (bailTimerRef.current) {
+        clearTimeout(bailTimerRef.current);
+        bailTimerRef.current = null;
+      }
       clearAccount();
       setLoading(true);
     }
@@ -296,6 +309,16 @@ export function usePortfolio() {
   // ── Demo data when no broker connected ────────────────────
   useEffect(() => {
     if (isConnected) return;
+    // PART 4 — never write DEMO numbers into a live account's scope. When a
+    // broker connection is selected but its status probe failed, this effect
+    // used to resolve the demo portfolio and stamp it with the LIVE account id
+    // (`activeAccountId`), i.e. fake $100k numbers wearing the real account's
+    // name (the same "wrong number beats no number" failure the Insights gate
+    // was added to stop). Demo data belongs to the demo account only.
+    if (activeAccountId && activeAccountId !== 'demo') {
+      console.error('[usePortfolio] demo fallback skipped — non-demo account selected:', activeAccountId);
+      return;
+    }
 
     const style = user?.investorStyle || 'buffett';
     const symbols = getDemoSymbols(style as any);
@@ -321,25 +344,78 @@ export function usePortfolio() {
           setError('Market data unavailable. Please try again.');
         }
       });
-  }, [isConnected, user?.investorStyle, setAccount, activeAccountId]);
+  }, [isConnected, user?.investorStyle, setAccount, activeAccountId, clearAccount, setLoading]);
+
+  // ── PART 4 — `loading` ALWAYS HAS A TERMINAL OWNER ─────────
+  // Any code path can flip `loading` true (the account-switch guard above does
+  // it on every account change). If the broker status probe has FINISHED
+  // without a connection, no refresh will ever run to settle that flag — so
+  // this effect arms the terminal timer itself. The UI then ends in a visible
+  // error (never an eternal skeleton), and it self-cancels the moment the
+  // connection recovers.
+  useEffect(() => {
+    if (!isBrokerInitialized || isConnected) return;
+    if (!usePortfolioStore.getState().loading) return;
+    console.error('[usePortfolio] broker not connected — arming terminal watchdog');
+    const t = setTimeout(() => {
+      if (!mountedRef.current) return;
+      if (!usePortfolioStore.getState().loading) return;
+      console.error('[usePortfolio] TIMEOUT — loading settled without a broker connection');
+      setError('Could not reach your broker for this account. Try again or switch accounts.');
+      setLoading(false);
+    }, DISCONNECT_TIMEOUT);
+    return () => clearTimeout(t);
+  }, [isBrokerInitialized, isConnected, activeAccountId, setLoading]);
 
   const refresh = useCallback(async (): Promise<void> => {
     // Declared OUTSIDE the try so the watchdog is always cleared in `finally`
     // (a const declared inside `try` is not visible from `finally`).
     let loadTimeout: ReturnType<typeof setTimeout> | undefined;
+    // Both watchdogs live in refs as well so unmount can always clear them.
+    let bailTimeout: ReturnType<typeof setTimeout> | undefined;
+    const scope = activeAccountId ?? null;
+
+    // PART 4 — TERMINAL GUARANTEE ON THE BAIL-OUT PATH.
+    // This used to return silently. But the account-switch guard (`clearAccount()`
+    // + `setLoading(true)` above) has already flipped the shared store to
+    // `loading: true`, and the main watchdog further down is only armed AFTER
+    // this point — so bailing early left `loading` true forever: skeleton
+    // shimmering, no timeout, no error, no retry (the account-switch hang).
+    // The fix is to arm a watchdog HERE, before the return, so this path is
+    // terminal too (error + loading cleared) instead of infinite.
     if (!broker || !isConnected) {
       console.error('[usePortfolio] refresh skipped — broker:', !!broker, 'isConnected:', isConnected);
+      if (usePortfolioStore.getState().loading) {
+        bailTimeout = setTimeout(() => {
+          if (!mountedRef.current) return;
+          // If the user switched accounts, the CURRENT scope owns the loading
+          // flag — this attempt must not speak for it.
+          if (scopeRef.current !== scope) return;
+          if (!usePortfolioStore.getState().loading) return;
+          console.error('[usePortfolio] TIMEOUT — broker not connected for scope', scope);
+          setError('Could not reach your broker for this account. Try again or switch accounts.');
+          setLoading(false);
+        }, DISCONNECT_TIMEOUT);
+        bailTimerRef.current = bailTimeout;
+      }
       return;
     }
 
     try {
+      // PART 4 — we are issuing a real request now, so any pending bail-out
+      // watchdog from a previous "not connected" attempt must not fire mid-flight
+      // (it would clear `loading` and show an error over a request in progress).
+      if (bailTimerRef.current) {
+        clearTimeout(bailTimerRef.current);
+        bailTimerRef.current = null;
+      }
+
       // Only surface the full-page spinner on the FIRST load (no account yet).
       // Subsequent 60s polls update in place — avoids unmounting/remounting the
       // chart + cards (the "full reload" flash) on every poll. (Phase 4)
       // PART 2: never trust a resolved account from a DIFFERENT account id —
       // an account scope mismatch means the store holds another account's data,
       // so we must also gate loading on that (same as "no account yet").
-      const scope = activeAccountId ?? null;
       const storedScope = usePortfolioStore.getState().accountScope;
       if (!usePortfolioStore.getState().account || storedScope !== scope) {
         clearAccount();
@@ -652,6 +728,10 @@ export function usePortfolio() {
       mountedRef.current = false;
       if (retryTimer.current) {
         clearTimeout(retryTimer.current);
+      }
+      if (bailTimerRef.current) {
+        clearTimeout(bailTimerRef.current);
+        bailTimerRef.current = null;
       }
     };
   }, [isConnected, refresh]);

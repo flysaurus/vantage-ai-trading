@@ -160,6 +160,7 @@ interface PortfolioStore {
   accountScope: string | null;
   loading: boolean;
   setAccount: (account: AccountSummary, scope: string | null) => void;
+  /** Clears the resolved account AND the loading flag (both halves of a reset). */
   clearAccount: () => void;
   setLoading: (loading: boolean) => void;
   updatePosition: (symbol: string, updates: Partial<Position>) => void;
@@ -170,7 +171,14 @@ export const usePortfolioStore = create<PortfolioStore>((set) => ({
   accountScope: null,
   loading: false,
   setAccount: (account, scope) => set({ account, accountScope: scope, loading: false }),
-  clearAccount: () => set({ account: null, accountScope: null }),
+  clearAccount: () =>
+    // PART 4 — reset `loading` here too. This is the "incomplete populate half"
+    // of the earlier stale-balance fix: `setAccount()` clears loading, but
+    // `clearAccount()` used to leave it untouched. The account-switch guard calls
+    // `clearAccount()` and then `setLoading(true)`; if the follow-up refresh
+    // bails out (broker not connected) nothing ever cleared `loading` again, so
+    // the skeleton stayed up with no timeout, no error and no retry.
+    set({ account: null, accountScope: null, loading: false }),
   setLoading: (loading) => set({ loading }),
   updatePosition: (symbol, updates) =>
     set((s) => {

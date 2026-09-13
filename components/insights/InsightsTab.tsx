@@ -56,9 +56,9 @@ function firstLine(content: string): string {
 }
 
 export function InsightsTab() {
-  const { account: brokerAccount, accountScope: brokerScope, loading: brokerLoading, refresh: brokerRefresh } = usePortfolio();
+  const { account: brokerAccount, accountScope: brokerScope, loading: brokerLoading, error: brokerError, refresh: brokerRefresh } = usePortfolio();
   const { account: liveAccount, accountScope: liveScope, loading: liveLoading, brokerMeta, refresh: liveRefresh } = useLivePortfolio();
-  const { isConnected } = useBroker();
+  const { isConnected, isInitialized: isBrokerInitialized } = useBroker();
   const { activeAccount, activeAccountId } = useAccounts();
   const { user } = useAuth();
   const { setTab } = useTabStore();
@@ -266,11 +266,20 @@ export function InsightsTab() {
   //   pending     → skeleton (broker bridge gap / still connecting)
   //   unavailable → never resolved and nothing in flight (e.g. broker error)
   const sourceReady = !!displayAccount && (isShowingDemo || isConnected);
+  // PART 4 — REACHABLE 'unavailable'. The old ternary ended in
+  // `loading || !isConnected || isShowingDemo ? 'pending' : 'unavailable'`,
+  // and since a failed broker-status probe leaves `isConnected` false, the
+  // `'pending'` branch swallowed the failure FOREVER — an infinite skeleton
+  // whose error state (`failed`/`balance-unavailable`) was dead code. A broker
+  // status probe that has FINISHED without a connection, for a selected live
+  // (snaptrade:*) account, is a genuine failure: end in 'unavailable' so the UI
+  // says "Couldn't load this account — reconnect or refresh" and stops shimmering.
+  const brokerUnreachable = isBrokerInitialized && !isConnected && !isShowingDemo && !!activeAccountId;
   const accountState: 'ready' | 'pending' | 'unavailable' = sourceReady
     ? 'ready'
-    : loading || !isConnected || isShowingDemo
-      ? 'pending'
-      : 'unavailable';
+    : brokerUnreachable || (isBrokerExpected && (!!brokerError || !loading))
+      ? 'unavailable'
+      : 'pending';
 
   return (
     <div style={{ paddingBottom: 24, background: 'var(--v-canvas)', minHeight: '100%' }}>
