@@ -56,21 +56,23 @@ interface AccountSelectScreenProps {
 
 // ─── Design tokens (same as BrokerConnectionsPage) ──────────
 
-const bgPrimary = '#0a0e16';
-const bgRoot = '#050810';
-const cardBg = 'rgba(255,255,255,0.035)';
-const cardBorder = 'rgba(255,255,255,0.08)';
-const cardBorderHover = 'rgba(255,255,255,0.14)';
-const textPrimary = '#eef2f7';
-const textSecondary = '#8b96ab';
-const textTertiary = '#5c6579';
-const emerald = '#3ddc97';
-const emeraldDim = 'rgba(61,220,151,0.12)';
-const amber = '#f0b73f';
-const amberDim = 'rgba(240,183,63,0.12)';
-const cyan = '#38d6e8';
-const cyanDim = 'rgba(56,214,232,0.08)';
-const divider = 'rgba(255,255,255,0.06)';
+// Themed via the locked --v-* light system (light is the default).
+const bgPrimary = 'var(--v-canvas)';
+const bgRoot = 'var(--v-canvas)';
+const cardBg = 'var(--v-card)';
+const cardBorder = 'var(--v-card-border)';
+const cardBorderHover = 'var(--v-accent)';
+const textPrimary = 'var(--v-text-primary)';
+const textSecondary = 'var(--v-text-secondary)';
+const textTertiary = 'var(--v-text-muted)';
+const emerald = 'var(--v-gain)';
+const emeraldText = 'var(--v-gain-label)';
+const emeraldDim = 'var(--v-gain-dim)';
+const amber = 'var(--v-view-only-text)';
+const amberDim = 'var(--v-view-only-bg)';
+const cyan = 'var(--v-accent)';
+const cyanDim = 'var(--v-accent-dim)';
+const divider = 'var(--v-card-border)';
 
 // ─── Badge style helper ─────────────────────────────────────
 
@@ -139,12 +141,12 @@ export default function AccountSelectScreen({
             width: 40,
             height: 40,
             borderRadius: '50%',
-            border: '2px solid rgba(255,255,255,0.1)',
-            borderTopColor: 'rgba(255,255,255,0.4)',
+            border: '2px solid var(--v-card-border)',
+            borderTopColor: 'var(--v-accent)',
             animation: 'spin 0.8s linear infinite',
           }}
         />
-        <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px', fontFamily: 'inherit' }}>
+        <p style={{ color: 'var(--v-text-muted)', fontSize: '13px', fontFamily: 'inherit' }}>
           Loading accounts…
         </p>
       </div>
@@ -157,7 +159,7 @@ export default function AccountSelectScreen({
         position: 'fixed',
         inset: 0,
         zIndex: 100,
-        background: `radial-gradient(ellipse 120% 60% at 50% -10%, rgba(34,211,238,0.18), transparent 55%), ${bgPrimary}`,
+        background: bgPrimary,
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
         transition: 'opacity 300ms',
@@ -225,8 +227,8 @@ export default function AccountSelectScreen({
               width: '100%',
               padding: '16px',
               borderRadius: '16px',
-              border: '1.5px dashed rgba(255,255,255,0.12)',
-              background: 'rgba(255,255,255,0.02)',
+              border: '1.5px dashed var(--v-card-border)',
+              background: 'var(--v-card)',
               display: 'flex',
               alignItems: 'center',
               gap: '13px',
@@ -236,12 +238,12 @@ export default function AccountSelectScreen({
               textAlign: 'left',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.22)';
-              e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+              e.currentTarget.style.borderColor = 'var(--v-accent)';
+              e.currentTarget.style.background = 'var(--v-disabled-bg)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
-              e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+              e.currentTarget.style.borderColor = 'var(--v-card-border)';
+              e.currentTarget.style.background = 'var(--v-card)';
             }}
           >
             <div
@@ -250,7 +252,7 @@ export default function AccountSelectScreen({
                 height: '42px',
                 borderRadius: '11px',
                 background: emeraldDim,
-                border: '1px solid rgba(61,220,151,0.18)',
+                border: '1px solid var(--v-gain-label)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -265,7 +267,7 @@ export default function AccountSelectScreen({
                   fontSize: '15.5px',
                   fontWeight: 650,
                   letterSpacing: '-0.01em',
-                  color: emerald,
+                  color: emeraldText,
                   marginBottom: '2px',
                 }}
               >
@@ -313,8 +315,8 @@ export default function AccountSelectScreen({
                 width: '16px',
                 height: '16px',
                 borderRadius: '4px',
-                border: `1px solid rgba(255,255,255,0.2)`,
-                accentColor: emerald,
+                border: `1px solid var(--v-card-border)`,
+                accentColor: 'var(--v-accent)',
                 cursor: 'pointer',
               }}
             />
@@ -436,7 +438,7 @@ function AccountCard({
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.borderColor = cardBorderHover;
-        e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+        e.currentTarget.style.background = 'var(--v-disabled-bg)';
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.borderColor = cardBorder;
@@ -463,7 +465,7 @@ function AccountCard({
             height: '42px',
             borderRadius: '11px',
             background: amberDim,
-            border: '1px solid rgba(240,183,63,0.18)',
+            border: '1px solid var(--v-admin-border)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -479,7 +481,8 @@ function AccountCard({
             width: '42px',
             height: '42px',
             borderRadius: '11px',
-            background: '#fff',
+            background: 'var(--v-card)',
+            border: '1px solid var(--v-card-border)',
             padding: '7px',
             display: 'flex',
             alignItems: 'center',
@@ -500,13 +503,13 @@ function AccountCard({
             width: '42px',
             height: '42px',
             borderRadius: '11px',
-            background: 'rgba(255,255,255,0.07)',
+            background: 'var(--v-disabled-bg)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: '17px',
             fontWeight: 700,
-            color: 'rgba(255,255,255,0.4)',
+            color: 'var(--v-text-faint)',
             flexShrink: 0,
           }}
         >
@@ -549,7 +552,7 @@ function AccountCard({
             <span style={badgeStyle(amberDim, amber)}>READ-ONLY</span>
           )}
           {!isDemo && !isReadonly && (
-            <span style={badgeStyle(emeraldDim, emerald)}>TRADING</span>
+            <span style={badgeStyle(emeraldDim, emeraldText)}>TRADING</span>
           )}
         </div>
 
@@ -563,7 +566,7 @@ function AccountCard({
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          <span style={{ color: 'rgba(255,255,255,0.6)' }}>
+          <span style={{ color: 'var(--v-text-secondary)' }}>
             {formatCurrency(account.totalValue)}
           </span>
           <span style={{ opacity: 0.4 }}>·</span>

@@ -39,6 +39,34 @@ import {
 import { RISK_COLORS, RISK_LABELS } from '@/lib/onboarding/quiz-logic';
 import type { InvestorStyleKey, RiskTolerance } from '@/lib/onboarding/onboarding-state';
 
+// Scoped legacy-token remap for this auth screen. The shared <Input> and
+// <PasswordStrength> components still read the legacy dark tokens
+// (--bg-input, --border-input, --text-*, --loss, --accent …) and are shared
+// with the out-of-scope dark forgot-password / reset screens, so we shadow
+// them at this root instead of rewriting the shared files.
+const AUTH_VARS = {
+  '--bg-input': 'var(--v-card)',
+  '--border-input': 'var(--v-card-border)',
+  '--border-input-focus': 'var(--v-accent)',
+  '--border-subtle': 'var(--v-card-border)',
+  '--border-card': 'var(--v-card-border)',
+  '--text-primary': 'var(--v-text-primary)',
+  '--text-secondary': 'var(--v-text-secondary)',
+  '--text-muted': 'var(--v-text-muted)',
+  '--text-placeholder': 'var(--v-text-muted)',
+  '--accent': 'var(--v-accent)',
+  '--accent-10': 'var(--v-accent-dim)',
+  '--gain': 'var(--v-gain-label)',
+  '--loss': 'var(--v-loss-label)',
+  '--loss-10': 'var(--v-loss-dim)',
+  '--warning': 'var(--v-warn)',
+  '--warning-10': 'var(--v-warn-dim)',
+  '--strength-weak': 'var(--v-loss-label)',
+  '--strength-fair': 'var(--v-warn)',
+  '--strength-good': 'var(--v-accent-label)',
+  '--strength-strong': 'var(--v-gain-label)',
+} as React.CSSProperties;
+
 // ── Helpers ──────────────────────────────────────────────────
 
 function isValidEmail(email: string): boolean {
@@ -241,9 +269,11 @@ export default function CreateAccountPage() {
   if (!onboardingData) {
     return (
       <div
+        className="auth-shell"
         style={{
+          ...AUTH_VARS,
           minHeight: '100dvh',
-          background: '#0a0f1e',
+          background: 'var(--v-canvas)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -251,7 +281,7 @@ export default function CreateAccountPage() {
       >
         <Loader2
           size={24}
-          color="var(--accent)"
+          color="var(--v-accent)"
           style={{ animation: 'spin 0.7s linear infinite' }}
         />
       </div>
@@ -576,12 +606,12 @@ export default function CreateAccountPage() {
       style={{
         background:
           inviteStatus === 'expired'
-            ? 'rgba(210,153,34,0.1)'
+            ? 'var(--v-warn-dim)'
             : inviteStatus === 'used'
-            ? 'rgba(139,148,158,0.1)'
-            : 'rgba(218,54,51,0.1)',
+            ? 'var(--v-accent-dim)'
+            : 'var(--v-loss-dim)',
         border: `1px solid ${
-          inviteStatus === 'expired' ? '#d29922' : inviteStatus === 'used' ? '#8b949e' : '#da3633'
+          inviteStatus === 'expired' ? 'var(--v-warn)' : inviteStatus === 'used' ? 'var(--v-text-muted)' : 'var(--v-loss)'
         }`,
         borderRadius: '12px',
         padding: '12px 16px',
@@ -593,11 +623,11 @@ export default function CreateAccountPage() {
       <XCircle
         size={16}
         color={
-          inviteStatus === 'expired' ? '#d29922' : inviteStatus === 'used' ? '#8b949e' : '#da3633'
+          inviteStatus === 'expired' ? 'var(--v-warn)' : inviteStatus === 'used' ? 'var(--v-text-muted)' : 'var(--v-loss)'
         }
         style={{ flexShrink: 0, marginTop: '1px' }}
       />
-      <p style={{ fontSize: '14px', color: '#e6edf3', margin: 0, lineHeight: 1.5 }}>
+      <p style={{ fontSize: '14px', color: 'var(--v-text-primary)', margin: 0, lineHeight: 1.5 }}>
         {inviteError}
       </p>
     </div>
@@ -625,23 +655,23 @@ export default function CreateAccountPage() {
 
   // ── Waitlist banner style helpers ────────────────────────
   const wlBanner = (borderColor: string): React.CSSProperties => ({
-    background: 'rgba(6,182,212,0.06)',
+    background: 'var(--v-accent-dim)',
     border: `1px solid ${borderColor}`,
     borderRadius: '16px',
     padding: '28px 24px',
     marginBottom: '16px',
-    color: '#cbd5e1',
+    color: 'var(--v-text-secondary)',
     fontSize: '14px',
     lineHeight: 1.7,
   });
-  const wlTitle: React.CSSProperties = { fontSize: '18px', fontWeight: 700, margin: '0 0 20px 0', color: '#f8fafc' };
+  const wlTitle: React.CSSProperties = { fontSize: '18px', fontWeight: 700, margin: '0 0 20px 0', color: 'var(--v-text-primary)' };
   const wlText: React.CSSProperties = { margin: '0 0 16px 0' };
-  const wlSmall: React.CSSProperties = { margin: 0, color: '#94a3b8' };
+  const wlSmall: React.CSSProperties = { margin: 0, color: 'var(--v-text-muted)' };
 
   const waitlistBanner = showWaitlist ? (
     waitlistStatus === 'pending' ? (
       /* ── State 2: Already requested ── */
-      <div style={wlBanner('#7c3aed')}>
+      <div style={wlBanner('var(--v-accent)')}>
         <p style={wlTitle}>You&apos;ve already requested access.</p>
         <p style={wlText}>
           We&apos;re reviewing your request — you&apos;ll get an email the moment we make a decision.
@@ -652,14 +682,14 @@ export default function CreateAccountPage() {
       </div>
     ) : waitlistStatus === 'rejected' ? (
       /* ── State 3: Rejected ── */
-      <div style={wlBanner('#8b949e')}>
+      <div style={wlBanner('var(--v-text-muted)')}>
         <p style={wlTitle}>Access not approved.</p>
         <p style={wlText}>
           We reviewed your request and aren&apos;t able to let you in right now.
         </p>
         <p style={{ ...wlText, marginBottom: '12px' }}>
           Reach out to{' '}
-          <a href="mailto:hello@vantageai.app" style={{ color: '#06b6d4', textDecoration: 'underline' }}>
+          <a href="mailto:hello@vantageai.app" style={{ color: 'var(--v-accent-label)', textDecoration: 'underline' }}>
             hello@vantageai.app
           </a>{' '}
           if you have questions.
@@ -667,11 +697,11 @@ export default function CreateAccountPage() {
       </div>
     ) : waitlistStatus === 'approved' && waitlistHasInvite ? (
       /* ── State 6: Approved + invite waiting ── */
-      <div style={wlBanner('#06b6d4')}>
+      <div style={wlBanner('var(--v-accent)')}>
         <p style={wlTitle}>You&apos;re invited to Vantage!</p>
         <p style={wlText}>
           An invite link was sent to{' '}
-          <strong style={{ color: '#f8fafc' }}>{waitlistEmail}</strong>.
+          <strong style={{ color: 'var(--v-text-primary)' }}>{waitlistEmail}</strong>.
           Click the link in your email to get started.
         </p>
         <button
@@ -680,8 +710,8 @@ export default function CreateAccountPage() {
           style={{
             marginTop: '8px',
             background: 'transparent',
-            border: '1px solid #06b6d4',
-            color: '#06b6d4',
+            border: '1px solid var(--v-accent)',
+            color: 'var(--v-accent-label)',
             borderRadius: '8px',
             padding: '8px 16px',
             fontSize: '13px',
@@ -694,7 +724,7 @@ export default function CreateAccountPage() {
       </div>
     ) : (
       /* ── State 1: New waitlist signup (default) ── */
-      <div style={wlBanner('#06b6d4')}>
+      <div style={wlBanner('var(--v-accent)')}>
         <p style={wlTitle}>You&apos;re on the list.</p>
         <p style={wlText}>
           Vantage is invite-only. We&apos;ve added you to the queue — you&apos;ll hear from us when your spot opens.
@@ -714,8 +744,8 @@ export default function CreateAccountPage() {
   const errorBanner = apiError ? (
     <div
       style={{
-        background: 'var(--loss-10)',
-        border: '1px solid var(--loss)',
+        background: 'var(--v-loss-dim)',
+        border: '1px solid var(--v-loss)',
         borderRadius: '12px',
         padding: '12px 16px',
         display: 'flex',
@@ -723,15 +753,15 @@ export default function CreateAccountPage() {
         marginBottom: '16px',
       }}
     >
-      <AlertCircle size={16} color="var(--loss)" style={{ flexShrink: 0, marginTop: '1px' }} />
-      <p style={{ fontSize: '14px', color: 'var(--text-primary)', margin: 0, lineHeight: 1.5 }}>
+      <AlertCircle size={16} color="var(--v-loss)" style={{ flexShrink: 0, marginTop: '1px' }} />
+      <p style={{ fontSize: '14px', color: 'var(--v-text-primary)', margin: 0, lineHeight: 1.5 }}>
         {apiError.includes('Sign in instead') ? (
           <>
             An account with this email already exists.{' '}
             <span
               onClick={() => router.push('/login')}
               style={{
-                color: 'var(--accent)',
+                color: 'var(--v-accent-label)',
                 textDecoration: 'underline',
                 cursor: 'pointer',
               }}
@@ -762,9 +792,10 @@ export default function CreateAccountPage() {
 
   return (
     <div
-      className="bg-onboarding-reveal"
+      className="auth-shell bg-onboarding-reveal"
       onKeyDown={handleKeyDown}
       style={{
+        ...AUTH_VARS,
         height: '100dvh',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
@@ -773,7 +804,7 @@ export default function CreateAccountPage() {
         padding: '0 24px 40px',
       }}
     >
-      {/* ═══ TOP BAR ═══ */}
+          {/* ═══ TOP BAR ═══ */}
       <div
         style={{
           position: 'sticky',
@@ -784,8 +815,6 @@ export default function CreateAccountPage() {
           alignItems: 'center',
           justifyContent: 'space-between',
           background: 'transparent',
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
         }}
       >
         <button
@@ -798,7 +827,7 @@ export default function CreateAccountPage() {
             border: 'none',
             cursor: 'pointer',
             padding: '4px 0',
-            color: 'var(--text-secondary)',
+            color: 'var(--v-text-secondary)',
           }}
         >
           <ChevronLeft size={20} />
@@ -816,7 +845,7 @@ export default function CreateAccountPage() {
             fontFamily: 'var(--font-sans)',
             fontSize: '32px',
             fontWeight: 800,
-            color: '#ffffff',
+            color: 'var(--v-text-primary)',
             lineHeight: 1.1,
           }}
         >
@@ -829,7 +858,7 @@ export default function CreateAccountPage() {
             fontSize: '32px',
             fontWeight: 400,
             fontStyle: 'italic',
-            color: '#ffffff',
+            color: 'var(--v-text-primary)',
             lineHeight: 1.1,
           }}
         >
@@ -840,8 +869,8 @@ export default function CreateAccountPage() {
       {/* ═══ PROFILE SUMMARY CARD ═══ */}
       <div
         style={{
-          background: 'rgba(255,255,255,0.05)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--v-card)',
+          border: '1px solid var(--v-card-border)',
           borderRadius: '16px',
           padding: '14px 16px',
           marginBottom: '24px',
@@ -856,7 +885,7 @@ export default function CreateAccountPage() {
           style={{
             fontSize: '15px',
             fontWeight: 600,
-            color: '#ffffff',
+            color: 'var(--v-text-primary)',
             fontFamily: 'var(--font-sans)',
           }}
         >
@@ -864,7 +893,7 @@ export default function CreateAccountPage() {
         </span>
 
         {/* Separator */}
-        <span style={{ color: 'var(--text-muted)', fontSize: '13px', margin: '0 2px' }}>
+        <span style={{ color: 'var(--v-text-muted)', fontSize: '13px', margin: '0 2px' }}>
           ·
         </span>
 
@@ -894,7 +923,7 @@ export default function CreateAccountPage() {
           style={{
             background: 'none',
             border: 'none',
-            color: 'var(--accent)',
+            color: 'var(--v-accent-label)',
             fontSize: '12px',
             fontFamily: 'var(--font-sans)',
             cursor: 'pointer',
@@ -919,9 +948,9 @@ export default function CreateAccountPage() {
           width: '100%',
           height: '64px',
           borderRadius: '999px',
-          border: 'none',
-          background: '#ffffff',
-          color: '#000000',
+          border: '1px solid var(--v-card-border)',
+          background: 'var(--v-card)',
+          color: 'var(--v-text-primary)',
           fontSize: '17px',
           fontWeight: 700,
           fontFamily: 'var(--font-sans)',
@@ -971,7 +1000,7 @@ export default function CreateAccountPage() {
           style={{
             flex: 1,
             height: '1px',
-            background: 'rgba(255,255,255,0.08)',
+            background: 'var(--v-card-border)',
           }}
         />
         <span
@@ -979,7 +1008,7 @@ export default function CreateAccountPage() {
             flexShrink: 0,
             fontSize: '12px',
             fontWeight: 400,
-            color: 'rgba(255,255,255,0.30)',
+            color: 'var(--v-text-muted)',
             fontFamily: 'var(--font-sans)',
           }}
         >
@@ -989,7 +1018,7 @@ export default function CreateAccountPage() {
           style={{
             flex: 1,
             height: '1px',
-            background: 'rgba(255,255,255,0.08)',
+            background: 'var(--v-card-border)',
           }}
         />
       </div>
@@ -1033,7 +1062,7 @@ export default function CreateAccountPage() {
               style={{
                 fontSize: '12px',
                 fontWeight: 400,
-                color: 'var(--loss)',
+                color: 'var(--v-loss-label)',
                 fontFamily: 'var(--font-sans)',
                 margin: '0 0 4px',
                 lineHeight: 1.4,
@@ -1044,7 +1073,7 @@ export default function CreateAccountPage() {
             <span
               onClick={() => router.push('/login')}
               style={{
-                color: 'var(--accent)',
+                color: 'var(--v-accent-label)',
                 fontSize: '12px',
                 fontFamily: 'var(--font-sans)',
                 cursor: 'pointer',
@@ -1062,7 +1091,7 @@ export default function CreateAccountPage() {
               style={{
                 fontSize: '12px',
                 fontWeight: 400,
-                color: 'var(--warning)',
+                color: 'var(--v-warn)',
                 fontFamily: 'var(--font-sans)',
                 margin: '0 0 2px',
               }}
@@ -1073,7 +1102,7 @@ export default function CreateAccountPage() {
               style={{
                 fontSize: '12px',
                 fontWeight: 400,
-                color: 'rgba(255,255,255,0.50)',
+                color: 'var(--v-text-secondary)',
                 fontFamily: 'var(--font-sans)',
                 margin: '0 0 12px',
                 lineHeight: 1.4,
@@ -1086,7 +1115,7 @@ export default function CreateAccountPage() {
               <span
                 onClick={resendConfirmation}
                 style={{
-                  color: confirmResendState === 'sent' ? 'var(--gain)' : 'var(--accent)',
+                  color: confirmResendState === 'sent' ? 'var(--v-gain-label)' : 'var(--v-accent-label)',
                   fontSize: '14px',
                   fontFamily: 'var(--font-sans)',
                   cursor: confirmResendState === 'idle' ? 'pointer' : 'default',
@@ -1107,7 +1136,7 @@ export default function CreateAccountPage() {
                   setEmailTouched(false);
                 }}
                 style={{
-                  color: 'rgba(255,255,255,0.50)',
+                  color: 'var(--v-text-muted)',
                   fontSize: '14px',
                   fontFamily: 'var(--font-sans)',
                   cursor: 'pointer',
@@ -1161,7 +1190,7 @@ export default function CreateAccountPage() {
                 alignItems: 'center',
                 gap: '6px',
                 marginTop: '6px',
-                color: passwordsMatch ? 'var(--gain)' : 'var(--loss)',
+                color: passwordsMatch ? 'var(--v-gain-label)' : 'var(--v-loss-label)',
                 fontSize: '13px',
                 fontFamily: 'var(--font-sans)',
                 transition: 'color 150ms var(--ease-out)',
@@ -1190,7 +1219,7 @@ export default function CreateAccountPage() {
           marginBottom: 0,
           fontSize: '11px',
           fontWeight: 400,
-          color: 'rgba(255,255,255,0.30)',
+          color: 'var(--v-text-muted)',
           textAlign: 'center',
           fontFamily: 'var(--font-sans)',
           lineHeight: 1.5,
@@ -1202,7 +1231,7 @@ export default function CreateAccountPage() {
           style={{
             textDecoration: 'underline',
             cursor: 'pointer',
-            color: 'rgba(255,255,255,0.30)',
+            color: 'var(--v-text-muted)',
           }}
         >
           Terms of Service
@@ -1213,7 +1242,7 @@ export default function CreateAccountPage() {
           style={{
             textDecoration: 'underline',
             cursor: 'pointer',
-            color: 'rgba(255,255,255,0.30)',
+            color: 'var(--v-text-muted)',
           }}
         >
           Privacy Policy
@@ -1230,8 +1259,8 @@ export default function CreateAccountPage() {
           height: '56px',
           borderRadius: '999px',
           border: 'none',
-          background: canSubmit && !submitting ? '#ffffff' : 'rgba(255,255,255,0.20)',
-          color: canSubmit && !submitting ? '#000000' : 'rgba(0,0,0,0.40)',
+          background: canSubmit && !submitting ? 'var(--v-accent)' : 'var(--v-disabled-bg)',
+          color: canSubmit && !submitting ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
           fontSize: '17px',
           fontWeight: 700,
           fontFamily: 'var(--font-sans)',
@@ -1264,7 +1293,7 @@ export default function CreateAccountPage() {
           border: 'none',
           fontSize: '14px',
           fontWeight: 400,
-          color: 'rgba(255,255,255,0.50)',
+          color: 'var(--v-text-secondary)',
           textAlign: 'center',
           fontFamily: 'var(--font-sans)',
           cursor: 'pointer',
@@ -1344,12 +1373,14 @@ function CheckEmailView({ email, onSignIn }: CheckEmailViewProps) {
 
   return (
     <div
+      className="auth-shell"
       style={{
+        ...AUTH_VARS,
         display: 'flex',
         flexDirection: 'column',
         minHeight: '100dvh',
-        background: '#0a0f1e',
-        color: '#fff',
+        background: 'var(--v-canvas)',
+        color: 'var(--v-text-primary)',
         fontFamily: 'var(--font-sans)',
         alignItems: 'center',
         padding: '24px',
@@ -1383,7 +1414,7 @@ function CheckEmailView({ email, onSignIn }: CheckEmailViewProps) {
             fontFamily: 'var(--font-sans)',
             fontSize: '32px',
             fontWeight: 800,
-            color: '#ffffff',
+            color: 'var(--v-text-primary)',
           }}
         >
           Check your
@@ -1395,7 +1426,7 @@ function CheckEmailView({ email, onSignIn }: CheckEmailViewProps) {
             fontSize: '32px',
             fontWeight: 400,
             fontStyle: 'italic',
-            color: '#ffffff',
+            color: 'var(--v-text-primary)',
           }}
         >
           inbox.
@@ -1413,7 +1444,7 @@ function CheckEmailView({ email, onSignIn }: CheckEmailViewProps) {
         <p
           style={{
             fontSize: '15px',
-            color: 'rgba(255,255,255,0.60)',
+            color: 'var(--v-text-secondary)',
             margin: 0,
             fontWeight: 400,
           }}
@@ -1424,7 +1455,7 @@ function CheckEmailView({ email, onSignIn }: CheckEmailViewProps) {
           style={{
             fontSize: '15px',
             fontWeight: 600,
-            color: 'var(--accent)',
+            color: 'var(--v-accent-label)',
             margin: '2px 0 0',
             fontFamily: 'var(--font-sans)',
           }}
@@ -1434,7 +1465,7 @@ function CheckEmailView({ email, onSignIn }: CheckEmailViewProps) {
         <p
           style={{
             fontSize: '15px',
-            color: 'rgba(255,255,255,0.60)',
+            color: 'var(--v-text-secondary)',
             margin: '0',
             fontWeight: 400,
           }}
@@ -1447,7 +1478,7 @@ function CheckEmailView({ email, onSignIn }: CheckEmailViewProps) {
       <p
         style={{
           fontSize: '12px',
-          color: 'rgba(255,255,255,0.40)',
+          color: 'var(--v-text-muted)',
           textAlign: 'center',
           margin: '0 0 32px',
           fontFamily: 'var(--font-sans)',
@@ -1465,7 +1496,7 @@ function CheckEmailView({ email, onSignIn }: CheckEmailViewProps) {
           border: 'none',
           fontSize: '14px',
           fontWeight: 400,
-          color: resendState === 'sent' ? 'var(--gain)' : 'var(--accent)',
+          color: resendState === 'sent' ? 'var(--v-gain-label)' : 'var(--v-accent-label)',
           cursor: resendState === 'idle' ? 'pointer' : 'default',
           padding: '8px 12px',
           fontFamily: 'var(--font-sans)',
@@ -1490,7 +1521,7 @@ function CheckEmailView({ email, onSignIn }: CheckEmailViewProps) {
           border: 'none',
           fontSize: '14px',
           fontWeight: 400,
-          color: 'rgba(255,255,255,0.40)',
+          color: 'var(--v-text-muted)',
           textAlign: 'center',
           fontFamily: 'var(--font-sans)',
           cursor: 'pointer',
@@ -1510,15 +1541,15 @@ function CheckEmailView({ email, onSignIn }: CheckEmailViewProps) {
             bottom: '80px',
             left: '50%',
             transform: 'translateX(-50%)',
-            background: '#161b22',
-            border: '1px solid #30363d',
+            background: 'var(--v-card)',
+            border: '1px solid var(--v-card-border)',
             borderRadius: '12px',
             padding: '12px 24px',
-            color: '#e6edf3',
+            color: 'var(--v-text-primary)',
             fontSize: '14px',
             fontWeight: 600,
             zIndex: 99999,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            boxShadow: 'var(--v-ask-shadow)',
           }}
         >
           {toast}

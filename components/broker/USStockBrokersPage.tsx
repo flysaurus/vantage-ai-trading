@@ -146,13 +146,13 @@ export function USStockBrokersPage({
 
   return (
     <div
+      className="broker-shell"
       style={{
         width: '100%',
         height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
-        background:
-          'radial-gradient(ellipse 120% 60% at 50% -10%, rgba(34,211,238,0.18), transparent 55%), var(--bg-primary)',
+        background: 'var(--v-canvas)',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
         position: 'relative',
@@ -177,7 +177,7 @@ export function USStockBrokersPage({
           style={{
             background: 'none',
             border: 'none',
-            color: 'rgba(255,255,255,0.70)',
+            color: 'var(--v-text-secondary)',
             fontSize: '14px',
             fontWeight: 400,
             fontFamily: 'var(--font-sans)',
@@ -219,7 +219,7 @@ export function USStockBrokersPage({
               fontFamily: 'var(--font-sans)',
               fontSize: '32px',
               fontWeight: 800,
-              color: 'var(--text-primary)',
+              color: 'var(--v-text-primary)',
               lineHeight: 1.15,
             }}
           >
@@ -232,7 +232,7 @@ export function USStockBrokersPage({
               fontSize: '32px',
               fontWeight: 400,
               fontStyle: 'italic',
-              color: 'var(--text-primary)',
+              color: 'var(--v-text-primary)',
               lineHeight: 1.15,
             }}
           >
@@ -245,7 +245,7 @@ export function USStockBrokersPage({
             fontFamily: 'var(--font-sans)',
             fontSize: '14px',
             fontWeight: 400,
-            color: 'rgba(255,255,255,0.55)',
+            color: 'var(--v-text-secondary)',
             textAlign: 'center',
             margin: '12px 0 0',
             lineHeight: 1.5,
@@ -279,9 +279,9 @@ export function USStockBrokersPage({
             style={{
               padding: '10px 14px',
               borderRadius: '12px',
-              background: 'rgba(239,68,68,0.10)',
-              border: '1px solid rgba(239,68,68,0.25)',
-              color: 'var(--loss)',
+              background: 'var(--v-loss-dim)',
+              border: '1px solid var(--v-loss)',
+              color: 'var(--v-loss-label)',
               fontSize: '13px',
               fontFamily: 'var(--font-sans)',
               marginBottom: '4px',
@@ -307,15 +307,15 @@ export function USStockBrokersPage({
                 gap: '14px',
                 padding: '16px',
                 background: isLoading
-                  ? 'rgba(255,255,255,0.06)'
-                  : 'rgba(255,255,255,0.04)',
-                border: '1px solid var(--border-card)',
+                  ? 'var(--v-disabled-bg)'
+                  : 'var(--v-card)',
+                border: '1px solid var(--v-card-border)',
                 borderRadius: '16px',
                 cursor: isLoading || isOtherLoading ? 'default' : 'pointer',
                 transition: 'all 150ms var(--ease-out)',
                 WebkitTapHighlightColor: 'transparent',
                 fontFamily: 'var(--font-sans)',
-                color: 'var(--text-primary)',
+                color: 'var(--v-text-primary)',
                 textAlign: 'left',
                 opacity: isOtherLoading ? 0.4 : 1,
                 position: 'relative',
@@ -350,7 +350,7 @@ export function USStockBrokersPage({
                       fontFamily: 'var(--font-sans)',
                       fontSize: '16px',
                       fontWeight: 700,
-                      color: 'var(--text-primary)',
+                      color: 'var(--v-text-primary)',
                     }}
                   >
                     {broker.name}
@@ -363,8 +363,8 @@ export function USStockBrokersPage({
                         fontFamily: 'var(--font-sans)',
                         fontSize: '10px',
                         fontWeight: 600,
-                        color: 'var(--accent)',
-                        background: 'rgba(34,211,238,0.12)',
+                        color: 'var(--v-accent)',
+                        background: 'var(--v-accent-dim)',
                         padding: '2px 7px',
                         borderRadius: '999px',
                         letterSpacing: '0.04em',
@@ -381,8 +381,8 @@ export function USStockBrokersPage({
                         fontFamily: 'var(--font-sans)',
                         fontSize: '10px',
                         fontWeight: 600,
-                        color: '#d4d4d8',
-                        background: 'rgba(161,161,170,0.15)',
+                        color: 'var(--v-view-only-text)',
+                        background: 'var(--v-view-only-bg)',
                         padding: '2px 7px',
                         borderRadius: '999px',
                         letterSpacing: '0.04em',
@@ -398,7 +398,7 @@ export function USStockBrokersPage({
                     fontFamily: 'var(--font-sans)',
                     fontSize: '12px',
                     fontWeight: 400,
-                    color: 'rgba(255,255,255,0.45)',
+                    color: 'var(--v-text-muted)',
                     marginTop: '3px',
                     lineHeight: 1.4,
                   }}
@@ -411,7 +411,7 @@ export function USStockBrokersPage({
               {isLoading ? (
                 <Loader2
                   size={18}
-                  color="var(--accent)"
+                  color="var(--v-accent)"
                   style={{
                     flexShrink: 0,
                     animation: 'spin 0.8s linear infinite',
@@ -420,7 +420,7 @@ export function USStockBrokersPage({
               ) : (
                 <ExternalLink
                   size={16}
-                  color="rgba(255,255,255,0.25)"
+                  color="var(--v-text-faint)"
                   style={{ flexShrink: 0 }}
                 />
               )}
@@ -439,13 +439,13 @@ export function USStockBrokersPage({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-          <Link size={14} color="rgba(255,255,255,0.35)" />
+          <Link size={14} color="var(--v-text-faint)" />
           <span
             style={{
               fontFamily: 'var(--font-sans)',
               fontSize: '12px',
               fontWeight: 400,
-              color: 'rgba(255,255,255,0.35)',
+              color: 'var(--v-text-faint)',
             }}
           >
             Secured by SnapTrade · We never see your broker credentials

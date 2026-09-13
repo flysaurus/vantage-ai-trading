@@ -32,7 +32,38 @@ function getSafeRedirect(): string {
 
 // ── Gradient ───────────────────────────────────────────────
 
-const GRADIENT = `radial-gradient(ellipse 150% 65% at 50% -15%, rgba(34,211,238,0.40) 0%, rgba(14,116,144,0.22) 35%, transparent 65%), radial-gradient(ellipse 70% 45% at 90% 100%, rgba(99,102,241,0.15) 0%, transparent 70%), #0a0f1e`;
+// Light canvas (#F5F7F4) with the soft top accent wash from the locked
+// light system (rgba(14,140,153,·) ≈ --v-accent). No hardcoded dark navy.
+const GRADIENT = `radial-gradient(ellipse 120% 60% at 50% -10%, rgba(14,140,153,0.10) 0%, transparent 55%), var(--v-canvas)`;
+
+// Scoped legacy-token remap for the auth screens. The shared <Input> and
+// <PasswordStrength> components still read the legacy dark tokens
+// (--bg-input, --border-input, --text-*, --loss, --accent …). Those are also
+// used by the out-of-scope dark forgot-password / reset screens, so we shadow
+// the legacy tokens at the auth root instead of rewriting the shared files —
+// descendants then resolve to the light --v-* system locally.
+const AUTH_VARS = {
+  '--bg-input': 'var(--v-card)',
+  '--border-input': 'var(--v-card-border)',
+  '--border-input-focus': 'var(--v-accent)',
+  '--border-subtle': 'var(--v-card-border)',
+  '--border-card': 'var(--v-card-border)',
+  '--text-primary': 'var(--v-text-primary)',
+  '--text-secondary': 'var(--v-text-secondary)',
+  '--text-muted': 'var(--v-text-muted)',
+  '--text-placeholder': 'var(--v-text-muted)',
+  '--accent': 'var(--v-accent)',
+  '--accent-10': 'var(--v-accent-dim)',
+  '--gain': 'var(--v-gain-label)',
+  '--loss': 'var(--v-loss-label)',
+  '--loss-10': 'var(--v-loss-dim)',
+  '--warning': 'var(--v-warn)',
+  '--warning-10': 'var(--v-warn-dim)',
+  '--strength-weak': 'var(--v-loss-label)',
+  '--strength-fair': 'var(--v-warn)',
+  '--strength-good': 'var(--v-accent-label)',
+  '--strength-strong': 'var(--v-gain-label)',
+} as React.CSSProperties;
 
 // ── Component ──────────────────────────────────────────────
 
@@ -268,7 +299,9 @@ export default function LoginPage() {
   if (checkingSession) {
     return (
       <div
+        className="auth-shell"
         style={{
+          ...AUTH_VARS,
           height: '100dvh',
           background: GRADIENT,
           display: 'flex',
@@ -276,7 +309,7 @@ export default function LoginPage() {
           justifyContent: 'center',
         }}
       >
-        <Loader2 size={32} color="var(--accent)" style={{ animation: 'spin 0.7s linear infinite' }} />
+        <Loader2 size={32} color="var(--v-accent)" style={{ animation: 'spin 0.7s linear infinite' }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -285,7 +318,7 @@ export default function LoginPage() {
   // ── Splash (after successful sign-in) ────────────────────
   if (splashMode) {
     return (
-      <div style={{ position: 'relative', height: '100dvh', background: GRADIENT, overflow: 'hidden' }}>
+      <div className="auth-shell" style={{ ...AUTH_VARS, position: 'relative', height: '100dvh', background: GRADIENT, overflow: 'hidden' }}>
         <LoadingSplash
           mode={splashMode}
           daysRemaining={splashMode === 'demo' ? splashDays : undefined}
@@ -301,8 +334,10 @@ export default function LoginPage() {
 
   return (
     <div
+      className="auth-shell"
       onKeyDown={handleKeyDown}
       style={{
+        ...AUTH_VARS,
         height: '100dvh',
         background: GRADIENT,
         display: 'flex',
@@ -344,7 +379,7 @@ export default function LoginPage() {
               fontFamily: 'var(--font-sans)',
               fontSize: '42px',
               fontWeight: 800,
-              color: '#ffffff',
+              color: 'var(--v-text-primary)',
               lineHeight: 1.15,
             }}
           >
@@ -357,7 +392,7 @@ export default function LoginPage() {
               fontSize: '42px',
               fontWeight: 400,
               fontStyle: 'italic',
-              color: '#ffffff',
+              color: 'var(--v-text-primary)',
               lineHeight: 1.15,
             }}
           >
@@ -376,12 +411,12 @@ export default function LoginPage() {
               gap: '10px',
               background:
                 bannerError.tone === 'warning'
-                  ? 'var(--warning-10)'
-                  : 'var(--loss-10)',
+                  ? 'var(--v-warn-dim)'
+                  : 'var(--v-loss-dim)',
               border: `1px solid ${
                 bannerError.tone === 'warning'
-                  ? 'var(--warning)'
-                  : 'var(--loss)'
+                  ? 'var(--v-warn)'
+                  : 'var(--v-loss)'
               }`,
             }}
           >
@@ -389,15 +424,15 @@ export default function LoginPage() {
               size={16}
               color={
                 bannerError.tone === 'warning'
-                  ? 'var(--warning)'
-                  : 'var(--loss)'
+                  ? 'var(--v-warn)'
+                  : 'var(--v-loss)'
               }
               style={{ flexShrink: 0, marginTop: '1px' }}
             />
             <span
               style={{
                 fontSize: '14px',
-                color: 'var(--text-primary)',
+                color: 'var(--v-text-primary)',
                 fontFamily: 'var(--font-sans)',
                 lineHeight: 1.5,
               }}
@@ -443,7 +478,7 @@ export default function LoginPage() {
               <div style={{ marginTop: '6px' }}>
                 <p
                   style={{
-                    color: 'var(--warning)',
+                    color: 'var(--v-warn)',
                     fontSize: '13px',
                     fontFamily: 'var(--font-sans)',
                     margin: '0 0 4px',
@@ -454,7 +489,7 @@ export default function LoginPage() {
                 </p>
                 <p
                   style={{
-                    color: 'rgba(255,255,255,0.50)',
+                    color: 'var(--v-text-secondary)',
                     fontSize: '13px',
                     fontFamily: 'var(--font-sans)',
                     margin: '0 0 8px',
@@ -483,7 +518,7 @@ export default function LoginPage() {
                     setResendConfirmCooldown(30);
                   }}
                   style={{
-                    color: resendConfirmState === 'sent' ? 'var(--gain)' : 'var(--accent)',
+                    color: resendConfirmState === 'sent' ? 'var(--v-gain-label)' : 'var(--v-accent-label)',
                     fontSize: '13px',
                     fontFamily: 'var(--font-sans)',
                     cursor: resendConfirmState === 'idle' ? 'pointer' : 'default',
@@ -502,7 +537,7 @@ export default function LoginPage() {
             {inlineError && (
               <p
                 style={{
-                  color: 'var(--loss)',
+                  color: 'var(--v-loss-label)',
                   fontSize: '13px',
                   fontFamily: 'var(--font-sans)',
                   margin: '6px 0 0',
@@ -522,7 +557,7 @@ export default function LoginPage() {
                   if (email) setResetEmail(email);
                 }}
                 style={{
-                  color: 'var(--accent)',
+                  color: 'var(--v-accent-label)',
                   fontSize: '13px',
                   fontFamily: 'var(--font-sans)',
                   cursor: 'pointer',
@@ -541,14 +576,14 @@ export default function LoginPage() {
               marginTop: '24px',
               padding: '24px',
               borderRadius: '16px',
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              background: 'var(--v-card)',
+              border: '1px solid var(--v-card-border)',
             }}
           >
             <p
               style={{
                 fontSize: '14px',
-                color: 'rgba(255,255,255,0.60)',
+                color: 'var(--v-text-secondary)',
                 fontFamily: 'var(--font-sans)',
                 margin: '0 0 16px',
                 textAlign: 'center',
@@ -574,7 +609,7 @@ export default function LoginPage() {
             {resetError && (
               <p
                 style={{
-                  color: 'var(--loss)',
+                  color: 'var(--v-loss-label)',
                   fontSize: '13px',
                   fontFamily: 'var(--font-sans)',
                   margin: '8px 0 0',
@@ -594,9 +629,9 @@ export default function LoginPage() {
                 border: 'none',
                 background:
                   !resetSending && isValidEmail(resetEmail)
-                    ? 'var(--accent)'
-                    : 'rgba(255,255,255,0.15)',
-                color: !resetSending && isValidEmail(resetEmail) ? '#000' : 'rgba(255,255,255,0.30)',
+                    ? 'var(--v-accent)'
+                    : 'var(--v-disabled-bg)',
+                color: !resetSending && isValidEmail(resetEmail) ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
                 fontSize: '15px',
                 fontWeight: 600,
                 fontFamily: 'var(--font-sans)',
@@ -631,7 +666,7 @@ export default function LoginPage() {
                 width: '100%',
                 background: 'none',
                 border: 'none',
-                color: 'rgba(255,255,255,0.40)',
+                color: 'var(--v-text-muted)',
                 fontSize: '13px',
                 fontFamily: 'var(--font-sans)',
                 cursor: 'pointer',
@@ -651,15 +686,15 @@ export default function LoginPage() {
               marginTop: '24px',
               padding: '24px',
               borderRadius: '16px',
-              background: 'rgba(34,211,238,0.06)',
-              border: '1px solid rgba(34,211,238,0.15)',
+              background: 'var(--v-accent-dim)',
+              border: '1px solid var(--v-card-border)',
               textAlign: 'center',
             }}
           >
             <p
               style={{
                 fontSize: '15px',
-                color: 'rgba(255,255,255,0.80)',
+                color: 'var(--v-text-primary)',
                 fontFamily: 'var(--font-sans)',
                 margin: '0 0 8px',
                 fontWeight: 600,
@@ -670,14 +705,14 @@ export default function LoginPage() {
             <p
               style={{
                 fontSize: '13px',
-                color: 'rgba(255,255,255,0.50)',
+                color: 'var(--v-text-secondary)',
                 fontFamily: 'var(--font-sans)',
                 margin: '0 0 16px',
                 lineHeight: 1.5,
               }}
             >
               If an account exists for{' '}
-              <span style={{ color: 'var(--accent)' }}>{resetEmail}</span>,
+              <span style={{ color: 'var(--v-accent-label)' }}>{resetEmail}</span>,
               {' '}a reset link has been sent.
             </p>
             <button
@@ -689,7 +724,7 @@ export default function LoginPage() {
               style={{
                 background: 'none',
                 border: 'none',
-                color: 'var(--accent)',
+                color: 'var(--v-accent-label)',
                 fontSize: '13px',
                 fontFamily: 'var(--font-sans)',
                 cursor: 'pointer',
@@ -720,8 +755,8 @@ export default function LoginPage() {
                   height: '56px',
                   borderRadius: '999px',
                   border: 'none',
-                  background: canSubmit ? '#ffffff' : 'rgba(255,255,255,0.20)',
-                  color: canSubmit ? '#000000' : 'rgba(0,0,0,0.40)',
+                  background: canSubmit ? 'var(--v-accent)' : 'var(--v-disabled-bg)',
+                  color: canSubmit ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
                   fontSize: '17px',
                   fontWeight: 700,
                   fontFamily: 'var(--font-sans)',
@@ -749,7 +784,7 @@ export default function LoginPage() {
               style={{
                 marginTop: '24px',
                 fontSize: '13px',
-                color: 'var(--text-secondary)',
+                color: 'var(--v-text-secondary)',
                 textAlign: 'center',
                 fontFamily: 'var(--font-sans)',
               }}
@@ -758,7 +793,7 @@ export default function LoginPage() {
               <span
                 onClick={() => router.push('/')}
                 style={{
-                  color: 'var(--accent)',
+                  color: 'var(--v-accent-label)',
                   cursor: 'pointer',
                   fontWeight: 600,
                 }}

@@ -357,3 +357,23 @@
 [data-theme='dark'] .strategy-page {
   background: var(--v-canvas);
 }
+
+/* Standalone AUTH pages (login / create-account) render outside
+   .app-shell. `html, body` in globals.css paint `--bg-primary` (the legacy
+   dark navy), so the document body stayed dark behind these screens. Give
+   them the themed canvas too, keyed off a root `.auth-shell` marker. */
+[data-theme='light'] body:has(.auth-shell),
+[data-theme='light'] .auth-shell,
+[data-theme='dark'] body:has(.auth-shell),
+[data-theme='dark'] .auth-shell {
+  background: var(--v-canvas);
+}
+
+/* Standalone broker flow (Add a broker / broker-setup / connection states)
+   also renders outside .app-shell — same canvas treatment. */
+[data-theme='light'] body:has(.broker-shell),
+[data-theme='light'] .broker-shell,
+[data-theme='dark'] body:has(.broker-shell),
+[data-theme='dark'] .broker-shell {
+  background: var(--v-canvas);
+}

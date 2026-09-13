@@ -84,40 +84,40 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
   }, [isReady, onComplete]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md">
-      <div className="bg-slate-900/95 rounded-3xl mx-8 w-full max-w-xs flex flex-col items-center text-center px-8" style={{ paddingTop: '54px', paddingBottom: '54px' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--v-canvas)]">
+      <div className="bg-[color:var(--v-card)] border border-[color:var(--v-card-border)] rounded-3xl mx-8 w-full max-w-xs flex flex-col items-center text-center px-8" style={{ paddingTop: '54px', paddingBottom: '54px' }}>
 
         <div className="mb-8">
           <svg width="80" height="80" viewBox="0 -8 180 196">
             <circle cx="90" cy="90" r="82"
-              fill="none" stroke="#22d3ee" strokeWidth="10" />
+              fill="none" strokeWidth="10" style={{ stroke: 'var(--v-accent)' }} />
             <g style={{
               transform: 'rotate(0deg)',
               transformOrigin: '90px 90px'
             }}>
               <polygon points="90,18 98,90 90,108 82,90"
-                fill="#22d3ee" />
+                style={{ fill: 'var(--v-accent)' }} />
               <polygon points="90,162 98,90 90,108 82,90"
-                fill="#475569" />
-              <circle cx="90" cy="90" r="5.5" fill="black" />
-              <circle cx="90" cy="90" r="3" fill="#22d3ee" />
+                style={{ fill: 'var(--v-text-faint)' }} />
+              <circle cx="90" cy="90" r="5.5" style={{ fill: 'var(--v-text-primary)' }} />
+              <circle cx="90" cy="90" r="3" style={{ fill: 'var(--v-accent)' }} />
             </g>
             <text x="90" y="-4" textAnchor="middle"
-              fill="#22d3ee" fontSize="16" fontWeight="700">N</text>
+              fontSize="16" fontWeight="700" style={{ fill: 'var(--v-accent)' }}>N</text>
           </svg>
         </div>
 
-        <p className="text-white font-light leading-tight mb-1" style={{ fontSize: '2.25rem' }}>
+        <p className="text-[color:var(--v-text-primary)] font-light leading-tight mb-1" style={{ fontSize: '2.25rem' }}>
           {getGreeting()},
         </p>
-        <p className="text-white font-bold leading-tight mb-8" style={{ fontSize: '2.25rem' }}>
+        <p className="text-[color:var(--v-text-primary)] font-bold leading-tight mb-8" style={{ fontSize: '2.25rem' }}>
           {userName || 'M'}.
         </p>
 
-        <p className={`${portfolioColor === 'amber' ? 'text-amber-400' : portfolioColor === 'green' ? 'text-green-400' : 'text-white'} text-lg font-medium mb-2`}>
+        <p className={`${portfolioColor === 'amber' ? 'text-[color:var(--v-warn)]' : portfolioColor === 'green' ? 'text-[color:var(--v-gain-label)]' : 'text-[color:var(--v-text-primary)]'} text-lg font-medium mb-2`}>
           {portfolioLine}
         </p>
-        <p className="text-slate-300 text-base">
+        <p className="text-[color:var(--v-text-secondary)] text-base">
           {marketStatus}
         </p>
       </div>

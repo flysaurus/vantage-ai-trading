@@ -23,8 +23,8 @@ function Spinner() {
         width: '20px',
         height: '20px',
         borderRadius: '50%',
-        border: '2.5px solid rgba(255,255,255,0.15)',
-        borderTopColor: 'var(--accent)',
+        border: '2.5px solid var(--v-card-border)',
+        borderTopColor: 'var(--v-accent)',
         animation: 'spin 0.6s linear infinite',
         flexShrink: 0,
       }}
@@ -91,13 +91,13 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
 
   return (
     <div
+      className="broker-shell"
       style={{
         width: '100%',
         height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
-        background:
-          'radial-gradient(ellipse 120% 60% at 50% -10%, rgba(34,211,238,0.18), transparent 55%), var(--bg-primary)',
+        background: 'var(--v-canvas)',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
       }}
@@ -125,7 +125,7 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
               fontFamily: 'var(--font-sans)',
               fontSize: '34px',
               fontWeight: 800,
-              color: 'var(--text-primary)',
+              color: 'var(--v-text-primary)',
               lineHeight: 1.15,
             }}
           >
@@ -138,7 +138,7 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
               fontSize: '34px',
               fontWeight: 400,
               fontStyle: 'italic',
-              color: 'var(--text-primary)',
+              color: 'var(--v-text-primary)',
               lineHeight: 1.15,
             }}
           >
@@ -151,7 +151,7 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
             fontFamily: 'var(--font-sans)',
             fontSize: '15px',
             fontWeight: 400,
-            color: 'rgba(255,255,255,0.60)',
+            color: 'var(--v-text-secondary)',
             textAlign: 'center',
             margin: '12px 0 0',
             lineHeight: 1.5,
@@ -189,19 +189,17 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
             textAlign: 'center',
             padding: '28px 24px',
             background: demoLoading
-              ? 'rgba(255,255,255,0.03)'
-              : 'rgba(255,255,255,0.05)',
+              ? 'var(--v-canvas)'
+              : 'var(--v-card)',
             border: demoLoading
-              ? '1px solid rgba(255,255,255,0.04)'
-              : '1px solid var(--border-card)',
+              ? '1px solid var(--v-card-border)'
+              : '1px solid var(--v-card-border)',
             borderRadius: '20px',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
             cursor: demoLoading ? 'default' : 'pointer',
             transition: 'all 200ms var(--ease-out)',
             WebkitTapHighlightColor: 'transparent',
             fontFamily: 'var(--font-sans)',
-            color: 'var(--text-primary)',
+            color: 'var(--v-text-primary)',
             gap: 0,
             opacity: connectLoading ? 0.5 : 1,
             pointerEvents: connectLoading ? 'none' : 'auto',
@@ -246,8 +244,8 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
               fontSize: '19px',
               fontWeight: 700,
               color: demoLoading
-                ? 'rgba(255,255,255,0.40)'
-                : 'var(--text-primary)',
+                ? 'var(--v-text-faint)'
+                : 'var(--v-text-primary)',
               lineHeight: 1.3,
             }}
           >
@@ -260,7 +258,7 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
               fontFamily: 'var(--font-sans)',
               fontSize: '14px',
               fontWeight: 400,
-              color: 'rgba(255,255,255,0.60)',
+              color: 'var(--v-text-secondary)',
               marginTop: '4px',
               lineHeight: 1.4,
             }}
@@ -275,7 +273,7 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
                 fontFamily: 'var(--font-sans)',
                 fontSize: '13px',
                 fontWeight: 500,
-                color: 'var(--loss)',
+                color: 'var(--v-loss-label)',
                 marginTop: '10px',
                 lineHeight: 1.3,
               }}
@@ -297,19 +295,17 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
             textAlign: 'center',
             padding: '28px 24px',
             background: connectLoading
-              ? 'rgba(255,255,255,0.03)'
-              : 'rgba(255,255,255,0.05)',
+              ? 'var(--v-canvas)'
+              : 'var(--v-card)',
             border: connectLoading
-              ? '1px solid rgba(255,255,255,0.04)'
-              : '1px solid var(--border-card)',
+              ? '1px solid var(--v-card-border)'
+              : '1px solid var(--v-card-border)',
             borderRadius: '20px',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
             cursor: connectLoading ? 'default' : 'pointer',
             transition: 'all 200ms var(--ease-out)',
             WebkitTapHighlightColor: 'transparent',
             fontFamily: 'var(--font-sans)',
-            color: 'var(--text-primary)',
+            color: 'var(--v-text-primary)',
             gap: 0,
             opacity: demoLoading ? 0.5 : 1,
             pointerEvents: demoLoading ? 'none' : 'auto',
@@ -354,8 +350,8 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
               fontSize: '19px',
               fontWeight: 700,
               color: connectLoading
-                ? 'rgba(255,255,255,0.40)'
-                : 'var(--text-primary)',
+                ? 'var(--v-text-faint)'
+                : 'var(--v-text-primary)',
               lineHeight: 1.3,
             }}
           >
@@ -368,7 +364,7 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
               fontFamily: 'var(--font-sans)',
               fontSize: '14px',
               fontWeight: 400,
-              color: 'rgba(255,255,255,0.60)',
+              color: 'var(--v-text-secondary)',
               marginTop: '4px',
               lineHeight: 1.4,
             }}
@@ -392,7 +388,7 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
             fontFamily: 'var(--font-sans)',
             fontSize: '12px',
             fontWeight: 400,
-            color: 'rgba(255,255,255,0.40)',
+            color: 'var(--v-text-faint)',
             lineHeight: 1.5,
           }}
         >

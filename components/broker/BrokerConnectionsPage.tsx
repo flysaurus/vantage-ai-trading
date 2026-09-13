@@ -118,8 +118,8 @@ function ConnectedCard({
         margin: '0 20px 12px',
         padding: '16px',
         borderRadius: '16px',
-        background: 'rgba(255,255,255,0.035)',
-        border: '1px solid rgba(61,220,151,0.18)',
+        background: 'var(--v-card)',
+        border: '1px solid var(--v-card-border)',
         position: 'relative',
         overflow: 'hidden',
       }}
@@ -132,7 +132,7 @@ function ConnectedCard({
           top: 0,
           bottom: 0,
           width: '3px',
-          background: 'var(--emerald)',
+          background: 'var(--v-gain)',
         }}
       />
 
@@ -152,7 +152,8 @@ function ConnectedCard({
               width: '42px',
               height: '42px',
               borderRadius: '11px',
-              background: '#fff',
+              background: 'var(--v-card)',
+              border: '1px solid var(--v-card-border)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -172,7 +173,7 @@ function ConnectedCard({
                 fontSize: '15.5px',
                 fontWeight: 650,
                 letterSpacing: '-0.01em',
-                color: 'var(--text-primary)',
+                color: 'var(--v-text-primary)',
               }}
             >
               {brokerName}
@@ -183,9 +184,9 @@ function ConnectedCard({
               <span
                 style={badgeStyle(
                   isPaper
-                    ? 'rgba(240,183,63,0.12)'
-                    : 'rgba(61,220,151,0.12)',
-                  isPaper ? '#f0b73f' : '#3ddc97',
+                    ? 'var(--v-view-only-bg)'
+                    : 'var(--v-badge-gain-bg)',
+                  isPaper ? 'var(--v-view-only-text)' : 'var(--v-badge-gain)',
                 )}
               >
                 {isPaper ? 'PAPER' : 'LIVE'}
@@ -195,8 +196,8 @@ function ConnectedCard({
               {tradingEnabled ? (
                 <span
                   style={badgeStyle(
-                    'rgba(61,220,151,0.12)',
-                    '#3ddc97',
+                    'var(--v-badge-gain-bg)',
+                    'var(--v-badge-gain)',
                   )}
                 >
                   TRADING
@@ -204,8 +205,8 @@ function ConnectedCard({
               ) : (
                 <span
                   style={badgeStyle(
-                    'rgba(240,183,63,0.12)',
-                    '#f0b73f',
+                    'var(--v-view-only-bg)',
+                    'var(--v-view-only-text)',
                   )}
                 >
                   View only
@@ -221,14 +222,14 @@ function ConnectedCard({
             width: '22px',
             height: '22px',
             borderRadius: '50%',
-            background: 'rgba(61,220,151,0.12)',
+            background: 'var(--v-badge-gain-bg)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
           }}
         >
-          <Check size={12} color="#3ddc97" strokeWidth={3} />
+          <Check size={12} color="var(--v-badge-gain)" strokeWidth={3} />
         </div>
       </div>
 
@@ -237,7 +238,7 @@ function ConnectedCard({
         style={{
           fontFamily: 'var(--font-sans)',
           fontSize: '12.5px',
-          color: 'var(--text-tertiary)',
+          color: 'var(--v-text-muted)',
           fontVariantNumeric: 'tabular-nums',
           paddingLeft: '54px',
           lineHeight: 1.6,
@@ -268,7 +269,7 @@ function ConnectedCard({
           gap: '8px',
           marginTop: '13px',
           paddingTop: '13px',
-          borderTop: '1px solid rgba(255,255,255,0.06)',
+          borderTop: '1px solid var(--v-card-border)',
         }}
       >
         <button style={actionBtnStyle()} onClick={onRefresh}>
@@ -277,7 +278,7 @@ function ConnectedCard({
         <button style={actionBtnStyle()} onClick={onViewInApp}>
           View in App
         </button>
-        <button style={{ ...actionBtnStyle(), color: '#ef7b6a' }} onClick={onDisconnect}>
+        <button style={{ ...actionBtnStyle(), color: 'var(--v-loss-label)' }} onClick={onDisconnect}>
           Disconnect
         </button>
       </div>
@@ -297,9 +298,9 @@ function SectionHeader({
   count?: number;
 }) {
   const accentColors = {
-    connected: '#38d6e8',
-    trading: '#3ddc97',
-    readonly: '#f0b73f',
+    connected: 'var(--v-accent)',
+    trading: 'var(--v-gain)',
+    readonly: 'var(--v-warn)',
   };
 
   return (
@@ -327,7 +328,7 @@ function SectionHeader({
           fontWeight: 700,
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
-          color: 'var(--text-secondary)',
+          color: 'var(--v-text-secondary)',
         }}
       >
         {title}
@@ -337,8 +338,8 @@ function SectionHeader({
           style={{
             fontFamily: 'var(--font-sans)',
             fontSize: '11px',
-            color: 'var(--text-tertiary)',
-            background: 'rgba(255,255,255,0.035)',
+            color: 'var(--v-text-muted)',
+            background: 'var(--v-disabled-bg)',
             padding: '2px 7px',
             borderRadius: '20px',
             fontWeight: 600,
@@ -382,28 +383,28 @@ function BrokerListRow({
         margin: '0 20px 8px',
         padding: '13px 14px',
         borderRadius: '14px',
-        background: 'rgba(255,255,255,0.035)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--v-card)',
+        border: '1px solid var(--v-card-border)',
         display: 'flex',
         alignItems: 'center',
         gap: '12px',
         cursor: loading ? 'default' : 'pointer',
         transition: 'all 0.15s ease',
         fontFamily: 'var(--font-sans)',
-        color: 'var(--text-primary)',
+        color: 'var(--v-text-primary)',
         textAlign: 'left',
         width: 'auto',
         opacity: loading ? 0.5 : 1,
       }}
       onMouseEnter={(e) => {
         if (!loading) {
-          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)';
-          e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+          e.currentTarget.style.borderColor = 'var(--v-accent)';
+          e.currentTarget.style.background = 'var(--v-disabled-bg)';
         }
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
-        e.currentTarget.style.background = 'rgba(255,255,255,0.035)';
+        e.currentTarget.style.borderColor = 'var(--v-card-border)';
+        e.currentTarget.style.background = 'var(--v-card)';
       }}
     >
       {/* Logo */}
@@ -412,7 +413,8 @@ function BrokerListRow({
           width: '38px',
           height: '38px',
           borderRadius: '11px',
-          background: '#fff',
+          background: 'var(--v-card)',
+          border: '1px solid var(--v-card-border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -447,7 +449,7 @@ function BrokerListRow({
             display: 'flex',
             alignItems: 'center',
             gap: '5px',
-            color: isTrading ? '#3ddc97' : '#f0b73f',
+            color: isTrading ? 'var(--v-gain-label)' : 'var(--v-view-only-text)',
           }}
         >
           <span
@@ -455,7 +457,7 @@ function BrokerListRow({
               width: '5px',
               height: '5px',
               borderRadius: '50%',
-              background: isTrading ? '#3ddc97' : '#f0b73f',
+              background: isTrading ? 'var(--v-gain)' : 'var(--v-warn)',
             }}
           />
           {capabilityLabel}
@@ -463,7 +465,7 @@ function BrokerListRow({
       </div>
 
       {/* Chevron */}
-      <span style={{ color: 'var(--text-tertiary)', fontSize: '15px', flexShrink: 0 }}>›</span>
+      <span style={{ color: 'var(--v-text-muted)', fontSize: '15px', flexShrink: 0 }}>›</span>
     </button>
   );
 }
@@ -477,8 +479,8 @@ function BetaPill() {
         fontFamily: 'var(--font-sans)',
         fontSize: '9.5px',
         fontWeight: 700,
-        background: 'rgba(56,214,232,0.12)',
-        color: '#38d6e8',
+        background: 'var(--v-accent-dim)',
+        color: 'var(--v-accent-label)',
         padding: '1.5px 5px',
         borderRadius: '5px',
         letterSpacing: '0.03em',
@@ -502,7 +504,7 @@ function ComingSoonSection({
         margin: '20px 20px 24px',
         padding: '20px 18px',
         borderRadius: '16px',
-        border: '1.5px dashed rgba(255,255,255,0.12)',
+        border: '1.5px dashed var(--v-card-border)',
         textAlign: 'center',
       }}
     >
@@ -513,7 +515,7 @@ function ComingSoonSection({
           fontSize: '11px',
           fontWeight: 700,
           letterSpacing: '0.08em',
-          color: 'var(--text-tertiary)',
+          color: 'var(--v-text-muted)',
           textTransform: 'uppercase',
           marginBottom: '8px',
         }}
@@ -535,9 +537,9 @@ function ComingSoonSection({
             style={{
               fontFamily: 'var(--font-sans)',
               fontSize: '12px',
-              color: 'var(--text-secondary)',
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.06)',
+              color: 'var(--v-text-secondary)',
+              background: 'var(--v-card)',
+              border: '1px solid var(--v-card-border)',
               padding: '4px 10px',
               borderRadius: '8px',
             }}
@@ -550,7 +552,7 @@ function ComingSoonSection({
         style={{
           fontFamily: 'var(--font-sans)',
           fontSize: '12px',
-          color: 'var(--text-tertiary)',
+          color: 'var(--v-text-muted)',
           margin: 0,
         }}
       >
@@ -581,9 +583,9 @@ function actionBtnStyle(): React.CSSProperties {
     flex: 1,
     padding: '8px 0',
     borderRadius: '9px',
-    border: '1px solid rgba(255,255,255,0.08)',
+    border: '1px solid var(--v-card-border)',
     background: 'transparent',
-    color: 'var(--text-secondary)',
+    color: 'var(--v-text-secondary)',
     fontFamily: 'var(--font-sans)',
     fontSize: '12.5px',
     fontWeight: 600,
@@ -754,13 +756,13 @@ export function BrokerConnectionsPage({
 
   return (
     <div
+      className="broker-shell"
       style={{
         width: '100%',
         height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
-        background:
-          'radial-gradient(ellipse 120% 60% at 50% -10%, rgba(34,211,238,0.18), transparent 55%), var(--bg-primary)',
+        background: 'var(--v-canvas)',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
         position: 'relative',
@@ -776,7 +778,7 @@ export function BrokerConnectionsPage({
           position: 'sticky',
           top: 0,
           background:
-            'linear-gradient(180deg, var(--bg-primary) 80%, transparent)',
+            'linear-gradient(180deg, var(--v-canvas) 80%, transparent)',
           zIndex: 5,
           paddingTop: 'calc(18px + env(safe-area-inset-top, 0px))',
           flexShrink: 0,
@@ -789,12 +791,12 @@ export function BrokerConnectionsPage({
             width: '34px',
             height: '34px',
             borderRadius: '10px',
-            background: 'rgba(255,255,255,0.035)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'var(--v-card)',
+            border: '1px solid var(--v-card-border)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: 'var(--text-primary)',
+            color: 'var(--v-text-primary)',
             fontSize: '16px',
             cursor: isLoading ? 'default' : 'pointer',
             opacity: isLoading ? 0.4 : 1,
@@ -827,7 +829,7 @@ export function BrokerConnectionsPage({
             fontSize: '26px',
             fontWeight: 700,
             letterSpacing: '-0.02em',
-            color: 'var(--text-primary)',
+            color: 'var(--v-text-primary)',
             marginBottom: '6px',
             marginTop: 0,
           }}
@@ -838,7 +840,7 @@ export function BrokerConnectionsPage({
           style={{
             fontFamily: 'var(--font-sans)',
             fontSize: '14.5px',
-            color: 'var(--text-secondary)',
+            color: 'var(--v-text-secondary)',
             lineHeight: 1.5,
             maxWidth: '320px',
             margin: 0,
@@ -854,9 +856,8 @@ export function BrokerConnectionsPage({
           margin: '0 20px 22px',
           padding: '11px 14px',
           borderRadius: '12px',
-          background:
-            'linear-gradient(90deg, rgba(56,214,232,0.08), rgba(56,214,232,0.02))',
-          border: '1px solid rgba(56,214,232,0.16)',
+          background: 'var(--v-accent-dim)',
+          border: '1px solid var(--v-accent-dim)',
           display: 'flex',
           alignItems: 'center',
           gap: '9px',
@@ -868,8 +869,8 @@ export function BrokerConnectionsPage({
             width: '6px',
             height: '6px',
             borderRadius: '50%',
-            background: '#38d6e8',
-            boxShadow: '0 0 8px #38d6e8',
+            background: 'var(--v-accent)',
+            boxShadow: 'none',
             flexShrink: 0,
           }}
         />
@@ -877,7 +878,7 @@ export function BrokerConnectionsPage({
           style={{
             fontFamily: 'var(--font-sans)',
             fontSize: '12.5px',
-            color: '#a8e8f0',
+            color: 'var(--v-accent-label)',
           }}
         >
           Secured via SnapTrade · credentials never touch Vantage servers
@@ -891,9 +892,9 @@ export function BrokerConnectionsPage({
             margin: '0 20px 8px',
             padding: '10px 14px',
             borderRadius: '12px',
-            background: 'rgba(56,214,232,0.08)',
-            border: '1px solid rgba(56,214,232,0.16)',
-            color: '#a8e8f0',
+            background: 'var(--v-accent-dim)',
+            border: '1px solid var(--v-accent-dim)',
+            color: 'var(--v-accent-label)',
             fontFamily: 'var(--font-sans)',
             fontSize: '13px',
           }}
@@ -975,7 +976,7 @@ export function BrokerConnectionsPage({
           style={{
             margin: '12px 20px',
             fontSize: '13px',
-            color: 'var(--text-secondary)',
+            color: 'var(--v-text-secondary)',
             fontFamily: 'var(--font-sans)',
           }}
         >
@@ -988,7 +989,7 @@ export function BrokerConnectionsPage({
           style={{
             margin: '12px 20px',
             fontSize: '13px',
-            color: '#f0b73f',
+            color: 'var(--v-warn)',
             fontFamily: 'var(--font-sans)',
           }}
         >

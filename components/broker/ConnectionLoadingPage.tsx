@@ -38,7 +38,7 @@ function SpinningRing() {
         cy="32"
         r="24"
         fill="none"
-        stroke="rgba(34,211,238,0.10)"
+        stroke="var(--v-accent-dim)"
         strokeWidth="3"
       />
       {/* Spinning arc */}
@@ -47,7 +47,7 @@ function SpinningRing() {
         cy="32"
         r="24"
         fill="none"
-        stroke="var(--accent)"
+        stroke="var(--v-accent)"
         strokeWidth="3"
         strokeDasharray="38 113"
         strokeLinecap="round"
@@ -57,7 +57,7 @@ function SpinningRing() {
         }}
       />
       {/* Center dot */}
-      <circle cx="32" cy="32" r="5" fill="var(--accent)" opacity="0.8" />
+      <circle cx="32" cy="32" r="5" fill="var(--v-accent)" opacity="0.8" />
     </svg>
   );
 }
@@ -160,12 +160,13 @@ export default function ConnectionLoadingPage({
 
   return (
     <div
+      className="broker-shell"
       style={{
         display: 'flex',
         flexDirection: 'column',
         minHeight: '100dvh',
-        background: 'var(--bg)',
-        color: '#fff',
+        background: 'var(--v-canvas)',
+        color: 'var(--v-text-primary)',
         fontFamily: 'var(--font-sans)',
         alignItems: 'center',
       }}
@@ -206,7 +207,7 @@ export default function ConnectionLoadingPage({
               fontFamily: 'var(--font-sans)',
               fontSize: '34px',
               fontWeight: 800,
-              color: '#ffffff',
+              color: 'var(--v-text-primary)',
             }}
           >
             Connecting your
@@ -218,7 +219,7 @@ export default function ConnectionLoadingPage({
               fontSize: '34px',
               fontWeight: 400,
               fontStyle: 'italic',
-              color: isFailed ? 'var(--loss)' : 'var(--accent)',
+              color: isFailed ? 'var(--v-loss-label)' : 'var(--v-accent)',
             }}
           >
             {brokerName}
@@ -231,8 +232,8 @@ export default function ConnectionLoadingPage({
             fontSize: '15px',
             fontWeight: 400,
             color: isFailed
-              ? 'var(--loss)'
-              : 'rgba(255,255,255,0.60)',
+              ? 'var(--v-loss-label)'
+              : 'var(--v-text-secondary)',
             textAlign: 'center',
             margin: 0,
             lineHeight: 1.5,
@@ -254,8 +255,8 @@ export default function ConnectionLoadingPage({
               height: '48px',
               borderRadius: '999px',
               border: 'none',
-              background: 'var(--accent)',
-              color: '#000',
+              background: 'var(--v-accent)',
+              color: 'var(--v-accent-text)',
               fontSize: '16px',
               fontWeight: 600,
               fontFamily: 'var(--font-sans)',
