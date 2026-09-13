@@ -85,7 +85,7 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--v-canvas)]">
-      <div className="bg-[color:var(--v-card)] border border-[color:var(--v-card-border)] rounded-3xl mx-8 w-full max-w-xs flex flex-col items-center text-center px-8" style={{ paddingTop: '54px', paddingBottom: '54px' }}>
+      <div className="bg-[color:var(--v-card)] shadow-[var(--v-shadow-card)] border border-[color:var(--v-card-border)] rounded-3xl mx-8 w-full max-w-xs flex flex-col items-center text-center px-8" style={{ paddingTop: '54px', paddingBottom: '54px' }}>
 
         <div className="mb-8">
           <svg width="80" height="80" viewBox="0 -8 180 196">

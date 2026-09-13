@@ -2384,6 +2384,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             {/* Basket name card */}
             <div style={{
               background: 'var(--v-card)',
+              boxShadow: 'var(--v-shadow-card)', // locked elevation
               border: '1px solid var(--v-disabled-bg)',
               borderRadius: '16px',
               padding: '16px',

@@ -87,6 +87,7 @@ export function ExpandableRow({
             padding: '12px 14px',
             marginTop: 8,
             background: 'var(--v-card)',
+            boxShadow: 'var(--v-shadow-card)', // locked elevation
             border: '1px solid var(--v-card-border)',
             borderRadius: 8,
             fontSize: 11,

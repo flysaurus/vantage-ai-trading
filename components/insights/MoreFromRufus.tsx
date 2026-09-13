@@ -83,6 +83,7 @@ export function MoreFromRufus({ items, earnings }: Props) {
         data-testid="more-from-rufus-card"
         style={{
           background: 'var(--v-card)',
+          boxShadow: 'var(--v-shadow-card)', // locked elevation
           border: '0.5px solid var(--v-card-border)',
           borderRadius: 16,
           padding: '14px 16px 4px',

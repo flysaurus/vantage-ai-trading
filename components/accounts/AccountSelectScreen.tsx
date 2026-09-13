@@ -387,6 +387,7 @@ function SectionHeader({
             fontSize: '11px',
             color: textTertiary,
             background: cardBg,
+            boxShadow: 'var(--v-shadow-card)', // locked elevation
             padding: '2px 7px',
             borderRadius: '20px',
             fontWeight: 600,

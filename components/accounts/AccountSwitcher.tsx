@@ -135,7 +135,7 @@ export function AccountSwitcher({
         <div
              data-testid="account-switcher-menu"
              className="absolute top-full mt-2 w-[260px] rounded-xl
-                        bg-[color:var(--v-card)] border border-[color:var(--v-card-border)]
+                        bg-[color:var(--v-card)] shadow-[var(--v-shadow-card)] border border-[color:var(--v-card-border)]
                         shadow-[var(--v-shadow-card)] z-50 overflow-hidden"
              style={{ left: isMasthead ? 'auto' : 0, right: isMasthead ? 0 : 'auto' }}
              role="listbox"

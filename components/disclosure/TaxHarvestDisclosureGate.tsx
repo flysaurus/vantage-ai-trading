@@ -59,6 +59,7 @@ export default function TaxHarvestDisclosureGate({
       <div
         style={{
           background: 'var(--v-card)',
+          boxShadow: 'var(--v-shadow-card)', // locked elevation
           border: '0.5px solid var(--v-card-border)',
           borderRadius: 20,
           maxWidth: 440, width: '100%',

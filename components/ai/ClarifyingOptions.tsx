@@ -278,6 +278,7 @@ export function ClarifyStepper({ questions, step, onChipTap }: ClarifyStepperPro
       alignSelf: 'flex-start',
       maxWidth: '92%',
       background: 'var(--v-card)',
+      boxShadow: 'var(--v-shadow-card)', // locked elevation
       border: '1px solid var(--v-card-border)',
       borderRadius: '12px',
       padding: '14px 16px',

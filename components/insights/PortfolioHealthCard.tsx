@@ -60,6 +60,7 @@ export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTole
       style={{
         margin: '24px 20px 0',
         background: 'var(--v-card)',
+        boxShadow: 'var(--v-shadow-card)', // locked elevation
         border: '0.5px solid var(--v-card-border)',
         borderRadius: 16,
         padding: 18,

@@ -558,6 +558,7 @@ export function TradeTab() {
                     justifyContent: 'space-between',
                     gap: '8px',
                     background: 'var(--v-card)',
+                    boxShadow: 'var(--v-shadow-card)', // locked elevation
                     border: '1px solid var(--v-card-border)',
                     borderRadius: '10px',
                     padding: '10px 12px',
@@ -596,6 +597,7 @@ export function TradeTab() {
                   gap: '10px',
                   padding: '12px 14px',
                   background: 'var(--v-card)',
+                  boxShadow: 'var(--v-shadow-card)', // locked elevation
                   border: '1px solid var(--v-card-border)',
                   borderRadius: '12px',
                   cursor: st.available ? 'pointer' : 'default',
@@ -711,6 +713,7 @@ export function TradeTab() {
       {selectedSymbol && selectedResult && symbolQuote && (
         <div style={{
           background: 'var(--v-card)',
+          boxShadow: 'var(--v-shadow-card)', // locked elevation
           border: '1px solid var(--v-rule)',
           borderRadius: '16px',
           overflow: 'hidden',
@@ -1606,6 +1609,7 @@ export function TradeTab() {
                     key={basket.id}
                     style={{
                       background: 'var(--v-card)',
+                      boxShadow: 'var(--v-shadow-card)', // locked elevation
                       border: `1px solid ${boCardBorder}`,
                       borderRadius: '12px',
                       marginBottom: '10px',
@@ -1875,6 +1879,7 @@ export function TradeTab() {
                 return (
                   <div key={group.id} style={{
                     background: 'var(--v-card)',
+                    boxShadow: 'var(--v-shadow-card)', // locked elevation
                     border: `1px solid ${cardBorder}`,
                     borderRadius: '12px',
                     marginBottom: '10px',
@@ -2124,6 +2129,7 @@ export function TradeTab() {
         }}>
           <div style={{
             background: 'var(--v-card)',
+            boxShadow: 'var(--v-shadow-card)', // locked elevation
             border: '1px solid var(--v-loss-dim)',
             borderRadius: '16px',
             padding: '24px',
@@ -2207,6 +2213,7 @@ export function TradeTab() {
         }}>
           <div style={{
             background: 'var(--v-card)',
+            boxShadow: 'var(--v-shadow-card)', // locked elevation
             border: '1px solid var(--v-loss-dim)',
             borderRadius: '16px',
             padding: '24px',
@@ -2304,6 +2311,7 @@ export function TradeTab() {
           }}>
             <div style={{
               background: 'var(--v-card)',
+              boxShadow: 'var(--v-shadow-card)', // locked elevation
               border: '1px solid var(--v-loss-dim)',
               borderRadius: '16px',
               padding: '24px',

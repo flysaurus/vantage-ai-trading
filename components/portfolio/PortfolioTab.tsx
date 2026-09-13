@@ -164,6 +164,7 @@ function BuyingPowerCard({ account, invested }: { account: AccountSummary; inves
         gap: '12px 16px',
         padding: 16,
         background: 'var(--v-card)',
+        boxShadow: 'var(--v-shadow-card)', // locked elevation
         border: '0.5px solid var(--v-card-border)',
         borderRadius: 16,
       }}>

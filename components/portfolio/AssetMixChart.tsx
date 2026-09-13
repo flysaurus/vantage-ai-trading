@@ -64,6 +64,7 @@ export function AssetMixChart({ mix }: { mix: AssetMix | null }) {
       <div
         style={{
           background: 'var(--v-card)',
+          boxShadow: 'var(--v-shadow-card)', // locked elevation
           border: '0.5px solid var(--v-card-border)',
           borderRadius: 16,
           padding: 16,

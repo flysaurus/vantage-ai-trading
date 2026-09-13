@@ -169,6 +169,7 @@ export default function BulkSellSheet({ items, baskets, onClose, onConfirm }: Bu
           width: '100%', maxWidth: 430,
           maxHeight: '88vh',
           background: 'var(--v-card)',
+          boxShadow: 'var(--v-shadow-card)', // locked elevation
           border: '0.5px solid var(--v-card-border)',
           borderTopLeftRadius: 20, borderTopRightRadius: 20,
           display: 'flex', flexDirection: 'column',
