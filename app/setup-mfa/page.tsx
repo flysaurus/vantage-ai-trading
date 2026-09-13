@@ -16,6 +16,10 @@ import QRCode from 'qrcode';
 
 type SetupStep = 'choose' | 'totp-scan' | 'totp-confirm' | 'backup-codes' | 'done';
 
+// Locked light/dark system: soft top accent wash over the themed canvas
+// (the wash is the --v-accent hue). Resolves per html[data-theme] — no JS.
+const GRADIENT = `radial-gradient(ellipse 120% 60% at 50% -10%, rgba(14,140,153,0.10) 0%, transparent 55%), var(--v-canvas)`;
+
 export default function SetupMfaPage() {
   const router = useRouter();
 
@@ -70,6 +74,8 @@ export default function SetupMfaPage() {
         const qrUrl = await QRCode.toDataURL(data.otpauthUrl, {
           width: 200,
           margin: 1,
+          // QR payload module/quiet-zone colors are functional (scannability),
+          // intentionally theme-independent — not part of the UI palette.
           color: { dark: '#000000', light: '#ffffff' },
         });
         setQrDataUrl(qrUrl);
@@ -142,10 +148,10 @@ export default function SetupMfaPage() {
         position: 'absolute',
         top: '16px',
         left: '16px',
-        background: 'rgba(255,255,255,0.06)',
-        border: '1px solid #2d3550',
+        background: 'var(--v-card)',
+        border: '1px solid var(--v-card-border)',
         borderRadius: '8px',
-        color: '#94a3b8',
+        color: 'var(--v-text-secondary)',
         padding: '8px 14px',
         fontSize: '13px',
         cursor: 'pointer',
@@ -161,11 +167,11 @@ export default function SetupMfaPage() {
   // ── Styles ───────────────────────────────────────────
   const pageStyle: React.CSSProperties = {
     minHeight: '100dvh',
-    background: 'linear-gradient(180deg, #0b0f1d 0%, #131a2e 100%)',
+    background: GRADIENT,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    color: '#e2e8f0',
+    color: 'var(--v-text-primary)',
     fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
     padding: '40px 24px 40px',
     overflowY: 'auto',
@@ -173,8 +179,9 @@ export default function SetupMfaPage() {
   };
 
   const cardStyle: React.CSSProperties = {
-    background: '#1a1f35',
-    border: '1px solid #2d3550',
+    background: 'var(--v-card)',
+    border: '1px solid var(--v-card-border)',
+    boxShadow: 'var(--v-shadow-card)',
     borderRadius: '14px',
     padding: '24px',
     width: '100%',
@@ -197,11 +204,12 @@ export default function SetupMfaPage() {
 
   const codeInputStyle: React.CSSProperties = {
     width: '100%',
-    background: '#0f1324',
-    border: '1px solid #2d3550',
+    background: 'var(--v-card)',
+    border: '1px solid var(--v-card-border)',
+    boxShadow: 'var(--v-shadow-card)',
     borderRadius: '10px',
     padding: '18px 16px',
-    color: '#f8fafc',
+    color: 'var(--v-text-primary)',
     fontSize: '32px',
     fontFamily: "'SF Mono', 'Fira Code', monospace",
     letterSpacing: '12px',
@@ -214,12 +222,12 @@ export default function SetupMfaPage() {
   // ── RENDER: Choose method ────────────────────────────
   if (step === 'choose') {
     return (
-      <div style={pageStyle}>
-        <Shield size={48} color="#06b6d4" style={{ marginBottom: '24px' }} />
-        <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: '#f8fafc', textAlign: 'center' }}>
+      <div className="auth-shell" style={pageStyle}>
+        <Shield size={48} color="var(--v-accent)" style={{ marginBottom: '24px' }} />
+        <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: 'var(--v-text-primary)', textAlign: 'center' }}>
           Secure your account
         </h1>
-        <p style={{ fontSize: '14px', color: '#94a3b8', textAlign: 'center', margin: '0 0 32px', lineHeight: 1.6, maxWidth: '360px' }}>
+        <p style={{ fontSize: '14px', color: 'var(--v-text-secondary)', textAlign: 'center', margin: '0 0 32px', lineHeight: 1.6, maxWidth: '360px' }}>
           Choose how you want to verify your identity when signing in.
         </p>
 
@@ -230,21 +238,21 @@ export default function SetupMfaPage() {
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <div style={{
-              background: 'rgba(6,182,212,0.15)',
+              background: 'var(--v-accent-dim)',
               borderRadius: '10px',
               padding: '12px',
             }}>
-              <Smartphone size={28} color="#06b6d4" />
+              <Smartphone size={28} color="var(--v-accent)" />
             </div>
             <div style={{ flex: 1 }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 600, margin: '0 0 4px', color: '#f8fafc' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 600, margin: '0 0 4px', color: 'var(--v-text-primary)' }}>
                 Authenticator app
               </h3>
-              <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
+              <p style={{ fontSize: '13px', color: 'var(--v-text-secondary)', margin: 0 }}>
                 Use Google Authenticator, Authy, or any TOTP app
               </p>
             </div>
-            <ArrowRight size={18} color="#06b6d4" />
+            <ArrowRight size={18} color="var(--v-accent)" />
           </div>
         </div>
 
@@ -255,38 +263,38 @@ export default function SetupMfaPage() {
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <div style={{
-              background: 'rgba(6,182,212,0.15)',
+              background: 'var(--v-accent-dim)',
               borderRadius: '10px',
               padding: '12px',
             }}>
-              <Mail size={28} color="#06b6d4" />
+              <Mail size={28} color="var(--v-accent)" />
             </div>
             <div style={{ flex: 1 }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 600, margin: '0 0 4px', color: '#f8fafc' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 600, margin: '0 0 4px', color: 'var(--v-text-primary)' }}>
                 Email code
               </h3>
-              <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
+              <p style={{ fontSize: '13px', color: 'var(--v-text-secondary)', margin: 0 }}>
                 Receive a 6-digit code by email each time you sign in
               </p>
             </div>
-            <ArrowRight size={18} color="#06b6d4" />
+            <ArrowRight size={18} color="var(--v-accent)" />
           </div>
         </div>
 
         {loading && (
           <div style={{ textAlign: 'center', marginTop: '16px' }}>
-            <Loader2 size={24} color="#06b6d4" style={{ animation: 'spin 1s linear infinite' }} />
+            <Loader2 size={24} color="var(--v-accent)" style={{ animation: 'spin 1s linear infinite' }} />
           </div>
         )}
 
         {error && (
           <div style={{
             marginTop: '16px',
-            background: 'rgba(218,54,51,0.1)',
-            border: '1px solid #da3633',
+            background: 'var(--v-loss-dim)',
+            border: '1px solid var(--v-loss-label)',
             borderRadius: '10px',
             padding: '12px 16px',
-            color: '#e6edf3',
+            color: 'var(--v-text-primary)',
             fontSize: '13px',
             textAlign: 'center',
           }}>
@@ -300,19 +308,20 @@ export default function SetupMfaPage() {
   // ── RENDER: TOTP scan QR ─────────────────────────────
   if (step === 'totp-scan') {
     return (
-      <div style={pageStyle}>
+      <div className="auth-shell" style={pageStyle}>
         {backButton}
-        <Smartphone size={36} color="#06b6d4" style={{ marginBottom: '16px' }} />
-        <h1 style={{ fontSize: '22px', fontWeight: 700, margin: '0 0 6px', color: '#f8fafc', textAlign: 'center' }}>
+        <Smartphone size={36} color="var(--v-accent)" style={{ marginBottom: '16px' }} />
+        <h1 style={{ fontSize: '22px', fontWeight: 700, margin: '0 0 6px', color: 'var(--v-text-primary)', textAlign: 'center' }}>
           Set up your authenticator
         </h1>
-        <p style={{ fontSize: '14px', color: '#94a3b8', textAlign: 'center', margin: '0 0 14px', lineHeight: 1.5, maxWidth: '320px' }}>
+        <p style={{ fontSize: '14px', color: 'var(--v-text-secondary)', textAlign: 'center', margin: '0 0 14px', lineHeight: 1.5, maxWidth: '320px' }}>
           Scan this QR code with your authenticator app.
         </p>
 
         {/* QR Code */}
         {qrDataUrl && (
           <div style={{
+            // QR quiet-zone must stay white in both themes for scannability
             background: '#ffffff',
             borderRadius: '14px',
             padding: '12px',
@@ -323,13 +332,14 @@ export default function SetupMfaPage() {
         )}
 
         {/* Manual key */}
-        <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 6px' }}>Or enter this key manually:</p>
+        <p style={{ fontSize: '12px', color: 'var(--v-text-secondary)', margin: '0 0 6px' }}>Or enter this key manually:</p>
         <div style={{
           display: 'flex',
           alignItems: 'center',
           gap: '8px',
-          background: '#0f1324',
-          border: '1px solid #2d3550',
+          background: 'var(--v-card)',
+          border: '1px solid var(--v-card-border)',
+          boxShadow: 'var(--v-shadow-card)',
           borderRadius: '10px',
           padding: '10px 14px',
           maxWidth: '380px',
@@ -337,7 +347,7 @@ export default function SetupMfaPage() {
         }}>
           <code style={{
             fontSize: '13px',
-            color: '#f8fafc',
+            color: 'var(--v-text-primary)',
             fontFamily: "'SF Mono', monospace",
             wordBreak: 'break-all',
             flex: 1,
@@ -347,7 +357,7 @@ export default function SetupMfaPage() {
           <button onClick={handleCopyKey} style={{
             background: 'none',
             border: 'none',
-            color: '#06b6d4',
+            color: 'var(--v-accent-label)',
             cursor: 'pointer',
             padding: '4px',
           }}>
@@ -377,20 +387,21 @@ export default function SetupMfaPage() {
   // ── RENDER: TOTP confirm (enter code) ───────────────
   if (step === 'totp-confirm') {
     return (
-      <div style={pageStyle}>
+      <div className="auth-shell" style={pageStyle}>
         {backButton}
-        <Shield size={36} color="#06b6d4" style={{ marginBottom: '16px' }} />
-        <h1 style={{ fontSize: '22px', fontWeight: 700, margin: '0 0 6px', color: '#f8fafc', textAlign: 'center' }}>
+        <Shield size={36} color="var(--v-accent)" style={{ marginBottom: '16px' }} />
+        <h1 style={{ fontSize: '22px', fontWeight: 700, margin: '0 0 6px', color: 'var(--v-text-primary)', textAlign: 'center' }}>
           Verify your authenticator
         </h1>
-        <p style={{ fontSize: '14px', color: '#94a3b8', textAlign: 'center', margin: '0 0 16px', lineHeight: 1.5, maxWidth: '320px' }}>
+        <p style={{ fontSize: '14px', color: 'var(--v-text-secondary)', textAlign: 'center', margin: '0 0 16px', lineHeight: 1.5, maxWidth: '320px' }}>
           Enter the 6-digit code from your authenticator app.
         </p>
 
         {/* Code card */}
         <div style={{
-          background: '#1a1f35',
-          border: '1px solid #2d3550',
+          background: 'var(--v-card)',
+          border: '1px solid var(--v-card-border)',
+          boxShadow: 'var(--v-shadow-card)',
           borderRadius: '14px',
           padding: '20px',
           width: '100%',
@@ -400,7 +411,7 @@ export default function SetupMfaPage() {
           alignItems: 'center',
           gap: '12px',
         }}>
-          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          <label style={{ fontSize: '12px', color: 'var(--v-text-secondary)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             6-digit code
           </label>
           <input
@@ -416,11 +427,12 @@ export default function SetupMfaPage() {
             placeholder="000000"
             style={{
               width: '100%',
-              background: '#0f1324',
-              border: '1px solid #2d3550',
+              background: 'var(--v-card)',
+              border: '1px solid var(--v-card-border)',
+              boxShadow: 'var(--v-shadow-card)',
               borderRadius: '10px',
               padding: '16px',
-              color: '#f8fafc',
+              color: 'var(--v-text-primary)',
               fontSize: '28px',
               fontFamily: "'SF Mono', 'Fira Code', monospace",
               letterSpacing: '10px',
@@ -462,11 +474,11 @@ export default function SetupMfaPage() {
         {error && (
           <div style={{
             marginTop: '12px',
-            background: 'rgba(218,54,51,0.1)',
-            border: '1px solid #da3633',
+            background: 'var(--v-loss-dim)',
+            border: '1px solid var(--v-loss-label)',
             borderRadius: '10px',
             padding: '10px 14px',
-            color: '#e6edf3',
+            color: 'var(--v-text-primary)',
             fontSize: '13px',
             textAlign: 'center',
             maxWidth: '340px',
@@ -481,21 +493,22 @@ export default function SetupMfaPage() {
   // ── RENDER: Backup codes ─────────────────────────────
   if (step === 'backup-codes') {
     return (
-      <div style={pageStyle}>
+      <div className="auth-shell" style={pageStyle}>
         {backButton}
-        <Shield size={48} color="#22c55e" style={{ marginBottom: '24px' }} />
-        <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: '#f8fafc', textAlign: 'center' }}>
+        <Shield size={48} color="var(--v-gain)" style={{ marginBottom: '24px' }} />
+        <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: 'var(--v-text-primary)', textAlign: 'center' }}>
           Save your backup codes
         </h1>
-        <p style={{ fontSize: '14px', color: '#94a3b8', textAlign: 'center', margin: '0 0 24px', lineHeight: 1.6, maxWidth: '360px' }}>
+        <p style={{ fontSize: '14px', color: 'var(--v-text-secondary)', textAlign: 'center', margin: '0 0 24px', lineHeight: 1.6, maxWidth: '360px' }}>
           If you lose access to your authenticator app, use one of these codes to sign in.
           Each code can only be used once.
         </p>
 
         {/* Backup codes grid */}
         <div style={{
-          background: '#0f1324',
-          border: '1px solid #22c55e',
+          background: 'var(--v-card)',
+          border: '1px solid var(--v-gain)',
+          boxShadow: 'var(--v-shadow-card)',
           borderRadius: '14px',
           padding: '24px',
           width: '100%',
@@ -509,8 +522,8 @@ export default function SetupMfaPage() {
             <div key={i} style={{
               fontFamily: "'SF Mono', monospace",
               fontSize: '14px',
-              color: '#22c55e',
-              background: 'rgba(34,197,94,0.08)',
+              color: 'var(--v-gain-label)',
+              background: 'var(--v-gain-dim)',
               borderRadius: '6px',
               padding: '8px 10px',
               textAlign: 'center',
@@ -534,9 +547,9 @@ export default function SetupMfaPage() {
             type="checkbox"
             checked={acknowledged}
             onChange={(e) => setAcknowledged(e.target.checked)}
-            style={{ accentColor: '#06b6d4', width: '18px', height: '18px' }}
+            style={{ accentColor: 'var(--v-accent)', width: '18px', height: '18px' }}
           />
-          <span style={{ fontSize: '13px', color: '#94a3b8' }}>
+          <span style={{ fontSize: '13px', color: 'var(--v-text-secondary)' }}>
             I have saved these backup codes securely. I understand they will not be shown again.
           </span>
         </label>

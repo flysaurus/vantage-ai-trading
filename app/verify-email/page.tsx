@@ -27,6 +27,10 @@ type ErrorInfo = {
   code?: string;
 };
 
+// Locked light/dark system: soft top accent wash over the themed canvas
+// (the wash is the --v-accent hue). Resolves per html[data-theme] — no JS.
+const GRADIENT = `radial-gradient(ellipse 120% 60% at 50% -10%, rgba(14,140,153,0.10) 0%, transparent 55%), var(--v-canvas)`;
+
 export default function VerifyEmailPage() {
   const router = useRouter();
 
@@ -178,11 +182,11 @@ export default function VerifyEmailPage() {
   // ── Gradient background (shared with other onboarding pages) ──
   const pageStyle: React.CSSProperties = {
     minHeight: '100dvh',
-    background: 'linear-gradient(180deg, #0b0f1d 0%, #131a2e 100%)',
+    background: GRADIENT,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    color: '#e2e8f0',
+    color: 'var(--v-text-primary)',
     fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
   };
 
@@ -198,11 +202,12 @@ export default function VerifyEmailPage() {
 
   const inputStyle: React.CSSProperties = {
     width: '100%',
-    background: '#1a1f35',
-    border: '1px solid #2d3550',
+    background: 'var(--v-card)',
+    border: '1px solid var(--v-card-border)',
+    boxShadow: 'var(--v-shadow-card)',
     borderRadius: '10px',
     padding: '14px 16px',
-    color: '#f8fafc',
+    color: 'var(--v-text-primary)',
     fontSize: '16px',
     outline: 'none',
     boxSizing: 'border-box',
@@ -241,9 +246,9 @@ export default function VerifyEmailPage() {
   // ── RENDER: Loading ─────────────────────────────────────
   if (state === 'loading') {
     return (
-      <div style={pageStyle}>
+      <div className="auth-shell" style={pageStyle}>
         <div style={contentStyle}>
-          <Loader2 size={32} color="#06b6d4" style={{ animation: 'spin 1s linear infinite', marginTop: '80px' }} />
+          <Loader2 size={32} color="var(--v-accent)" style={{ animation: 'spin 1s linear infinite', marginTop: '80px' }} />
         </div>
       </div>
     );
@@ -252,15 +257,15 @@ export default function VerifyEmailPage() {
   // ── RENDER: Success ─────────────────────────────────────
   if (state === 'success') {
     return (
-      <div style={pageStyle}>
+      <div className="auth-shell" style={pageStyle}>
         <div style={contentStyle}>
           <div style={{ marginTop: '80px', textAlign: 'center' }}>
-            <CheckCircle size={64} color="#22c55e" />
-            <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '24px 0 8px', color: '#f8fafc' }}>
+            <CheckCircle size={64} color="var(--v-gain)" />
+            <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '24px 0 8px', color: 'var(--v-text-primary)' }}>
               Email verified!
             </h1>
-            <p style={{ fontSize: '14px', color: '#94a3b8', lineHeight: 1.6, margin: '0 0 32px' }}>
-              Your email <strong style={{ color: '#e2e8f0' }}>{successEmail}</strong> is verified.
+            <p style={{ fontSize: '14px', color: 'var(--v-text-secondary)', lineHeight: 1.6, margin: '0 0 32px' }}>
+              Your email <strong style={{ color: 'var(--v-text-primary)' }}>{successEmail}</strong> is verified.
               Sign in to continue setting up your account.
             </p>
             <button
@@ -288,7 +293,7 @@ export default function VerifyEmailPage() {
   const isNoOtp = error?.code === 'NO_OTP';
 
   return (
-    <div style={pageStyle}>
+    <div className="auth-shell" style={pageStyle}>
       {/* Top bar */}
       <div
         style={{
@@ -305,7 +310,7 @@ export default function VerifyEmailPage() {
           style={{
             background: 'none',
             border: 'none',
-            color: '#94a3b8',
+            color: 'var(--v-text-secondary)',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
@@ -322,7 +327,7 @@ export default function VerifyEmailPage() {
 
       <div style={contentStyle}>
         {/* Header */}
-        <Mail size={48} color="#06b6d4" style={{ marginBottom: '24px' }} />
+        <Mail size={48} color="var(--v-accent)" style={{ marginBottom: '24px' }} />
 
         {/* Context badge */}
         <div
@@ -330,14 +335,14 @@ export default function VerifyEmailPage() {
             display: 'inline-flex',
             alignItems: 'center',
             gap: '6px',
-            background: 'rgba(6,182,212,0.12)',
-            border: '1px solid rgba(6,182,212,0.25)',
+            background: 'var(--v-accent-dim)',
+            border: '1px solid var(--v-accent-label)',
             borderRadius: '20px',
             padding: '4px 14px',
             marginBottom: '16px',
             fontSize: '12px',
             fontWeight: 600,
-            color: '#06b6d4',
+            color: 'var(--v-accent-label)',
             letterSpacing: '0.04em',
           }}
         >
@@ -350,7 +355,7 @@ export default function VerifyEmailPage() {
             fontWeight: 700,
             margin: '0 0 8px',
             textAlign: 'center',
-            color: '#f8fafc',
+            color: 'var(--v-text-primary)',
           }}
         >
           Verify your account
@@ -359,7 +364,7 @@ export default function VerifyEmailPage() {
         <p
           style={{
             fontSize: '14px',
-            color: '#94a3b8',
+            color: 'var(--v-text-secondary)',
             textAlign: 'center',
             margin: '0 0 8px',
             lineHeight: 1.6,
@@ -371,14 +376,14 @@ export default function VerifyEmailPage() {
         <p
           style={{
             fontSize: '12px',
-            color: 'rgba(255,255,255,0.35)',
+            color: 'var(--v-text-secondary)',
             textAlign: 'center',
             margin: '0 0 32px',
             lineHeight: 1.5,
           }}
         >
-          This is <strong style={{ color: 'rgba(255,255,255,0.5)' }}>not</strong> a sign-in code. If you&apos;re trying to log in, go to the{' '}
-          <a href="/login" style={{ color: '#06b6d4', textDecoration: 'underline' }}>sign-in page</a>.
+          This is <strong style={{ color: 'var(--v-text-primary)' }}>not</strong> a sign-in code. If you&apos;re trying to log in, go to the{' '}
+          <a href="/login" style={{ color: 'var(--v-accent-label)', textDecoration: 'underline' }}>sign-in page</a>.
         </p>
 
         {/* Email field (editable if not pre-filled from URL) */}
@@ -387,7 +392,7 @@ export default function VerifyEmailPage() {
             style={{
               fontSize: '12px',
               fontWeight: 600,
-              color: '#94a3b8',
+              color: 'var(--v-text-secondary)',
               textTransform: 'uppercase',
               letterSpacing: '0.05em',
               marginBottom: '6px',
@@ -417,7 +422,7 @@ export default function VerifyEmailPage() {
             style={{
               fontSize: '12px',
               fontWeight: 600,
-              color: '#94a3b8',
+              color: 'var(--v-text-secondary)',
               textTransform: 'uppercase',
               letterSpacing: '0.05em',
               marginBottom: '6px',
@@ -446,9 +451,9 @@ export default function VerifyEmailPage() {
             style={{
               width: '100%',
               background: isExpired || isLocked
-                ? 'rgba(210,153,34,0.1)'
-                : 'rgba(218,54,51,0.1)',
-              border: `1px solid ${isExpired || isLocked ? '#d29922' : '#da3633'}`,
+                ? 'var(--v-warn-dim)'
+                : 'var(--v-loss-dim)',
+              border: `1px solid ${isExpired || isLocked ? 'var(--v-warn)' : 'var(--v-loss-label)'}`,
               borderRadius: '10px',
               padding: '12px 16px',
               display: 'flex',
@@ -459,14 +464,14 @@ export default function VerifyEmailPage() {
           >
             <XCircle
               size={16}
-              color={isExpired || isLocked ? '#d29922' : '#da3633'}
+              color={isExpired || isLocked ? 'var(--v-warn)' : 'var(--v-loss-label)'}
               style={{ flexShrink: 0, marginTop: '2px' }}
             />
             <div style={{ flex: 1 }}>
               <p
                 style={{
                   fontSize: '13px',
-                  color: '#e6edf3',
+                  color: 'var(--v-text-primary)',
                   margin: 0,
                   lineHeight: 1.5,
                 }}
@@ -480,8 +485,8 @@ export default function VerifyEmailPage() {
                   style={{
                     marginTop: '10px',
                     background: 'transparent',
-                    border: '1px solid #06b6d4',
-                    color: '#06b6d4',
+                    border: '1px solid var(--v-accent-label)',
+                    color: 'var(--v-accent-label)',
                     borderRadius: '8px',
                     padding: '6px 14px',
                     fontSize: '13px',
@@ -524,7 +529,7 @@ export default function VerifyEmailPage() {
             marginTop: '12px',
             background: 'transparent',
             border: 'none',
-            color: '#06b6d4',
+            color: 'var(--v-accent-label)',
             fontSize: '14px',
             fontWeight: 600,
             cursor: resending ? 'wait' : 'pointer',
@@ -543,13 +548,14 @@ export default function VerifyEmailPage() {
             bottom: '32px',
             left: '50%',
             transform: 'translateX(-50%)',
-            background: '#161b22',
-            border: '1px solid #06b6d4',
+            background: 'var(--v-card)',
+            border: '1px solid var(--v-accent)',
             borderRadius: '12px',
             padding: '12px 24px',
-            color: '#f8fafc',
+            color: 'var(--v-text-primary)',
             fontSize: '14px',
             fontWeight: 600,
+            boxShadow: 'var(--v-shadow-toast)',
             zIndex: 99999,
           }}
         >

@@ -15,13 +15,14 @@ export default function YouAreInPage() {
 
   return (
     <div
+      className="auth-shell"
       style={{
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         height: '100dvh',
-        background: 'var(--bg-primary)',
+        background: 'var(--v-canvas)',
         gap: '32px',
         padding: '0 24px',
       }}
@@ -34,7 +35,7 @@ export default function YouAreInPage() {
             fontFamily: 'Inter',
             fontWeight: 800,
             fontSize: '48px',
-            color: 'white',
+            color: 'var(--v-text-primary)',
             margin: 0,
             lineHeight: 1.1,
           }}
@@ -47,7 +48,7 @@ export default function YouAreInPage() {
             fontStyle: 'italic',
             fontWeight: 400,
             fontSize: '48px',
-            color: 'white',
+            color: 'var(--v-text-primary)',
             margin: 0,
             lineHeight: 1.1,
           }}
@@ -61,7 +62,7 @@ export default function YouAreInPage() {
           fontFamily: 'Inter',
           fontWeight: 400,
           fontSize: '16px',
-          color: 'rgba(255,255,255,0.6)',
+          color: 'var(--v-text-secondary)',
           margin: 0,
           textAlign: 'center',
         }}
