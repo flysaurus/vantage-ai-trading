@@ -103,12 +103,18 @@ export function ArrivalScreen({ onFindStyle, onSignIn }: ArrivalScreenProps) {
 
   return (
     <div
-      className="bg-onboarding-0"
+      className="onboarding-shell"
       style={{
         width: '100%',
         height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
+        /* Themed accent wash — same recipe as BootSplash/Quiz: the canvas token
+           plus two soft accent ellipses, so light mode gets a light canvas
+           instead of the old hardcoded dark-navy gradient (was: bg-onboarding-0,
+           which painted #0a0f1e with neon cyan washes regardless of theme). */
+        background:
+          'radial-gradient(ellipse 100% 60% at 50% 0%, var(--v-accent-dim) 0%, transparent 72%), radial-gradient(ellipse 60% 40% at 80% 100%, var(--v-glow) 0%, transparent 60%), var(--v-canvas)',
       }}
     >
       {/* ── TOP BAR: 60px ── */}
@@ -132,7 +138,7 @@ export function ArrivalScreen({ onFindStyle, onSignIn }: ArrivalScreenProps) {
           style={{
             background: 'none',
             border: 'none',
-            color: 'rgba(255,255,255,0.55)',
+            color: 'var(--v-text-muted)',
             fontSize: '13px',
             cursor: 'pointer',
             fontFamily: 'var(--font-sans)',
@@ -174,7 +180,7 @@ export function ArrivalScreen({ onFindStyle, onSignIn }: ArrivalScreenProps) {
               fontFamily: 'var(--font-sans)',
               fontSize: '52px',
               fontWeight: 800,
-              color: '#ffffff',
+              color: 'var(--v-text-primary)',
               lineHeight: 1.05,
             }}
           >
@@ -187,7 +193,7 @@ export function ArrivalScreen({ onFindStyle, onSignIn }: ArrivalScreenProps) {
               fontSize: '52px',
               fontWeight: 400,
               fontStyle: 'italic',
-              color: '#ffffff',
+              color: 'var(--v-text-primary)',
               lineHeight: 1.05,
             }}
           >
@@ -209,7 +215,7 @@ export function ArrivalScreen({ onFindStyle, onSignIn }: ArrivalScreenProps) {
                 style={{
                   fontSize: '22px',
                   fontWeight: 500,
-                  color: 'rgba(255,255,255,0.72)',
+                  color: 'var(--v-text-secondary)',
                   fontFamily: 'var(--font-sans)',
                   opacity: fading ? 0 : 1,
                   transition: 'opacity 200ms ease',
@@ -225,7 +231,7 @@ export function ArrivalScreen({ onFindStyle, onSignIn }: ArrivalScreenProps) {
                   fontSize: '28px',
                   fontWeight: 800,
                   fontFamily: 'var(--font-sans)',
-                  color: '#ffffff',
+                  color: 'var(--v-text-primary)',
                   opacity: showClosing ? 1 : 0,
                   transition: 'opacity 300ms ease-out',
                 }}
@@ -252,8 +258,8 @@ export function ArrivalScreen({ onFindStyle, onSignIn }: ArrivalScreenProps) {
               height: '58px',
               borderRadius: '999px',
               border: 'none',
-              background: '#ffffff',
-              color: '#000000',
+              background: 'var(--v-accent)',
+              color: 'var(--v-accent-text)',
               fontSize: '17px',
               fontWeight: 700,
               fontFamily: 'var(--font-sans)',
@@ -271,7 +277,7 @@ export function ArrivalScreen({ onFindStyle, onSignIn }: ArrivalScreenProps) {
             style={{
               marginTop: '12px',
               fontSize: '13px',
-              color: 'rgba(255,255,255,0.35)',
+              color: 'var(--v-text-faint)',
               textAlign: 'center',
               opacity: showCta ? 1 : 0,
               transition: 'opacity 400ms ease-out',

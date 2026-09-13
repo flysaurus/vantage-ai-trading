@@ -80,7 +80,7 @@ export default function ConnectionOptionsStep({
       title: 'Connect your broker',
       subtitle: 'Fidelity, Schwab, Robinhood + 20 more',
       tag: 'Read-only portfolio analysis',
-      tagColor: '#2dd4bf',
+      tagColor: 'var(--v-accent-label)',
     },
     {
       id: 'alpaca',
@@ -88,7 +88,7 @@ export default function ConnectionOptionsStep({
       title: 'Trade with Alpaca',
       subtitle: 'Paper & live trading via secure OAuth',
       tag: 'Full trade execution',
-      tagColor: '#22c55e',
+      tagColor: 'var(--v-gain-label)',
     },
     {
       id: 'tastytrade',
@@ -96,20 +96,22 @@ export default function ConnectionOptionsStep({
       title: 'Trade with Tastytrade',
       subtitle: 'Options & futures trading',
       tag: 'Full trade execution',
-      tagColor: '#a855f7',
+      tagColor: 'var(--v-violet-label)',
     },
   ];
 
   return (
     <div
+      className="onboarding-shell"
       style={{
         display: 'flex',
         flexDirection: 'column',
         height: '100dvh',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
-        background: 'var(--bg)',
-        color: '#fff',
+        background:
+          'radial-gradient(ellipse 100% 60% at 50% 0%, var(--v-accent-dim) 0%, transparent 72%), radial-gradient(ellipse 60% 40% at 80% 100%, var(--v-glow) 0%, transparent 60%), var(--v-canvas)',
+        color: 'var(--v-text-primary)',
         fontFamily: 'var(--font-sans)',
         position: 'relative',
       }}
@@ -131,7 +133,7 @@ export default function ConnectionOptionsStep({
           style={{
             background: 'none',
             border: 'none',
-            color: 'rgba(255,255,255,0.70)',
+            color: 'var(--v-text-secondary)',
             fontSize: '14px',
             fontWeight: 400,
             cursor: 'pointer',
@@ -190,7 +192,7 @@ export default function ConnectionOptionsStep({
               fontFamily: 'var(--font-sans)',
               fontSize: '32px',
               fontWeight: 800,
-              color: '#ffffff',
+              color: 'var(--v-text-primary)',
             }}
           >
             Connect your
@@ -202,7 +204,7 @@ export default function ConnectionOptionsStep({
               fontSize: '32px',
               fontWeight: 400,
               fontStyle: 'italic',
-              color: '#ffffff',
+              color: 'var(--v-text-primary)',
             }}
           >
             broker.
@@ -214,7 +216,7 @@ export default function ConnectionOptionsStep({
           style={{
             fontSize: '14px',
             fontWeight: 400,
-            color: 'rgba(255,255,255,0.60)',
+            color: 'var(--v-text-muted)',
             textAlign: 'center',
             margin: '0 0 24px',
             lineHeight: 1.5,
@@ -249,16 +251,16 @@ export default function ConnectionOptionsStep({
                   padding: '16px',
                   borderRadius: '14px',
                   border: isHovered
-                    ? '2px solid rgba(6,182,212,0.50)'
-                    : '2px solid rgba(255,255,255,0.08)',
+                    ? '2px solid var(--v-accent)'
+                    : '2px solid var(--v-card-border)',
                   background: isHovered
-                    ? 'rgba(6,182,212,0.06)'
-                    : 'rgba(255,255,255,0.03)',
+                    ? 'var(--v-accent-dim)'
+                    : 'var(--v-card)',
                   cursor: 'pointer',
                   transition: 'border-color 0.2s, background 0.2s',
                   textAlign: 'left' as const,
                   fontFamily: 'var(--font-sans)',
-                  color: '#fff',
+                  color: 'var(--v-text-primary)',
                   position: 'relative' as const,
                 }}
               >
@@ -275,7 +277,8 @@ export default function ConnectionOptionsStep({
                       width: '40px',
                       height: '40px',
                       borderRadius: '10px',
-                      background: 'rgba(255,255,255,0.06)',
+                      background: 'var(--v-card)',
+                      boxShadow: 'var(--v-shadow-card)', // locked elevation
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -311,8 +314,8 @@ export default function ConnectionOptionsStep({
                           style={{
                             fontSize: '9px',
                             fontWeight: 600,
-                            color: '#d97706',
-                            background: 'rgba(217,119,6,0.12)',
+                            color: 'var(--v-warn)',
+                            background: 'var(--v-warn-dim)',
                             padding: '2px 7px',
                             borderRadius: '4px',
                             letterSpacing: '0.04em',
@@ -327,7 +330,7 @@ export default function ConnectionOptionsStep({
                     <p
                       style={{
                         fontSize: '13px',
-                        color: 'rgba(255,255,255,0.50)',
+                        color: 'var(--v-text-muted)',
                         margin: '0 0 4px',
                         lineHeight: 1.4,
                       }}
@@ -358,7 +361,7 @@ export default function ConnectionOptionsStep({
                   >
                     <ChevronRight
                       size={18}
-                      color="rgba(255,255,255,0.20)"
+                      color="var(--v-text-faint)"
                     />
                   </div>
                 </div>
@@ -376,7 +379,7 @@ export default function ConnectionOptionsStep({
             border: 'none',
             fontSize: '14px',
             fontWeight: 400,
-            color: 'var(--accent)',
+            color: 'var(--v-accent-label)',
             cursor: 'pointer',
             padding: '8px 12px',
             fontFamily: 'var(--font-sans)',
@@ -393,7 +396,7 @@ export default function ConnectionOptionsStep({
             marginTop: '16px',
             fontSize: '12px',
             fontWeight: 400,
-            color: 'rgba(255,255,255,0.40)',
+            color: 'var(--v-text-faint)',
             textAlign: 'center',
             fontFamily: 'var(--font-sans)',
             lineHeight: 1.5,
@@ -414,17 +417,15 @@ export default function ConnectionOptionsStep({
             maxWidth: 'calc(100% - 40px)',
             padding: '14px 20px',
             borderRadius: '12px',
-            background: 'rgba(15,23,42,0.92)',
-            border: '1px solid rgba(255,255,255,0.10)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-            color: '#fff',
+            background: 'var(--v-panel)',
+            boxShadow: 'var(--v-shadow-card)',
+            border: '1px solid var(--v-card-border)',
+            color: 'var(--v-text-primary)',
             fontSize: '14px',
             fontFamily: 'var(--font-sans)',
             textAlign: 'center',
             zIndex: 100,
             animation: 'toastIn 0.25s ease-out',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.40)',
           }}
         >
           {toast.message}

@@ -33,14 +33,16 @@ export default function ConcentrationStep({
 
   return (
     <div
+      className="onboarding-shell"
       style={{
         display: 'flex',
         flexDirection: 'column',
         height: '100dvh',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
-        background: 'var(--bg)',
-        color: '#fff',
+        background:
+          'radial-gradient(ellipse 100% 60% at 50% 0%, var(--v-accent-dim) 0%, transparent 72%), radial-gradient(ellipse 60% 40% at 80% 100%, var(--v-glow) 0%, transparent 60%), var(--v-canvas)',
+        color: 'var(--v-text-primary)',
         fontFamily: 'var(--font-sans)',
       }}
     >
@@ -60,7 +62,7 @@ export default function ConcentrationStep({
           style={{
             background: 'none',
             border: 'none',
-            color: 'rgba(255,255,255,0.70)',
+            color: 'var(--v-text-secondary)',
             fontSize: '14px',
             fontWeight: 400,
             cursor: 'pointer',
@@ -116,7 +118,7 @@ export default function ConcentrationStep({
               fontFamily: 'var(--font-sans)',
               fontSize: '32px',
               fontWeight: 800,
-              color: '#ffffff',
+              color: 'var(--v-text-primary)',
             }}
           >
             How concentrated are
@@ -128,7 +130,7 @@ export default function ConcentrationStep({
               fontSize: '32px',
               fontWeight: 400,
               fontStyle: 'italic',
-              color: '#ffffff',
+              color: 'var(--v-text-primary)',
             }}
           >
             you comfortable being?
@@ -139,7 +141,7 @@ export default function ConcentrationStep({
           style={{
             fontSize: '14px',
             fontWeight: 400,
-            color: 'rgba(255,255,255,0.60)',
+            color: 'var(--v-text-muted)',
             textAlign: 'center',
             margin: '0 0 20px',
             lineHeight: 1.5,
@@ -157,11 +159,11 @@ export default function ConcentrationStep({
             maxWidth: '380px',
             padding: '10px 14px',
             borderRadius: '10px',
-            background: 'rgba(34,211,238,0.10)',
-            border: '1px solid rgba(34,211,238,0.25)',
+            background: 'var(--v-accent-dim)',
+            border: '1px solid var(--v-accent)',
             fontSize: '13px',
             fontWeight: 500,
-            color: 'rgba(255,255,255,0.85)',
+            color: 'var(--v-text-primary)',
             textAlign: 'center',
             marginBottom: '16px',
           }}
@@ -193,16 +195,16 @@ export default function ConcentrationStep({
                   padding: '18px 20px',
                   borderRadius: '16px',
                   border: isSuggested || isHovered
-                    ? '2px solid rgba(6,182,212,0.55)'
-                    : '2px solid rgba(255,255,255,0.08)',
+                    ? '2px solid var(--v-accent)'
+                    : '2px solid var(--v-card-border)',
                   background: isSuggested || isHovered
-                    ? 'rgba(6,182,212,0.08)'
-                    : 'rgba(255,255,255,0.03)',
+                    ? 'var(--v-accent-dim)'
+                    : 'var(--v-card)',
                   cursor: 'pointer',
                   transition: 'border-color 0.2s, background 0.2s',
                   textAlign: 'left' as const,
                   fontFamily: 'var(--font-sans)',
-                  color: '#fff',
+                  color: 'var(--v-text-primary)',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -225,7 +227,7 @@ export default function ConcentrationStep({
                             fontWeight: 700,
                             letterSpacing: '0.04em',
                             textTransform: 'uppercase',
-                            color: '#22d3ee',
+                            color: 'var(--v-accent-label)',
                           }}
                         >
                           Suggested
@@ -236,7 +238,7 @@ export default function ConcentrationStep({
                       style={{
                         fontSize: '13px',
                         fontWeight: 400,
-                        color: 'rgba(255,255,255,0.55)',
+                        color: 'var(--v-text-secondary)',
                         lineHeight: 1.4,
                       }}
                     >
@@ -249,7 +251,7 @@ export default function ConcentrationStep({
                       textAlign: 'right',
                       fontSize: '12px',
                       fontWeight: 600,
-                      color: 'rgba(255,255,255,0.70)',
+                      color: 'var(--v-text-secondary)',
                       lineHeight: 1.5,
                     }}
                   >

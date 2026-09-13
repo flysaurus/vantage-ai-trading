@@ -45,14 +45,16 @@ export default function BrokerChoiceStep({
 
   return (
     <div
+      className="onboarding-shell"
       style={{
         display: 'flex',
         flexDirection: 'column',
         height: '100dvh',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
-        background: 'var(--bg)',
-        color: '#fff',
+        background:
+          'radial-gradient(ellipse 100% 60% at 50% 0%, var(--v-accent-dim) 0%, transparent 72%), radial-gradient(ellipse 60% 40% at 80% 100%, var(--v-glow) 0%, transparent 60%), var(--v-canvas)',
+        color: 'var(--v-text-primary)',
         fontFamily: 'var(--font-sans)',
       }}
     >
@@ -73,7 +75,7 @@ export default function BrokerChoiceStep({
           style={{
             background: 'none',
             border: 'none',
-            color: 'rgba(255,255,255,0.70)',
+            color: 'var(--v-text-secondary)',
             fontSize: '14px',
             fontWeight: 400,
             cursor: 'pointer',
@@ -132,7 +134,7 @@ export default function BrokerChoiceStep({
               fontFamily: 'var(--font-sans)',
               fontSize: '32px',
               fontWeight: 800,
-              color: '#ffffff',
+              color: 'var(--v-text-primary)',
             }}
           >
             How do you want
@@ -144,7 +146,7 @@ export default function BrokerChoiceStep({
               fontSize: '32px',
               fontWeight: 400,
               fontStyle: 'italic',
-              color: '#ffffff',
+              color: 'var(--v-text-primary)',
             }}
           >
             to get started?
@@ -156,7 +158,7 @@ export default function BrokerChoiceStep({
           style={{
             fontSize: '14px',
             fontWeight: 400,
-            color: 'rgba(255,255,255,0.60)',
+            color: 'var(--v-text-muted)',
             textAlign: 'center',
             margin: '0 0 32px',
             lineHeight: 1.5,
@@ -187,16 +189,16 @@ export default function BrokerChoiceStep({
               padding: '20px',
               borderRadius: '16px',
               border: hovered === 'demo'
-                ? '2px solid rgba(6,182,212,0.50)'
-                : '2px solid rgba(255,255,255,0.08)',
+                ? '2px solid var(--v-accent)'
+                : '2px solid var(--v-card-border)',
               background: hovered === 'demo'
-                ? 'rgba(6,182,212,0.08)'
-                : 'rgba(255,255,255,0.03)',
+                ? 'var(--v-accent-dim)'
+                : 'var(--v-card)',
               cursor: 'pointer',
               transition: 'border-color 0.2s, background 0.2s',
               textAlign: 'left' as const,
               fontFamily: 'var(--font-sans)',
-              color: '#fff',
+              color: 'var(--v-text-primary)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -225,7 +227,7 @@ export default function BrokerChoiceStep({
                 <p
                   style={{
                     fontSize: '13px',
-                    color: 'rgba(255,255,255,0.60)',
+                    color: 'var(--v-text-muted)',
                     margin: 0,
                     lineHeight: 1.4,
                   }}
@@ -246,16 +248,16 @@ export default function BrokerChoiceStep({
               padding: '20px',
               borderRadius: '16px',
               border: hovered === 'broker'
-                ? '2px solid rgba(6,182,212,0.50)'
-                : '2px solid rgba(255,255,255,0.08)',
+                ? '2px solid var(--v-accent)'
+                : '2px solid var(--v-card-border)',
               background: hovered === 'broker'
-                ? 'rgba(6,182,212,0.08)'
-                : 'rgba(255,255,255,0.03)',
+                ? 'var(--v-accent-dim)'
+                : 'var(--v-card)',
               cursor: 'pointer',
               transition: 'border-color 0.2s, background 0.2s',
               textAlign: 'left' as const,
               fontFamily: 'var(--font-sans)',
-              color: '#fff',
+              color: 'var(--v-text-primary)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -284,7 +286,7 @@ export default function BrokerChoiceStep({
                 <p
                   style={{
                     fontSize: '13px',
-                    color: 'rgba(255,255,255,0.60)',
+                    color: 'var(--v-text-muted)',
                     margin: 0,
                     lineHeight: 1.4,
                   }}
@@ -302,7 +304,7 @@ export default function BrokerChoiceStep({
             marginTop: '24px',
             fontSize: '12px',
             fontWeight: 400,
-            color: 'rgba(255,255,255,0.40)',
+            color: 'var(--v-text-faint)',
             textAlign: 'center',
             fontFamily: 'var(--font-sans)',
             lineHeight: 1.5,

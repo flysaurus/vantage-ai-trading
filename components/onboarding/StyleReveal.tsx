@@ -34,28 +34,15 @@ const RISK_BADGE_COLOR: Record<RiskTolerance, string> = {
   aggressive: 'var(--v-warn)',
 };
 
-// Per-style glow colors
-const STYLE_GLOW: Record<InvestorStyleKey, { bg: string; shadow: string }> = {
-  buffett: {
-    bg: 'radial-gradient(circle, rgba(34,211,238,0.35) 0%, transparent 70%)',
-    shadow: '0 0 60px rgba(34,211,238,0.30), 0 0 120px rgba(34,211,238,0.15)',
-  },
-  lynch: {
-    bg: 'radial-gradient(circle, rgba(34,211,238,0.35) 0%, transparent 70%)',
-    shadow: '0 0 60px rgba(34,211,238,0.30), 0 0 120px rgba(34,211,238,0.15)',
-  },
-  livermore: {
-    bg: 'radial-gradient(circle, rgba(16,185,129,0.35) 0%, transparent 70%)',
-    shadow: '0 0 60px rgba(16,185,129,0.30), 0 0 120px rgba(16,185,129,0.15)',
-  },
-  munger: {
-    bg: 'radial-gradient(circle, rgba(168,85,247,0.35) 0%, transparent 70%)',
-    shadow: '0 0 60px rgba(168,85,247,0.30), 0 0 120px rgba(168,85,247,0.15)',
-  },
-  soros: {
-    bg: 'radial-gradient(circle, rgba(245,158,11,0.35) 0%, transparent 70%)',
-    shadow: '0 0 60px rgba(245,158,11,0.30), 0 0 120px rgba(245,158,11,0.15)',
-  },
+// Per-style glow colours — hue tokens live in app/theme.css (three alpha tiers
+// each), so the archetype halo is theme-correct: the neon register on the dark
+// canvas, the deeper/quieter register on the light one. Two styles share cyan.
+const STYLE_GLOW: Record<InvestorStyleKey, { hue: 'cyan' | 'green' | 'purple' | 'amber' }> = {
+  buffett: { hue: 'cyan' },
+  lynch: { hue: 'cyan' },
+  livermore: { hue: 'green' },
+  munger: { hue: 'purple' },
+  soros: { hue: 'amber' },
 };
 
 interface StyleRevealProps {
@@ -98,7 +85,9 @@ export function StyleReveal({
   const tag = getStyleTag(selectedStyle);
   const emoji = getStyleEmoji(selectedStyle);
   const description = getStyleDescription(selectedStyle);
-  const { bg: glowBg, shadow: glowShadow } = STYLE_GLOW[selectedStyle];
+  const glowHue = STYLE_GLOW[selectedStyle].hue;
+  const glowBg = `radial-gradient(circle, var(--v-glow-${glowHue}) 0%, transparent 70%)`;
+  const glowShadow = `0 0 60px var(--v-glow-${glowHue}-strong), 0 0 120px var(--v-glow-${glowHue}-soft)`;
   const shortLabel = getStyleContent(selectedStyle).shortLabel;
 
   const riskColor = RISK_BADGE_COLOR[initialRisk];
