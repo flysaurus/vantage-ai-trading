@@ -3451,7 +3451,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                             flexDirection: 'column',
                             gap: '2px',
                             minWidth: '170px',
-                            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                            boxShadow: 'var(--v-shadow-toast)',
                           }}>
                             {[
                               { label: 'Remind in 3 days', type: '3d' },

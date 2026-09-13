@@ -108,7 +108,7 @@ export function SymbolSearch({ value, onChange, onInputChange, placeholder = 'Se
 
       {/* Quick-select positions */}
       {positions.length > 0 && !query && showDropdown && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, marginTop: 4, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, padding: 8, boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}>
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, marginTop: 4, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, padding: 8, boxShadow: 'var(--v-shadow-toast)' }}>
           <div style={{ fontSize: 9, color: '#e2e8f0', textTransform: 'uppercase', fontWeight: 600, marginBottom: 6, padding: '0 4px' }}>Your Positions</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {positions.map((sym) => (
@@ -126,7 +126,7 @@ export function SymbolSearch({ value, onChange, onInputChange, placeholder = 'Se
 
       {/* Search results */}
       {results.length > 0 && showDropdown && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, marginTop: 4, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, boxShadow: '0 10px 25px rgba(0,0,0,0.5)', maxHeight: 260, overflow: 'auto' }}>
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, marginTop: 4, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, boxShadow: 'var(--v-shadow-toast)', maxHeight: 260, overflow: 'auto' }}>
           {results.map((r, i) => (
             <button
               key={r.symbol}

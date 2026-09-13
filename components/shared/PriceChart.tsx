@@ -105,7 +105,7 @@ export default function PriceChart({
           border: '1px solid rgba(34, 211, 238, 0.25)',
           borderRadius: '10px',
           padding: '8px 14px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+          boxShadow: 'var(--v-shadow-toast)',
         }}
       >
         <div style={{ color: '#22d3ee', fontWeight: 600, fontSize: 14 }}>
