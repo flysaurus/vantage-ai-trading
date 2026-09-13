@@ -169,6 +169,22 @@ export default function BrokerChoiceStep({
           or connect your real broker.
         </p>
 
+        {/* ── Multi-account disclosure — documented limitation ── */}
+        <p
+          style={{
+            fontSize: '12.5px',
+            fontWeight: 400,
+            color: 'var(--v-text-secondary)',
+            textAlign: 'center',
+            margin: '-24px 0 24px',
+            lineHeight: 1.5,
+            maxWidth: '320px',
+          }}
+        >
+          One account per broker connection for now: multiple sub-accounts
+          (brokerage, IRA, 401k…) show their first account only.
+        </p>
+
         {/* ── CARDS ── */}
         <div
           style={{

@@ -204,6 +204,25 @@ export default function AccountSelectScreen({
             Choose which account you&apos;d like to view. You can switch or add brokers
             anytime from Settings.
           </p>
+
+        {/* ─── Multi-account disclosure — documented limitation (one account per connection) ─── */}
+        <p
+          style={{
+            fontFamily: 'inherit',
+            fontSize: '12.5px',
+            color: textSecondary,
+            lineHeight: 1.5,
+            margin: '12px 0 0',
+            padding: '10px 12px',
+            borderRadius: '10px',
+            background: 'var(--v-disabled-bg)',
+            border: '1px solid var(--v-card-border)',
+          }}
+        >
+          One account per broker connection for now: if your brokerage login has several
+          sub-accounts (brokerage, IRA, 401k…), Vantage shows the first one your broker
+          returns. Full multi-account support is on the roadmap.
+        </p>
         </div>
 
         {/* ─── CONNECTED ACCOUNTS section ─── */}

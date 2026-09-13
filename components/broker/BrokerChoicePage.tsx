@@ -161,6 +161,20 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
           <br />
           or connect your real broker.
         </p>
+
+        <p
+          style={{
+            fontFamily: 'var(--font-sans)',
+            fontSize: '12.5px',
+            color: 'var(--v-text-secondary)',
+            textAlign: 'center',
+            margin: '10px 0 0',
+            lineHeight: 1.5,
+          }}
+        >
+          One account per broker connection for now: multiple sub-accounts
+          (brokerage, IRA, 401k…) show their first account only.
+        </p>
       </div>
 
       {/* ═══ CARDS ═══ */}
