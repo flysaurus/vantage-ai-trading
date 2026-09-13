@@ -1226,3 +1226,14 @@ input::placeholder, textarea::placeholder {
   font-size: 15px;
 }
 
+
+/* ── Holdings control row (All / Gainers / Losers / sort / Select) ──
+   Sits on its own line under the "Positions" header and scrolls horizontally
+   on narrow screens instead of clipping the last chip. The scrollbar itself is
+   hidden so the row keeps a chip-row look; the chips remain swipeable, and
+   every chip is a visible affordance (nothing is only reachable by scrolling
+   with no cue on wide screens, where all five fit without overflow). */
+.positions-controls::-webkit-scrollbar {
+  height: 0;
+  display: none;
+}

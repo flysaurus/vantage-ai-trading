@@ -1356,17 +1356,31 @@ export function PortfolioTab() {
       <MarketOverview />
 
       {/* ── 6. Positions ── */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '20px 20px 12px',
-      }}>
+      <div style={{ padding: '20px 20px 12px', position: 'relative' }}>
         <h2 className="section-header" style={{ padding: 0, color: 'var(--v-text-primary)' }}>
           Positions
         </h2>
 
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {/* The controls get their OWN row. Sharing the header's line squeezed
+            them until "Select" fell off the right edge on narrow screens.
+            The row scrolls horizontally rather than clipping when all five
+            items don't fit. `overflow-y: hidden` is unavoidable here (a scroll
+            container can't keep `visible` on the cross axis) — which is why
+            the sort menu is rendered outside this row. */}
+        <div
+          data-testid="positions-controls"
+          className="positions-controls"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            marginTop: 10,
+            overflowX: 'auto', overflowY: 'hidden',
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+          }}
+        >
           {/* Filter chips — All / Gainers / Losers (replaces the All+dropdown) */}
-          <div data-testid="filter-chips" style={{ display: 'flex', gap: 6 }}>
+          <div data-testid="filter-chips" style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
             {([
               { key: 'all', label: 'All' },
               { key: 'gainers', label: 'Gainers' },
@@ -1398,93 +1412,26 @@ export function PortfolioTab() {
               which direction. Value/Gain-Loss are option #1 and #2; both
               directions work for every field. */}
           {!showFilterDropdown && (
-            <div style={{ position: 'relative' }}>
-              <button
-                type="button"
-                data-testid="sort-toggle"
-                data-sort-key={sortKey}
-                data-sort-dir={sortDir}
-                onClick={() => setSortOpen((v) => !v)}
-                aria-haspopup="listbox"
-                aria-expanded={sortOpen}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                  padding: '6px 10px', borderRadius: 999,
-                  background: 'transparent', border: '1px solid var(--v-card-border)',
-                  color: 'var(--v-text-secondary)',
-                  fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 12,
-                  cursor: 'pointer', whiteSpace: 'nowrap',
-                }}
-              >
-                {SORT_OPTIONS.find((o) => o.key === sortKey)?.short}
-                <span aria-hidden="true" style={{ fontSize: 10 }}>{sortDir === 'desc' ? '\u2193' : '\u2191'}</span>
-              </button>
-
-              {sortOpen && (
-                <>
-                  {/* Click-away catcher */}
-                  <div
-                    data-testid="sort-scrim"
-                    onClick={() => setSortOpen(false)}
-                    style={{ position: 'fixed', inset: 0, zIndex: 60 }}
-                  />
-                  <div
-                    data-testid="sort-menu"
-                    role="listbox"
-                    style={{
-                      position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 61,
-                      minWidth: 210, padding: 6,
-                      background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)',
-                      borderRadius: 12, boxShadow: '0 10px 28px rgba(16,24,43,0.18)',
-                    }}
-                  >
-                    {SORT_OPTIONS.map((o) => {
-                      const active = o.key === sortKey;
-                      return (
-                        <button
-                          key={o.key}
-                          type="button"
-                          data-testid={`sort-option-${o.key}`}
-                          data-active={active ? 'true' : undefined}
-                          role="option"
-                          aria-selected={active}
-                          onClick={() => { setSortKey(o.key); setSortOpen(false); }}
-                          style={{
-                            display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '9px 10px', borderRadius: 8, border: 'none',
-                            background: active ? 'var(--v-accent-dim)' : 'transparent',
-                            color: active ? 'var(--v-accent-label)' : 'var(--v-text-secondary)',
-                            fontFamily: 'var(--font-sans)', fontWeight: active ? 700 : 600, fontSize: 13,
-                            cursor: 'pointer', textAlign: 'left',
-                          }}
-                        >
-                          <span>{o.label}</span>
-                          {active && <span aria-hidden="true" style={{ fontSize: 11 }}>{sortDir === 'desc' ? '\u2193' : '\u2191'}</span>}
-                        </button>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      data-testid="sort-direction"
-                      onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
-                      style={{
-                        display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
-                        marginTop: 4, padding: '9px 10px', borderRadius: 8,
-                        border: 'none', borderTop: '1px solid var(--v-card-border)',
-                        background: 'transparent', color: 'var(--v-text-secondary)',
-                        fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
-                        cursor: 'pointer', textAlign: 'left',
-                      }}
-                    >
-                      <span>Direction</span>
-                      <span style={{ fontWeight: 700, color: 'var(--v-text-primary)' }}>
-                        {sortDir === 'desc' ? 'High → Low ↓' : 'Low → High ↑'}
-                      </span>
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+            <button
+              type="button"
+              data-testid="sort-toggle"
+              data-sort-key={sortKey}
+              data-sort-dir={sortDir}
+              onClick={() => setSortOpen((v) => !v)}
+              aria-haspopup="listbox"
+              aria-expanded={sortOpen}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
+                padding: '6px 10px', borderRadius: 999,
+                background: 'transparent', border: '1px solid var(--v-card-border)',
+                color: 'var(--v-text-secondary)',
+                fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 12,
+                cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              {SORT_OPTIONS.find((o) => o.key === sortKey)?.short}
+              <span aria-hidden="true" style={{ fontSize: 10 }}>{sortDir === 'desc' ? '\u2193' : '\u2191'}</span>
+            </button>
           )}
 
           {/* Select mode — a MODE toggle, not a filter. Demoted to a text link so the
@@ -1500,7 +1447,7 @@ export function PortfolioTab() {
             }}
             style={{
               padding: 0, background: 'transparent', border: 'none',
-              marginLeft: 8,
+              marginLeft: 8, flexShrink: 0,
               color: 'var(--v-accent-label)',
               fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 12,
               cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap',
@@ -1510,6 +1457,74 @@ export function PortfolioTab() {
           </button>
           )}
         </div>
+
+        {/* Sort menu — lives OUTSIDE the scrollable control row. A scroll
+            container clips its children on both axes, so keeping the menu
+            inside would cut it off at the row's edge. Anchored to the section. */}
+        {sortOpen && !showFilterDropdown && (
+          <>
+            {/* Click-away catcher */}
+            <div
+              data-testid="sort-scrim"
+              onClick={() => setSortOpen(false)}
+              style={{ position: 'fixed', inset: 0, zIndex: 60 }}
+            />
+            <div
+              data-testid="sort-menu"
+              role="listbox"
+              style={{
+                position: 'absolute', top: '100%', right: 20, marginTop: 6, zIndex: 61,
+                minWidth: 210, padding: 6,
+                background: 'var(--v-card)', border: '0.5px solid var(--v-card-border)',
+                borderRadius: 12, boxShadow: '0 10px 28px rgba(16,24,43,0.18)',
+              }}
+            >
+              {SORT_OPTIONS.map((o) => {
+                const active = o.key === sortKey;
+                return (
+                  <button
+                    key={o.key}
+                    type="button"
+                    data-testid={`sort-option-${o.key}`}
+                    data-active={active ? 'true' : undefined}
+                    role="option"
+                    aria-selected={active}
+                    onClick={() => { setSortKey(o.key); setSortOpen(false); }}
+                    style={{
+                      display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '9px 10px', borderRadius: 8, border: 'none',
+                      background: active ? 'var(--v-accent-dim)' : 'transparent',
+                      color: active ? 'var(--v-accent-label)' : 'var(--v-text-secondary)',
+                      fontFamily: 'var(--font-sans)', fontWeight: active ? 700 : 600, fontSize: 13,
+                      cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    <span>{o.label}</span>
+                    {active && <span aria-hidden="true" style={{ fontSize: 11 }}>{sortDir === 'desc' ? '\u2193' : '\u2191'}</span>}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                data-testid="sort-direction"
+                onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
+                style={{
+                  display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
+                  marginTop: 4, padding: '9px 10px', borderRadius: 8,
+                  border: 'none', borderTop: '1px solid var(--v-card-border)',
+                  background: 'transparent', color: 'var(--v-text-secondary)',
+                  fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+              >
+                <span>Direction</span>
+                <span style={{ fontWeight: 700, color: 'var(--v-text-primary)' }}>
+                  {sortDir === 'desc' ? 'High → Low ↓' : 'Low → High ↑'}
+                </span>
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Unified Holdings + Baskets ── */}
