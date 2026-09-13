@@ -1,5 +1,5 @@
 // ─── FeatureSplash ──────────────────────────────────────────
-// bg-onboarding-0 gradient, two-line headlines
+// themed canvas gradient, two-line headlines
 // per slide, progress bar (3 segments), VantageOrb 100px pulsing.
 //
 // Layout:
@@ -81,7 +81,7 @@ export function FeatureSplash({ onComplete }: FeatureSplashProps) {
 
   return (
     <div
-      className="bg-onboarding-0"
+      className="onboarding-shell"
       style={{
         width: '100%',
         height: '100dvh',
@@ -90,6 +90,8 @@ export function FeatureSplash({ onComplete }: FeatureSplashProps) {
         alignItems: 'center',
         paddingTop: 'max(24px, env(safe-area-inset-top, 0px))',
         paddingBottom: 'max(24px, env(safe-area-inset-bottom, 0px))',
+        // Themed canvas with a soft accent wash (tokens only — no dark navy).
+        background: `radial-gradient(ellipse 140% 60% at 50% -10%, var(--v-accent-dim) 0%, transparent 65%), var(--v-canvas)`,
       }}
     >
       {/* ── TOP RIGHT: Skip ── */}
@@ -101,7 +103,7 @@ export function FeatureSplash({ onComplete }: FeatureSplashProps) {
           right: '24px',
           background: 'none',
           border: 'none',
-          color: 'rgba(255,255,255,0.40)',
+          color: 'var(--v-text-faint)',
           fontSize: '13px',
           cursor: 'pointer',
           fontFamily: 'var(--font-sans)',
@@ -143,7 +145,7 @@ export function FeatureSplash({ onComplete }: FeatureSplashProps) {
               fontFamily: 'var(--font-sans)',
               fontSize: '36px',
               fontWeight: 800,
-              color: 'var(--text-primary)',
+              color: 'var(--v-text-primary)',
               lineHeight: 1.15,
               marginBottom: '4px',
             }}
@@ -157,7 +159,7 @@ export function FeatureSplash({ onComplete }: FeatureSplashProps) {
               fontSize: '36px',
               fontWeight: 400,
               fontStyle: 'italic',
-              color: 'var(--text-primary)',
+              color: 'var(--v-text-primary)',
               lineHeight: 1.15,
             }}
           >
@@ -186,7 +188,7 @@ export function FeatureSplash({ onComplete }: FeatureSplashProps) {
                 flex: 1,
                 height: '3px',
                 borderRadius: '1px',
-                background: i <= activeSlide ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
+                background: i <= activeSlide ? 'var(--v-accent)' : 'var(--v-card-border)',
                 transition: 'background 300ms ease-out',
               }}
             />
@@ -202,8 +204,8 @@ export function FeatureSplash({ onComplete }: FeatureSplashProps) {
             height: '56px',
             borderRadius: 'var(--radius-pill)',
             border: 'none',
-            background: '#ffffff',
-            color: '#000000',
+            background: 'var(--v-accent)',
+            color: 'var(--v-accent-text)',
             fontSize: '17px',
             fontWeight: 700,
             fontFamily: 'var(--font-sans)',

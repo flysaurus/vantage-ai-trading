@@ -377,3 +377,21 @@
 [data-theme='dark'] .broker-shell {
   background: var(--v-canvas);
 }
+
+/* Standalone ONBOARDING sequence (boot splash / tutorial cards / quiz /
+   archetype reveal) renders outside .app-shell. `html, body` in globals.css
+   paint `--bg-primary` (the legacy dark navy), so give these screens the themed
+   canvas too, keyed off a root `.onboarding-shell` marker. Screens that paint
+   their own accent wash override this with an inline gradient. */
+[data-theme='light'] body:has(.onboarding-shell),
+[data-theme='light'] .onboarding-shell,
+[data-theme='dark'] body:has(.onboarding-shell),
+[data-theme='dark'] .onboarding-shell {
+  background: var(--v-canvas);
+}
+/* html itself also carries [data-theme], so it needs the attribute ON the
+   element (there is no ancestor to scope it by): */
+html[data-theme='light']:has(.onboarding-shell),
+html[data-theme='dark']:has(.onboarding-shell) {
+  background: var(--v-canvas);
+}

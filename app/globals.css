@@ -652,7 +652,7 @@ input::placeholder, textarea::placeholder {
   font-family: var(--font-sans);
   font-weight: 800;
   font-size: 36px;
-  color: white;
+  color: var(--v-text-primary);
   text-align: center;
   margin: 0 0 2px 0;
   line-height: 1.1;
@@ -663,7 +663,7 @@ input::placeholder, textarea::placeholder {
   font-style: italic;
   font-weight: 400;
   font-size: 36px;
-  color: var(--accent);
+  color: var(--v-accent);
   text-align: center;
   margin: 0 0 8px 0;
   line-height: 1.1;
@@ -671,12 +671,12 @@ input::placeholder, textarea::placeholder {
 
 /* ── Tag pill ── */
 .style-reveal-tag {
-  background: rgba(34,211,238,0.10);
-  border: 1px solid rgba(34,211,238,0.30);
+  background: var(--v-accent-dim);
+  border: 1px solid var(--v-card-border);
   border-radius: var(--radius-pill);
   padding: 6px 14px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--v-text-secondary);
   margin-bottom: 10px;
   flex-shrink: 0;
   transition: opacity 300ms var(--ease-out);
@@ -708,7 +708,7 @@ input::placeholder, textarea::placeholder {
 /* ── Narrator ── */
 .style-reveal-narrator {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--v-text-secondary);
   text-align: center;
   max-width: 260px;
   line-height: 1.5;
@@ -719,7 +719,7 @@ input::placeholder, textarea::placeholder {
 /* ── Override label ── */
 .style-reveal-override-label {
   font-size: 12px;
-  color: rgba(255,255,255,0.35);
+  color: var(--v-text-faint);
   margin: 0 0 6px 0;
   text-align: center;
 }
@@ -755,12 +755,12 @@ input::placeholder, textarea::placeholder {
 
 /* ── Toast ── */
 .style-reveal-toast {
-  background: rgba(34,211,238,0.12);
-  border: 1px solid rgba(34,211,238,0.30);
+  background: var(--v-accent-dim);
+  border: 1px solid var(--v-card-border);
   border-radius: 999px;
   padding: 6px 14px;
   font-size: 13px;
-  color: var(--accent);
+  color: var(--v-accent-label);
   text-align: center;
   margin-bottom: 12px;
   flex-shrink: 0;

@@ -87,7 +87,6 @@ export function QuizQuestion({
     };
   }, [question.id]);
 
-  const gradientClass = `bg-onboarding-${questionNumber}`;
   const [line1, line2] = QUESTION_LINES[question.id] || [question.question, ''];
   const isFirst = questionNumber === 1;
   const isLastQ = questionNumber === totalQuestions;
@@ -111,12 +110,14 @@ export function QuizQuestion({
 
   return (
     <div
-      className={gradientClass}
+      className="onboarding-shell"
       style={{
         width: '100%',
         height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
+        // Themed canvas with a soft accent wash (tokens only — no dark navy).
+        background: `radial-gradient(ellipse 140% 60% at 50% -10%, var(--v-accent-dim) 0%, transparent 65%), var(--v-canvas)`,
         transition: 'transform 250ms ease-in, opacity 250ms ease-in',
         transform: leaving
           ? 'translateX(-100%)'
@@ -145,7 +146,7 @@ export function QuizQuestion({
             style={{
               background: 'none',
               border: 'none',
-              color: 'rgba(255,255,255,0.70)',
+              color: 'var(--v-text-secondary)',
               fontSize: '14px',
               fontWeight: 400,
               cursor: 'pointer',
@@ -194,7 +195,7 @@ export function QuizQuestion({
             fontFamily: 'var(--font-sans)',
             fontSize: '11px',
             fontWeight: 400,
-            color: 'rgba(255,255,255,0.50)',
+            color: 'var(--v-text-muted)',
             flex: 1,
           }}
         >
@@ -205,7 +206,7 @@ export function QuizQuestion({
             fontFamily: 'var(--font-sans)',
             fontSize: '11px',
             fontWeight: 400,
-            color: 'rgba(34,211,238,0.70)',
+            color: 'var(--v-accent-label)',
             textAlign: 'right',
             minWidth: '40px',
           }}
@@ -236,11 +237,11 @@ export function QuizQuestion({
                 borderRadius: '1px',
                 background: isFilled
                   ? isLast
-                    ? 'var(--accent)'
-                    : 'rgba(255,255,255,0.60)'
+                    ? 'var(--v-accent)'
+                    : 'var(--v-text-secondary)'
                   : isLast
-                    ? 'rgba(34,211,238,0.15)'
-                    : 'rgba(255,255,255,0.15)',
+                    ? 'var(--v-accent-dim)'
+                    : 'var(--v-card-border)',
                 transition: 'background 300ms ease-out',
               }}
             />
@@ -258,9 +259,7 @@ export function QuizQuestion({
         <p
           style={{
             fontSize: '11px',
-            color: isLastQ
-              ? 'var(--accent)'
-              : 'rgba(34,211,238,0.7)',
+            color: 'var(--v-accent-label)',
             letterSpacing: '0.12em',
             textTransform: 'uppercase',
             marginBottom: '12px',
@@ -280,7 +279,7 @@ export function QuizQuestion({
               fontFamily: 'var(--font-sans)',
               fontSize: '38px',
               fontWeight: 800,
-              color: 'var(--text-primary)',
+              color: 'var(--v-text-primary)',
               lineHeight: 1.1,
             }}
           >
@@ -293,7 +292,7 @@ export function QuizQuestion({
               fontSize: '38px',
               fontWeight: 400,
               fontStyle: 'italic',
-              color: 'var(--text-primary)',
+              color: 'var(--v-text-primary)',
               lineHeight: 1.1,
             }}
           >
@@ -307,7 +306,7 @@ export function QuizQuestion({
             fontFamily: 'var(--font-sans)',
             fontSize: '11px',
             fontWeight: 400,
-            color: 'rgba(255,255,255,0.40)',
+            color: 'var(--v-text-faint)',
             margin: '12px 0 0',
           }}
         >
@@ -348,15 +347,11 @@ export function QuizQuestion({
                   gap: 0,
                   padding: '18px 20px',
                   background: isSelected
-                    ? 'rgba(34,211,238,0.08)'
-                    : hasSelection
-                      ? 'rgba(255,255,255,0.03)'
-                      : 'rgba(255,255,255,0.05)',
+                    ? 'var(--v-accent-dim)'
+                    : 'var(--v-card)',
                   border: isSelected
-                    ? '1px solid var(--accent)'
-                    : hasSelection
-                      ? '1px solid rgba(255,255,255,0.05)'
-                      : '1px solid rgba(255,255,255,0.08)',
+                    ? '1px solid var(--v-accent)'
+                    : '1px solid var(--v-card-border)',
                   borderRadius: '18px',
                   cursor: 'pointer',
                   transition: 'all 150ms var(--ease-out)',
@@ -384,13 +379,13 @@ export function QuizQuestion({
                     fontSize: '13px',
                     fontWeight: 700,
                     color: isSelected
-                      ? 'var(--accent)'
-                      : 'rgba(255,255,255,0.35)',
+                      ? 'var(--v-accent)'
+                      : 'var(--v-text-muted)',
                     background: isSelected
-                      ? 'rgba(34,211,238,0.15)'
-                      : 'rgba(255,255,255,0.06)',
+                      ? 'var(--v-accent-dim)'
+                      : 'var(--v-canvas)',
                     border: isSelected
-                      ? '1px solid rgba(34,211,238,0.40)'
+                      ? '1px solid var(--v-accent)'
                       : '1px solid transparent',
                     transition: 'all 150ms var(--ease-out)',
                   }}
@@ -408,10 +403,10 @@ export function QuizQuestion({
                     fontWeight: 500,
                     lineHeight: 1.4,
                     color: isSelected
-                      ? 'var(--text-primary)'
+                      ? 'var(--v-text-primary)'
                       : hasSelection
-                        ? 'var(--text-secondary)'
-                        : 'var(--text-primary)',
+                        ? 'var(--v-text-secondary)'
+                        : 'var(--v-text-primary)',
                     textAlign: 'left' as const,
                   }}
                 >
@@ -432,7 +427,7 @@ export function QuizQuestion({
               right: 0,
               height: '80px',
               background:
-                'linear-gradient(to bottom, transparent 60%, var(--bg) 100%)',
+                'linear-gradient(to bottom, transparent 60%, var(--v-canvas) 100%)',
               pointerEvents: 'none',
             }}
           />
@@ -449,8 +444,8 @@ export function QuizQuestion({
             height: '56px',
             borderRadius: 'var(--radius-pill)',
             border: 'none',
-            background: selectedKey ? '#ffffff' : 'rgba(255,255,255,0.20)',
-            color: selectedKey ? '#000000' : 'rgba(0,0,0,0.40)',
+            background: selectedKey ? 'var(--v-accent)' : 'var(--v-disabled-bg)',
+            color: selectedKey ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
             fontSize: '17px',
             fontWeight: 700,
             fontFamily: 'var(--font-sans)',
@@ -478,7 +473,7 @@ export function QuizQuestion({
             style={{
               background: 'none',
               border: 'none',
-              color: 'rgba(255,255,255,0.50)',
+              color: 'var(--v-text-secondary)',
               fontSize: '14px',
               fontWeight: 400,
               fontFamily: 'var(--font-sans)',

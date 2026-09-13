@@ -22,8 +22,17 @@ import {
   getStyleDescription,
   ALL_STYLES,
 } from '@/lib/content/investor-styles';
-import { RISK_COLORS, RISK_LABELS } from '@/lib/onboarding/quiz-logic';
+import { RISK_LABELS } from '@/lib/onboarding/quiz-logic';
 import type { InvestorStyleKey, RiskTolerance } from '@/lib/onboarding/onboarding-state';
+
+// Risk badge colors on the themed canvas. The legacy RISK_COLORS map resolves
+// to the dark-only --gain/--accent/--warning tokens, which are unreadable on the
+// light canvas, so the badge uses the AA-safe themed label tokens instead.
+const RISK_BADGE_COLOR: Record<RiskTolerance, string> = {
+  conservative: 'var(--v-gain-label)',
+  moderate: 'var(--v-accent-label)',
+  aggressive: 'var(--v-warn)',
+};
 
 // Per-style glow colors
 const STYLE_GLOW: Record<InvestorStyleKey, { bg: string; shadow: string }> = {
@@ -92,7 +101,7 @@ export function StyleReveal({
   const { bg: glowBg, shadow: glowShadow } = STYLE_GLOW[selectedStyle];
   const shortLabel = getStyleContent(selectedStyle).shortLabel;
 
-  const riskColor = RISK_COLORS[initialRisk];
+  const riskColor = RISK_BADGE_COLOR[initialRisk];
   const riskLabel = RISK_LABELS[initialRisk];
 
   // ── Word highlight callback ──────────────────────────────
@@ -194,7 +203,7 @@ export function StyleReveal({
 
   return (
     <div
-      className="style-reveal-root bg-onboarding-reveal"
+      className="style-reveal-root onboarding-shell"
       onClick={handleScreenTap}
     >
       {/* ═══ TOP BAR ═══ */}
@@ -212,7 +221,7 @@ export function StyleReveal({
               border: 'none',
               cursor: 'pointer',
               padding: '4px 0',
-              color: 'var(--text-secondary)',
+              color: 'var(--v-text-secondary)',
               fontFamily: 'var(--font-sans)',
               fontSize: '15px',
             }}
@@ -230,7 +239,7 @@ export function StyleReveal({
             style={{
               background: 'none',
               border: 'none',
-              color: 'rgba(255,255,255,0.55)',
+              color: 'var(--v-text-secondary)',
               fontSize: '13px',
               cursor: 'pointer',
               fontFamily: 'var(--font-sans)',
@@ -298,13 +307,16 @@ export function StyleReveal({
               <span
                 key={`${i}-${word}`}
                 style={{
+                  // The word being "spoken". --v-accent on the light canvas is only
+                  // 3.77:1 at this 15px size; the LABEL accent holds the highlight
+                  // and clears 4.5:1 in light while staying bright in dark.
                   color: isActive
-                    ? 'rgba(34,211,238,1.0)'
+                    ? 'var(--v-accent-label)'
                     : isCompleted
-                      ? 'rgba(255,255,255,0.85)'
-                      : 'rgba(255,255,255,0.25)',
+                      ? 'var(--v-text-primary)'
+                      : 'var(--v-text-faint)',
                   textShadow: isActive
-                    ? '0 0 20px rgba(34,211,238,0.6), 0 0 40px rgba(34,211,238,0.3)'
+                    ? '0 0 20px var(--v-glow), 0 0 40px var(--v-glow)'
                     : 'none',
                   transition: isActive
                     ? 'color 60ms ease-out, text-shadow 60ms ease-out'
@@ -364,9 +376,13 @@ export function StyleReveal({
                   }}
                   className="style-reveal-pill"
                   style={{
-                    borderColor: isActive ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
-                    background: isActive ? 'rgba(34,211,238,0.10)' : 'transparent',
-                    color: isActive ? 'var(--accent)' : 'rgba(255,255,255,0.45)',
+                    borderColor: isActive ? 'var(--v-accent)' : 'var(--v-card-border)',
+                    background: isActive ? 'var(--v-accent-dim)' : 'transparent',
+                    // Active chip text uses the LABEL accent, not --v-accent: at 13px
+                    // this is small text, and accent-on-accent-dim measured 3.31:1 on
+                    // the light canvas (needs 4.5:1). --v-accent-label is 6.23:1 light
+                    // and stays bright in dark.
+                    color: isActive ? 'var(--v-accent-label)' : 'var(--v-text-muted)',
                   }}
                 >
                   {s.shortLabel}
@@ -399,8 +415,8 @@ export function StyleReveal({
             })
           }
           style={{
-            background: showCta ? '#ffffff' : 'rgba(255,255,255,0.20)',
-            color: showCta ? '#000000' : 'rgba(0,0,0,0.40)',
+            background: showCta ? 'var(--v-accent)' : 'var(--v-disabled-bg)',
+            color: showCta ? 'var(--v-accent-text)' : 'var(--v-disabled-text)',
             opacity: showCta ? 1 : 0,
             pointerEvents: showCta ? 'auto' : 'none',
           }}

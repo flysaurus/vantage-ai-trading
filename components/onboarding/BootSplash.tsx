@@ -44,6 +44,7 @@ export function BootSplash({ onComplete }: BootSplashProps) {
 
   return (
     <div
+      className="onboarding-shell"
       style={{
         width: '100%',
         height: '100dvh',
@@ -53,10 +54,11 @@ export function BootSplash({ onComplete }: BootSplashProps) {
         justifyContent: 'center',
         gap: 0,
         padding: 0,
+        // Themed canvas with a soft accent wash (tokens only — no dark navy).
         background: `
-          radial-gradient(ellipse 180% 80% at 50% -30%, rgba(34,211,238,0.50) 0%, rgba(14,116,144,0.30) 35%, rgba(6,78,100,0.12) 60%, transparent 75%),
-          radial-gradient(ellipse 100% 60% at 80% 110%, rgba(99,102,241,0.22) 0%, transparent 70%),
-          #0a0f1e
+          radial-gradient(ellipse 180% 80% at 50% -30%, var(--v-accent-dim) 0%, transparent 72%),
+          radial-gradient(ellipse 100% 60% at 80% 110%, var(--v-glow) 0%, transparent 70%),
+          var(--v-canvas)
         `,
       }}
     >
@@ -91,7 +93,7 @@ export function BootSplash({ onComplete }: BootSplashProps) {
             fontFamily: 'var(--font-sans)',
             fontSize: '38px',
             fontWeight: 800,
-            color: '#ffffff',
+            color: 'var(--v-text-primary)',
             letterSpacing: '0.22em',
           }}
         >
@@ -104,7 +106,7 @@ export function BootSplash({ onComplete }: BootSplashProps) {
             fontSize: '18px',
             fontWeight: 400,
             fontStyle: 'italic',
-            color: 'rgba(255,255,255,0.55)',
+            color: 'var(--v-text-secondary)',
             opacity: showTagline ? 1 : 0,
             transition: 'opacity 400ms var(--ease-out)',
           }}
@@ -119,7 +121,7 @@ export function BootSplash({ onComplete }: BootSplashProps) {
           position: 'absolute',
           bottom: '44px',
           fontSize: '12px',
-          color: 'rgba(255,255,255,0.20)',
+          color: 'var(--v-text-faint)',
           fontFamily: 'var(--font-sans)',
         }}
       >
