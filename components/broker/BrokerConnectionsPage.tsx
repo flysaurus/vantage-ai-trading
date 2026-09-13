@@ -119,6 +119,7 @@ function ConnectedCard({
         padding: '16px',
         borderRadius: '16px',
         background: 'var(--v-card)',
+        boxShadow: 'var(--v-shadow-card)', // locked elevation
         border: '1px solid var(--v-card-border)',
         position: 'relative',
         overflow: 'hidden',
@@ -153,6 +154,7 @@ function ConnectedCard({
               height: '42px',
               borderRadius: '11px',
               background: 'var(--v-card)',
+              boxShadow: 'var(--v-shadow-card)', // locked elevation
               border: '1px solid var(--v-card-border)',
               display: 'flex',
               alignItems: 'center',
@@ -384,6 +386,7 @@ function BrokerListRow({
         padding: '13px 14px',
         borderRadius: '14px',
         background: 'var(--v-card)',
+        boxShadow: 'var(--v-shadow-card)', // locked elevation
         border: '1px solid var(--v-card-border)',
         display: 'flex',
         alignItems: 'center',
@@ -414,6 +417,7 @@ function BrokerListRow({
           height: '38px',
           borderRadius: '11px',
           background: 'var(--v-card)',
+          boxShadow: 'var(--v-shadow-card)', // locked elevation
           border: '1px solid var(--v-card-border)',
           display: 'flex',
           alignItems: 'center',
@@ -539,6 +543,7 @@ function ComingSoonSection({
               fontSize: '12px',
               color: 'var(--v-text-secondary)',
               background: 'var(--v-card)',
+              boxShadow: 'var(--v-shadow-card)', // locked elevation
               border: '1px solid var(--v-card-border)',
               padding: '4px 10px',
               borderRadius: '8px',
@@ -792,6 +797,7 @@ export function BrokerConnectionsPage({
             height: '34px',
             borderRadius: '10px',
             background: 'var(--v-card)',
+            boxShadow: 'var(--v-shadow-card)', // locked elevation
             border: '1px solid var(--v-card-border)',
             display: 'flex',
             alignItems: 'center',

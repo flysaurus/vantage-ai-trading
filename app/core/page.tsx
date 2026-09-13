@@ -33,7 +33,7 @@ const BACKGROUNDS: Array<'card' | 'light' | 'dark'> = ['card', 'light', 'dark'];
 const SURFACE: Record<'card' | 'light' | 'dark', string> = {
   card: '#17323B',
   dark: '#000814',
-  light: '#f5f7f4',
+  light: '#eaefec',
 };
 
 const chip = (active: boolean): React.CSSProperties => ({

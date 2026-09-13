@@ -229,6 +229,7 @@ export default function AccountSelectScreen({
               borderRadius: '16px',
               border: '1.5px dashed var(--v-card-border)',
               background: 'var(--v-card)',
+              boxShadow: 'var(--v-shadow-card)', // locked elevation
               display: 'flex',
               alignItems: 'center',
               gap: '13px',
@@ -424,6 +425,7 @@ function AccountCard({
         padding: '16px',
         borderRadius: '16px',
         background: cardBg,
+        boxShadow: 'var(--v-shadow-card)',
         border: `1px solid ${cardBorder}`,
         display: 'flex',
         alignItems: 'center',
@@ -482,6 +484,7 @@ function AccountCard({
             height: '42px',
             borderRadius: '11px',
             background: 'var(--v-card)',
+            boxShadow: 'var(--v-shadow-card)', // locked elevation
             border: '1px solid var(--v-card-border)',
             padding: '7px',
             display: 'flex',

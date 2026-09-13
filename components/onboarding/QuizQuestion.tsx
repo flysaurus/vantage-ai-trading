@@ -353,6 +353,7 @@ export function QuizQuestion({
                     ? '1px solid var(--v-accent)'
                     : '1px solid var(--v-card-border)',
                   borderRadius: '18px',
+                  boxShadow: 'var(--v-shadow-card)',
                   cursor: 'pointer',
                   transition: 'all 150ms var(--ease-out)',
                   opacity: hasSelection && !isSelected ? 0.6 : 1,

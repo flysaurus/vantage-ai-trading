@@ -32,7 +32,7 @@ function getSafeRedirect(): string {
 
 // ── Gradient ───────────────────────────────────────────────
 
-// Light canvas (#F5F7F4) with the soft top accent wash from the locked
+// Light canvas (#EAEFEC) with the soft top accent wash from the locked
 // light system (rgba(14,140,153,·) ≈ --v-accent). No hardcoded dark navy.
 const GRADIENT = `radial-gradient(ellipse 120% 60% at 50% -10%, rgba(14,140,153,0.10) 0%, transparent 55%), var(--v-canvas)`;
 
@@ -577,6 +577,7 @@ export default function LoginPage() {
               padding: '24px',
               borderRadius: '16px',
               background: 'var(--v-card)',
+              boxShadow: 'var(--v-shadow-card)', // locked elevation
               border: '1px solid var(--v-card-border)',
             }}
           >

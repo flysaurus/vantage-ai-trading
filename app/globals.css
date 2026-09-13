@@ -845,6 +845,7 @@ input::placeholder, textarea::placeholder {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  box-shadow: var(--v-shadow-card);
 }
 
 .position-card-top {

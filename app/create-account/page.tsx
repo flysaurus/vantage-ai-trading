@@ -870,6 +870,7 @@ export default function CreateAccountPage() {
       <div
         style={{
           background: 'var(--v-card)',
+          boxShadow: 'var(--v-shadow-card)', // locked elevation
           border: '1px solid var(--v-card-border)',
           borderRadius: '16px',
           padding: '14px 16px',
@@ -950,6 +951,7 @@ export default function CreateAccountPage() {
           borderRadius: '999px',
           border: '1px solid var(--v-card-border)',
           background: 'var(--v-card)',
+          boxShadow: 'var(--v-shadow-card)', // locked elevation
           color: 'var(--v-text-primary)',
           fontSize: '17px',
           fontWeight: 700,

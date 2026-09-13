@@ -79,7 +79,7 @@ export function AccountSwitcher({
         className={isMasthead
           ? undefined
           : `flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium
-             bg-[color:var(--v-card)] border border-[color:var(--v-card-border)] hover:bg-[color:var(--v-skel-b)]
+             bg-[color:var(--v-card)] border border-[color:var(--v-card-border)] hover:bg-[color:var(--v-skel-b)] shadow-[var(--v-shadow-card)]
              text-[color:var(--v-text-primary)] transition-all duration-200`}
         style={isMasthead ? {
           display: 'flex', alignItems: 'center', gap: 6, maxWidth: 190,
@@ -136,7 +136,7 @@ export function AccountSwitcher({
              data-testid="account-switcher-menu"
              className="absolute top-full mt-2 w-[260px] rounded-xl
                         bg-[color:var(--v-card)] border border-[color:var(--v-card-border)]
-                        shadow-2xl shadow-black/20 z-50 overflow-hidden"
+                        shadow-[var(--v-shadow-card)] z-50 overflow-hidden"
              style={{ left: isMasthead ? 'auto' : 0, right: isMasthead ? 0 : 'auto' }}
              role="listbox"
         >
