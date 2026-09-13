@@ -368,7 +368,7 @@ const styles = {
     fontSize: '0.875rem',
     fontWeight: 600,
     zIndex: 1100,
-    boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+    boxShadow: 'var(--v-shadow-toast)',
   } as React.CSSProperties),
 
   sortIndicator: {

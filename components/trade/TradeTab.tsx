@@ -2421,7 +2421,7 @@ export function TradeTab() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+          boxShadow: 'var(--v-shadow-toast)',
           animation: 'slideDown 0.25s ease',
         }}>
           <span style={{ fontSize: '13px', color: 'var(--v-text-primary)', flex: 1 }}>{toast.message}</span>
