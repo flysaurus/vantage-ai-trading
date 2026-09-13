@@ -543,7 +543,6 @@ export default function BasketCard({
                       basketName: basket.name,
                       basketEmoji: basket.emoji,
                     }}
-                    connectionId={connectionId ?? null}
                   />
                 )}
               </div>

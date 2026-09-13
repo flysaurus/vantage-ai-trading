@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { Position } from '@/types';
-import { usePositionLots } from '@/hooks/usePositionLots';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { getActiveLotCount, formatFIFOLabel, type Lot } from '@/lib/fifo-engine';
+import { useReconstructedLots } from '@/hooks/useReconstructedLots';
+import { useAccountLotsScope } from '@/hooks/useAccountLotsScope';
+import { getActiveLotCount, getTotalRemainingQty, formatFIFOLabel, type Lot } from '@/lib/fifo-engine';
 import { ThresholdBadgePill } from './ThresholdBadgePill';
 import type { ThresholdCrossing } from '@/lib/insights/threshold-badge';
 
@@ -20,7 +20,6 @@ interface PositionCardV3Props {
   onSell?: (lots: Lot[]) => void;
   showCheckbox?: boolean;
   basketContext?: { basketId: string; basketName: string; basketEmoji: string } | null;
-  connectionId?: string | null;
   /** Render only the expanded content inline (no card chrome/header) — used inside basket accordion. */
   inline?: boolean;
   /**
@@ -52,6 +51,10 @@ const formatLotDate = (dateStr: string): string => {
   });
 };
 
+/** Quantities: whole shares stay whole, fractional shares get at most 4dp. */
+const fmtQty = (n: number) =>
+  n % 1 === 0 ? String(n) : n.toFixed(4).replace(/\.?0+$/, '');
+
 // ─── Component ─────────────────────────────────────────────
 
 export default function PositionCardV3({
@@ -64,22 +67,27 @@ export default function PositionCardV3({
   onSell,
   showCheckbox = false,
   basketContext = null,
-  connectionId = null,
   inline = false,
   crossing = null,
 }: PositionCardV3Props) {
-  const { user } = useAuth();
-  const userId = user?.id as string | undefined;
-
-  // ── Lot data ──
+  // ── Lot data — the SAME account-scoped, activities-based reconstruction
+  // Position Detail reads (hooks/useReconstructedLots →
+  // GET /api/strategies/tax-harvest/lots). The synthetic `position_lots`
+  // ledger is gone from this card; both consumers share one real-lot source.
+  const { connectionId: activeConnectionId, isDemo: isDemoAccount } = useAccountLotsScope();
   const {
     lots,
-    activeLots,
-    totalRemainingQty,
-    weightedAvgCost,
+    unknownStart,
+    windowStartDate,
     loading: lotsLoading,
     error: lotsError,
-  } = usePositionLots(userId, pos.symbol, connectionId, isExpanded);
+  } = useReconstructedLots({
+    connectionId: activeConnectionId,
+    isDemo: isDemoAccount,
+    symbol: pos.symbol,
+    // Fetch once expanded (or when rendered inline inside a basket accordion).
+    enabled: inline || isExpanded,
+  });
 
   // ── Sparkline + fundamentals + news ──
   const [sparkline, setSparkline] = useState<{
@@ -218,11 +226,34 @@ export default function PositionCardV3({
   const todayPnL = pos.dayChange ?? 0;
   const todayPnLPct = pos.dayChangePercent ?? 0;
 
-  // Lot summary values
+  // Current price drives the per-lot Gain/Loss column — mirrors Position
+  // Detail exactly (null when the quote is unusable → '—', never a fake 0).
+  const lotCurrentPrice = pos.currentPrice ?? null;
+
+  // Lot summary — derived from the reconstructed lots, same as Position Detail.
+  const activeLots = getActiveLotCount(lots);
+  const totalRemainingQty = getTotalRemainingQty(lots);
+  const weightedAvgCost =
+    totalRemainingQty > 0
+      ? lots
+          .filter((l) => l.remaining_qty > 0)
+          .reduce((sum, l) => sum + l.remaining_qty * l.price_at_fill, 0) / totalRemainingQty
+      : 0;
   const lotCount = activeLots;
   const showLotBadge = lotCount >= 2;
-  const avgCostDisplay = lotCount >= 1 ? weightedAvgCost : pos.avgCost;
-  const fifoLabel = formatFIFOLabel(lotCount, lotCount >= 2);
+  const avgCostDisplay = lotCount >= 1 ? Math.round(weightedAvgCost * 100) / 100 : pos.avgCost;
+
+  // Known lots only tell part of the story when shares predate the activity
+  // window — never present the count as the whole position (verbatim from
+  // Position Detail: `${knownLotsLabel}+`, or `1+` if no dated lots at all).
+  const knownLotsLabel = formatFIFOLabel(activeLots, activeLots > 1);
+  const fifoLabel = unknownStart
+    ? knownLotsLabel
+      ? `${knownLotsLabel}+`
+      : '1+'
+    : knownLotsLabel;
+  // Collapsed pill count, e.g. "2+ lots" when the start is unknown.
+  const lotBadgeCountLabel = unknownStart ? `${lotCount}+` : `${lotCount}`;
 
   // Is this in a basket? (Phase 4 pre-wire)
   const inBasket = !!basketContext;
@@ -326,7 +357,7 @@ export default function PositionCardV3({
                     lineHeight: 1.4,
                   }}
                 >
-                  {lotCount} lots
+                  {lotBadgeCountLabel} lots
                 </span>
               )}
 
@@ -502,6 +533,37 @@ export default function PositionCardV3({
               </div>
             </div>
 
+            {/* Unknown-start disclosure — deliberately prominent, directly ABOVE
+                the table (same placement/wording rules as Position Detail).
+                Shares predating the broker's transaction history have no
+                purchase date on file, so the lots below UNDERSTATE the
+                position and must never be presented as the whole position. */}
+            {unknownStart && (
+              <div
+                data-testid="position-card-unknown-start"
+                style={{
+                  padding: '10px 14px',
+                  background: 'var(--v-warn-dim, rgba(251,191,36,0.10))',
+                  border: '1px dashed var(--v-warn, #fbbf24)',
+                  borderRadius: 10,
+                  fontSize: 11.5,
+                  color: 'var(--v-warn, #fbbf24)',
+                  marginBottom: 10,
+                  lineHeight: 1.5,
+                }}
+              >
+                <div style={{ fontWeight: 800, marginBottom: 4 }}>⚠️ {unknownStart.label}</div>
+                <div style={{ color: '#cbd5e1' }}>
+                  {fmtQty(unknownStart.sharesHeldBeforeWindow)} shares in this position were held before your broker&apos;s
+                  transaction history begins
+                  {windowStartDate
+                    ? ` (${new Date(windowStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})`
+                    : ''}
+                  , so they have no purchase date on file and the lots below understate the position.
+                </div>
+              </div>
+            )}
+
             {/* Lot table */}
             {lotsLoading && (
               <div
@@ -521,6 +583,7 @@ export default function PositionCardV3({
             )}
             {!lotsLoading && !lotsError && lots.length > 0 && (
               <div
+                data-testid="position-card-lots"
                 style={{
                   background: 'rgba(30,41,59,0.40)',
                   border: '1px solid rgba(255,255,255,0.06)',
@@ -528,11 +591,11 @@ export default function PositionCardV3({
                   overflow: 'hidden',
                 }}
               >
-                {/* Table header */}
+                {/* Table header — matches Position Detail exactly. */}
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '2fr 1fr 1fr 1.2fr',
+                    gridTemplateColumns: '0.9fr 1fr 1.3fr 1.3fr 1.3fr',
                     gap: 4,
                     padding: '7px 10px',
                     borderBottom: '1px solid rgba(255,255,255,0.05)',
@@ -543,141 +606,76 @@ export default function PositionCardV3({
                     letterSpacing: '0.03em',
                   }}
                 >
-                  <span>Purchased</span>
                   <span>Qty</span>
-                  <span>Price</span>
+                  <span>Fill</span>
+                  <span>Cost basis</span>
+                  <span>Date</span>
                   <span>Gain/Loss</span>
                 </div>
 
-                {lots.map((lot: Lot, i: number) => {
-                  const lotGain =
-                    (currentPrice - lot.price_at_fill) * lot.remaining_qty;
-                  const lotGainPct =
-                    lot.price_at_fill > 0
-                      ? ((currentPrice - lot.price_at_fill) / lot.price_at_fill) * 100
-                      : 0;
-                  const lotGainColor =
-                    lotGain >= 0 ? 'var(--gain, #10b981)' : 'var(--loss, #ef4444)';
-                  const lotGainSign = lotGain >= 0 ? '+' : '';
-
-                  // Determine lot origin display
-                  let originLabel = '';
-                  if (inBasket && lot.origin_tag) {
-                    originLabel = lot.origin_tag === 'basket_buy'
-                      ? 'Basket Buy'
-                      : lot.origin_tag === 'buy_more'
-                        ? 'Buy More'
-                        : lot.origin_tag;
-                  }
+                {lots.filter((l) => l.remaining_qty > 0).map((l) => {
+                  // Same per-lot P&L the canonical Detail table computes.
+                  const lotPnl =
+                    lotCurrentPrice != null && Number.isFinite(lotCurrentPrice) && lotCurrentPrice > 0
+                      ? l.remaining_qty * (lotCurrentPrice - l.price_at_fill)
+                      : null;
+                  const lotPnlColor =
+                    lotPnl == null
+                      ? 'var(--dim, #aab4c7)'
+                      : lotPnl >= 0
+                        ? 'var(--gain, #10b981)'
+                        : 'var(--loss, #ef4444)';
 
                   return (
                     <div
-                      key={lot.id}
+                      key={l.id}
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '2fr 1fr 1fr 1.2fr',
+                        gridTemplateColumns: '0.9fr 1fr 1.3fr 1.3fr 1.3fr',
                         gap: 4,
-                        padding: '8px 10px',
-                        borderBottom:
-                          i < lots.length - 1
-                            ? '1px solid rgba(255,255,255,0.03)'
-                            : 'none',
+                        padding: '9px 10px',
+                        borderBottom: '1px solid rgba(255,255,255,0.05)',
                         alignItems: 'center',
                         fontSize: 11,
+                        color: '#cbd5e1',
                       }}
                     >
-                      {/* Purchased date + origin */}
-                      <div>
-                        <div style={{ color: '#ffffff', fontWeight: 500 }}>
-                          {formatLotDate(lot.filled_at)}
-                        </div>
-                        <div style={{ display: 'flex', gap: 4, marginTop: 2, alignItems: 'center' }}>
-                          {/* Source badge */}
-                          <span
-                            style={{
-                              fontSize: 8,
-                              fontWeight: 600,
-                              padding: '1px 5px',
-                              borderRadius: 4,
-                              background:
-                                lot.source === 'vantage'
-                                  ? 'rgba(34,211,238,0.12)'
-                                  : 'rgba(139,150,171,0.10)',
-                              color:
-                                lot.source === 'vantage'
-                                  ? '#22d3ee'
-                                  : 'var(--dim, #aab4c7)',
-                              textTransform: 'capitalize',
-                            }}
-                          >
-                            {lot.source || 'vantage'}
-                          </span>
-                          {originLabel && (
-                            <span
-                              style={{
-                                fontSize: 8,
-                                color: 'var(--dim, #aab4c7)',
-                              }}
-                            >
-                              {originLabel}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Qty */}
-                      <div
+                      <span
                         style={{
                           color: '#ffffff',
+                          fontWeight: 700,
                           fontFamily: 'var(--mono-font, monospace)',
-                          fontWeight: 500,
-                          textAlign: 'right',
                         }}
                       >
-                        {lot.remaining_qty}
-                      </div>
-
-                      {/* Price */}
-                      <div
+                        {fmtQty(l.remaining_qty)}
+                      </span>
+                      <span style={{ fontFamily: 'var(--mono-font, monospace)' }}>
+                        {fmtDollar(l.price_at_fill)}
+                      </span>
+                      <span style={{ fontFamily: 'var(--mono-font, monospace)' }}>
+                        {fmtDollar(l.remaining_qty * l.price_at_fill)}
+                      </span>
+                      <span>{formatLotDate(l.filled_at)}</span>
+                      <span
                         style={{
-                          color: '#ffffff',
+                          fontWeight: 700,
                           fontFamily: 'var(--mono-font, monospace)',
-                          fontWeight: 500,
-                          textAlign: 'right',
+                          color: lotPnlColor,
                         }}
                       >
-                        ${lot.price_at_fill.toFixed(2)}
-                      </div>
-
-                      {/* Gain/Loss */}
-                      <div style={{ textAlign: 'right' }}>
-                        <div
-                          style={{
-                            color: lotGainColor,
-                            fontWeight: 600,
-                            fontFamily: 'var(--mono-font, monospace)',
-                          }}
-                        >
-                          {lotGainSign}${Math.abs(lotGain).toFixed(2)}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 9,
-                            color: lotGainColor,
-                            opacity: 0.8,
-                          }}
-                        >
-                          {lotGainSign}{lotGainPct.toFixed(1)}%
-                        </div>
-                      </div>
+                        {lotPnl == null
+                          ? '—'
+                          : `${lotPnl >= 0 ? '+' : '-'}$${Math.abs(lotPnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                      </span>
                     </div>
                   );
                 })}
               </div>
             )}
 
-            {/* Fallback when no lots loaded (position has lots=0 from DB or demo) */}
-            {!lotsLoading && !lotsError && lots.length === 0 && (
+            {/* Fallback only when there are genuinely no lots AND no disclosure
+                to explain the gap. */}
+            {!lotsLoading && !lotsError && lots.length === 0 && !unknownStart && (
               <div
                 style={{
                   fontSize: 11,
@@ -1520,6 +1518,11 @@ export default function PositionCardV3({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
+                // Sell hands the reconstructed lots to the trade ticket for
+                // FIFO ordering / specific-lot DISCLOSURE only. The broker
+                // sell endpoint is quantity-based and always applies FIFO —
+                // it does NOT honour a hand-picked lot. Kept as-is so sell
+                // semantics are unchanged.
                 onSell?.(lots);
               }}
               style={{

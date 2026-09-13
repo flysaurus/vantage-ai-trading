@@ -16,8 +16,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTabStore } from '@/store';
 import { useReconstructedLots } from '@/hooks/useReconstructedLots';
 import { useDisplayAccount } from '@/hooks/useDisplayAccount';
+import { useAccountLotsScope } from '@/hooks/useAccountLotsScope';
 import { getActiveLotCount, formatFIFOLabel } from '@/lib/fifo-engine';
-import { parseAccountScope } from '@/lib/account-scope';
 import { avatarColor, initials } from '@/lib/position-avatar';
 import { PositionDetailChart } from './PositionDetailChart';
 import type { Position } from '@/types';
@@ -95,7 +95,7 @@ function FundCell({ label, children }: { label: string; children: React.ReactNod
 
 export function PositionDetail() {
   const { positionDetail, closePositionDetail, setTab, requestTrade } = useTabStore();
-  const { positions, loading, isReadOnly, activeAccountId, activeAccount } = useDisplayAccount();
+  const { positions, loading, isReadOnly } = useDisplayAccount();
   const [profile, setProfile] = useState<{ name?: string; sector?: string } | null>(null);
 
   // ── Canonical enrichment data (chart / fundamentals / news) ──
@@ -116,14 +116,10 @@ export function PositionDetail() {
 
   // ── Account-scoped real lots ──
   // The route wants the raw SnapTrade connection id (no `snaptrade:` prefix)
-  // for a live/paper account, or `demo=1` for the demo portfolio. Resolve the
-  // scope from the ACTIVE account so Detail never reads lots across accounts.
-  const accountScope = useMemo(() => parseAccountScope(activeAccountId), [activeAccountId]);
-  const activeConnectionId = accountScope && !accountScope.isDemo ? accountScope.connectionId : null;
-  const isDemoAccount =
-    (accountScope?.isDemo ?? false) ||
-    activeAccount?.isDemo === true ||
-    activeAccount?.environment === 'demo';
+  // for a live/paper account, or `demo=1` for the demo portfolio. Scope is
+  // resolved ONCE in hooks/useAccountLotsScope so Detail and the Holdings
+  // card can never disagree about which account's lots they are reading.
+  const { connectionId: activeConnectionId, isDemo: isDemoAccount } = useAccountLotsScope();
 
   const { lots, unknownStart, windowStartDate, loading: lotsLoading } = useReconstructedLots({
     connectionId: activeConnectionId,
