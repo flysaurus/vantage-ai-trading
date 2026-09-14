@@ -112,18 +112,6 @@
 
   /* orb + glow */
   --v-orb: radial-gradient(circle at 32% 30%, #9ff0f4 0%, #0e8c99 55%, #0a5a62 100%);
-  /* Flat tiers of the same locked ramp — the identity marks (NetworkMark
-     MEDIUM, NetworkIcon ICON) paint their node/hub/edge from these instead of
-     hardcoding their own per-theme pairs, so the ramp has one source of truth.
-     The `onchip` set is the bright treatment for the #17323B chip, identical in
-     both themes by design (bright ramp on a dark chip never varies). */
-  --v-orb-node: #0e8c99;
-  --v-orb-hub: #0a5a62;
-  --v-orb-edge: rgba(14, 140, 153, 0.5);
-  --v-orb-chip: #17323b;
-  --v-orb-node-onchip: #5fd8de;
-  --v-orb-hub-onchip: #9ff0f4;
-  --v-orb-edge-onchip: rgba(95, 216, 222, 0.5);
   --v-glow: rgba(95, 216, 222, 0.16);
   --v-violet-label: #6d28d9; /* AA-safe violet for small text — the violet member of the -label register */
 
@@ -220,28 +208,8 @@
   --v-admin-border: #3a2e1c;
   --v-admin-label: #d9a94a;
 
-  /* Dark "orb" dot/gradient. RECONCILED (identity-mark pass) to the LOCKED
-     teal ramp (#9FF0F4 → #0E8C99 → #0A5A62) so the small dark-mode accents
-     match the new NetworkMark/NetworkIcon dark equivalent. The old outer stop
-     #1B7D82 was OFF-ramp (it is not one of the four locked teal values); it is
-     replaced by the ramp's deep #0A5A62. The mid stop stays #5FD8DE because
-     that IS the dark-theme accent (--v-accent), i.e. the ramp's mid read for
-     dark surfaces. Luminance still inverts vs the light gradient (light ends
-     on the deep #0A5A62, dark now does too, but starts from the brighter
-     #5FD8DE mid) — the bright #9FF0F4 core keeps the small dots legible.
-     NOTE: design-tokens-context.md's "dark uses #9FF0F4 → #5FD8DE → #1B7D82"
-     line predates the lock; the locked ramp above is authoritative. */
-  --v-orb: radial-gradient(circle at 32% 30%, #9ff0f4 0%, #5fd8de 55%, #0a5a62 100%);
-  /* Flat tiers — luminance inverts per theme (deepest on light, brightest on
-     dark) exactly as the gradient does; see the light block for the contract. */
-  --v-orb-node: #5fd8de;
-  --v-orb-hub: #9ff0f4;
-  --v-orb-edge: rgba(95, 216, 222, 0.5);
-  --v-orb-chip: #17323b;
-  --v-orb-node-onchip: #5fd8de;
-  --v-orb-hub-onchip: #9ff0f4;
-  --v-orb-edge-onchip: rgba(95, 216, 222, 0.5);
-  --v-glow: rgba(95, 216, 222, 0.2); /* #5FD8DE — unchanged, consistent with the mid stop */
+  --v-orb: radial-gradient(circle at 32% 30%, #9ff0f4 0%, #5fd8de 55%, #1b7d82 100%);
+  --v-glow: rgba(95, 216, 222, 0.2);
   --v-violet-label: #c084fc;
 
   /* Same four archetype hues, in the neon register the dark canvas was

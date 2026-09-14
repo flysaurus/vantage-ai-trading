@@ -1,25 +1,38 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="32" height="32" role="img" aria-label="Vantage">
   <title>Vantage</title>
-  <!-- ICON tier identity mark — 4 hub-nodes (1 hub + 3 satellites) on the
-       dark #17323B chip. LOCKED teal ramp only:
-       #9FF0F4 highlight · #0E8C99 accent · #0A5A62 deep · #17323B chip.
-       Strokes/nodes are slightly bolder than the live component so the glyph
-       still resolves at 16–32px favicon sizes. -->
-  <rect x="0" y="0" width="100" height="100" rx="24" fill="#17323B"/>
-  <g stroke="rgba(95,216,222,0.5)" stroke-width="4" stroke-linecap="round" fill="none">
-    <!-- spokes -->
-    <line x1="50" y1="57.5" x2="50" y2="26.5"/>
-    <line x1="50" y1="57.5" x2="77" y2="74"/>
-    <line x1="50" y1="57.5" x2="23" y2="74"/>
-    <!-- outer ring -->
-    <line x1="50" y1="26.5" x2="77" y2="74"/>
-    <line x1="77" y1="74" x2="23" y2="74"/>
-    <line x1="23" y1="74" x2="50" y2="26.5"/>
-  </g>
-  <!-- satellite nodes -->
-  <circle cx="50" cy="26.5" r="9" fill="#5FD8DE"/>
-  <circle cx="77" cy="74" r="9" fill="#5FD8DE"/>
-  <circle cx="23" cy="74" r="9" fill="#5FD8DE"/>
-  <!-- hub -->
-  <circle cx="50" cy="57.5" r="13.5" fill="#9FF0F4"/>
+  <!-- Identity mark — the Vantage orb (components/brand/VantageOrb.tsx).
+       Vector twin of the app icon: teal sphere with a specular highlight on
+       the dark canvas, glow contained inside the chip. -->
+  <defs>
+    <radialGradient id="vBloom" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.30"/>
+      <stop offset="40%" stop-color="#0e7490" stop-opacity="0.14"/>
+      <stop offset="70%" stop-color="#0e7490" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vRing" cx="50%" cy="50%" r="50%">
+      <stop offset="45%" stop-color="#22d3ee" stop-opacity="0"/>
+      <stop offset="60%" stop-color="#22d3ee" stop-opacity="0.15"/>
+      <stop offset="75%" stop-color="#22d3ee" stop-opacity="0.08"/>
+      <stop offset="85%" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vBody" cx="35%" cy="35%" r="78%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="12%" stop-color="#bae6fd" stop-opacity="0.90"/>
+      <stop offset="28%" stop-color="#22d3ee" stop-opacity="0.85"/>
+      <stop offset="50%" stop-color="#0e7490" stop-opacity="0.80"/>
+      <stop offset="72%" stop-color="#083d5a" stop-opacity="0.90"/>
+      <stop offset="100%" stop-color="#021428" stop-opacity="0.95"/>
+    </radialGradient>
+    <radialGradient id="vSpec" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.90"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.40"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="100" height="100" rx="22" fill="#0f172a"/>
+  <circle cx="50" cy="50" r="46" fill="url(#vBloom)"/>
+  <circle cx="50" cy="50" r="43" fill="url(#vRing)"/>
+  <circle cx="50" cy="50" r="30" fill="url(#vBody)"/>
+  <circle cx="50" cy="50" r="30" fill="none" stroke="#22d3ee" stroke-opacity="0.60" stroke-width="0.4"/>
+  <circle cx="41" cy="41" r="9" fill="url(#vSpec)"/>
 </svg>
