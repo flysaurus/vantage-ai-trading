@@ -4,8 +4,8 @@
 // persistence for cross-page resilience.
 //
 // Screens (4B-1 restructure):
-//  boot → feature → arrival → quiz (5q) → style-reveal →
-//  broker-choice → [demo: create-account]
+//  boot → feature → arrival → quiz (5q) → style-reveal → literacy →
+//  concentration → broker-choice → [demo: create-account]
 //                → [broker: connection-options → create-account]
 
 'use client';
@@ -20,6 +20,8 @@ import BrokerChoiceStep from '@/components/onboarding/BrokerChoiceStep';
 import ConnectionOptionsStep from '@/components/onboarding/ConnectionOptionsStep';
 import { StyleReveal } from '@/components/onboarding/StyleReveal';
 import ConcentrationStep from '@/components/onboarding/ConcentrationStep';
+import LiteracyQuestion from '@/components/onboarding/LiteracyQuestion';
+import type { InvestmentExperience } from '@/components/onboarding/LiteracyQuestion';
 import { QUIZ_QUESTIONS, scoreQuiz } from '@/lib/onboarding/quiz-logic';
 import type { InvestorStyleKey, RiskTolerance } from '@/lib/onboarding/onboarding-state';
 
@@ -31,6 +33,7 @@ type OnboardingScreen =
   | 'arrival'
   | 'quiz'
   | 'reveal'
+  | 'literacy'
   | 'concentration'
   | 'broker-choice'
   | 'connection-options'
@@ -54,6 +57,8 @@ interface OnboardingState {
   pendingConnectionType: PendingConnectionType;
   concSinglePct: number | null;
   concTop3Pct: number | null;
+  /** Self-reported familiarity. Single stored value; null = skipped. */
+  investmentExperience: InvestmentExperience | null;
 }
 
 // ── sessionStorage key ─────────────────────────────────────
@@ -80,6 +85,7 @@ function serialiseState(state: OnboardingState) {
       currentQuizQuestion: state.currentQuizQuestion,
       concSinglePct: state.concSinglePct,
       concTop3Pct: state.concTop3Pct,
+      investmentExperience: state.investmentExperience,
     }));
   } catch {}
 }
@@ -113,6 +119,7 @@ function deserialiseState(): Partial<OnboardingState> | null {
       lastName: parsed.lastName ?? '',
       concSinglePct: parsed.concSinglePct ?? null,
       concTop3Pct: parsed.concTop3Pct ?? null,
+      investmentExperience: parsed.investmentExperience ?? null,
     };
   } catch {
     return null;
@@ -135,6 +142,7 @@ function createDefaultState(initialScreen?: OnboardingScreen): OnboardingState {
     pendingConnectionType: null,
     concSinglePct: null,
     concTop3Pct: null,
+    investmentExperience: null,
   };
 }
 
@@ -248,9 +256,24 @@ export default function OnboardingFlow({ initialScreen }: OnboardingFlowProps) {
     });
   }, []);
 
-  // reveal → concentration question
+  // reveal → literacy self-report question
   const handleRevealCTA = useCallback(() => {
-    goTo('concentration');
+    goTo('literacy');
+  }, []);
+
+  // literacy → concentration (store the self-reported familiarity)
+  const handleLiteracySelect = useCallback((value: InvestmentExperience) => {
+    goTo('concentration', 'forward', { investmentExperience: value });
+  }, []);
+
+  // literacy skipped → concentration (no value stored; null = skipped)
+  const handleLiteracySkip = useCallback(() => {
+    goTo('concentration', 'forward', { investmentExperience: null });
+  }, []);
+
+  // literacy back → reveal
+  const handleLiteracyBack = useCallback(() => {
+    goTo('reveal', 'back');
   }, []);
 
   // concentration → broker-choice (store chosen thresholds)
@@ -261,9 +284,9 @@ export default function OnboardingFlow({ initialScreen }: OnboardingFlowProps) {
     });
   }, []);
 
-  // concentration back → reveal
+  // concentration back → literacy
   const handleConcentrationBack = useCallback(() => {
-    goTo('reveal', 'back');
+    goTo('literacy', 'back');
   }, []);
 
   // reveal back → quiz Q5
@@ -362,6 +385,15 @@ export default function OnboardingFlow({ initialScreen }: OnboardingFlowProps) {
           lastName=""
           onBack={handleRevealBack}
           onCreateAccount={handleRevealCTA}
+        />
+      );
+
+    case 'literacy':
+      return (
+        <LiteracyQuestion
+          onSelect={handleLiteracySelect}
+          onSkip={handleLiteracySkip}
+          onBack={handleLiteracyBack}
         />
       );
 

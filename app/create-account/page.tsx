@@ -82,6 +82,8 @@ interface OnboardingData {
   lastName: string;
   concSinglePct?: number | null;
   concTop3Pct?: number | null;
+  /** Self-reported investing familiarity ('new' | 'some' | 'experienced'), or null if skipped. */
+  investmentExperience?: string | null;
 }
 
 function readOnboardingData(): OnboardingData | null {
@@ -105,6 +107,7 @@ function readOnboardingData(): OnboardingData | null {
         lastName: parsed.lastName ?? '',
         concSinglePct: parsed.concSinglePct ?? null,
         concTop3Pct: parsed.concTop3Pct ?? null,
+        investmentExperience: parsed.investmentExperience ?? null,
       } as OnboardingData;
     }
 
@@ -187,6 +190,7 @@ export default function CreateAccountPage() {
   const risk = onboardingData?.risk || 'moderate';
   const concSinglePct = onboardingData?.concSinglePct ?? null;
   const concTop3Pct = onboardingData?.concTop3Pct ?? null;
+  const investmentExperience = onboardingData?.investmentExperience ?? null;
   const styleContent = getStyleContent(style);
   const styleEmoji = getStyleEmoji(style);
   const shortLabel = styleContent.shortLabel;
@@ -522,6 +526,7 @@ export default function CreateAccountPage() {
           risk_tolerance: risk,
           conc_single_pct: concSinglePct,
           conc_top3_pct: concTop3Pct,
+          investment_experience: investmentExperience,
         }),
       });
 
@@ -554,7 +559,7 @@ export default function CreateAccountPage() {
       setSubmitting(false);
       setApiError('Unable to verify your invite. Please try again.');
     }
-  }, [canSubmit, email, password, firstName, lastName, style, risk, pendingChoice, pendingConnectionType, inviteToken, router]);
+  }, [canSubmit, email, password, firstName, lastName, style, risk, concSinglePct, concTop3Pct, investmentExperience, pendingChoice, pendingConnectionType, inviteToken, router]);
 
   // ── Google sign-up ───────────────────────────────────────
   const handleGoogleSignUp = useCallback(async () => {
@@ -575,6 +580,7 @@ export default function CreateAccountPage() {
             risk_tolerance: risk,
             conc_single_pct: concSinglePct != null ? String(concSinglePct) : '',
             conc_top3_pct: concTop3Pct != null ? String(concTop3Pct) : '',
+            investment_experience: investmentExperience ?? '',
             pending_choice: pendingChoice ?? '',
             pending_connection_type: pendingConnectionType ?? '',
           },
@@ -591,7 +597,7 @@ export default function CreateAccountPage() {
       setApiError('Google sign-in coming soon. Please use email for now.');
       setSubmitting(false);
     }
-  }, [style, risk, concSinglePct, concTop3Pct, pendingChoice, pendingConnectionType]);
+  }, [style, risk, concSinglePct, concTop3Pct, investmentExperience, pendingChoice, pendingConnectionType]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && canSubmit) {

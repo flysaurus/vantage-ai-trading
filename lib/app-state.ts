@@ -43,6 +43,8 @@ export interface UserProfile {
   last_name: string | null;
   investor_style: string | null;
   risk_tolerance: string | null;
+  /** Self-reported investing familiarity ('new' | 'some' | 'experienced'), or null. */
+  investment_experience?: string | null;
   investor_style_onboarded: boolean;
   demo_start_at: string | null;
   demo_expires_at: string | null;

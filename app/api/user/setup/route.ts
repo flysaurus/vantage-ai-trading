@@ -15,8 +15,13 @@ interface SetupBody {
   risk_tolerance?: string | null;
   conc_single_pct?: number | null;
   conc_top3_pct?: number | null;
+  /** Self-reported investing familiarity: 'new' | 'some' | 'experienced'. */
+  investment_experience?: string | null;
   demo_start_at?: boolean | null; // signal to set demo_start_at if null
 }
+
+// Plain stored value only — no scoring, no numeric assessment.
+const VALID_INVESTMENT_EXPERIENCE = ['new', 'some', 'experienced'];
 
 export async function POST(req: NextRequest) {
   let body: SetupBody;
@@ -83,6 +88,10 @@ export async function POST(req: NextRequest) {
     risk_tolerance: body.risk_tolerance || undefined,
     conc_single_pct: body.conc_single_pct ?? undefined,
     conc_top3_pct: body.conc_top3_pct ?? undefined,
+    investment_experience:
+      body.investment_experience && VALID_INVESTMENT_EXPERIENCE.includes(body.investment_experience)
+        ? body.investment_experience
+        : undefined,
     investor_style_onboarded: true,
     tier: 'demo',
     first_open: now,

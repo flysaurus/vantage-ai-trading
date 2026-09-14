@@ -13,7 +13,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LEARNING_CARDS } from '@/lib/learning/triggers';
 import { isConceptShown, markConceptShown } from '@/lib/learning/detector';
 import { CURRICULUM, nextUpTopic } from '@/lib/learning/curriculum';
@@ -23,6 +23,12 @@ import type { LearningCard } from '@/lib/learning/triggers';
 interface LearningLibraryProps {
   open: boolean;
   onClose: () => void;
+  /**
+   * Entry view. Path is the default (and the original behaviour). Callers that
+   * need the library to reliably open on a specific tab can force it — the view
+   * is re-synced each time the overlay opens.
+   */
+  initialView?: View;
 }
 
 type View = 'path' | 'all';
@@ -55,8 +61,8 @@ const TILE_READ = '#11192b';
 const ACCENT = '#22d3ee';
 const MUTED = '#94a3b8';
 
-export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
-  const [view, setView] = useState<View>('path');
+export function LearningLibrary({ open, onClose, initialView = 'path' }: LearningLibraryProps) {
+  const [view, setView] = useState<View>(initialView);
   const [selectedCard, setSelectedCard] = useState<LearningCard | null>(null);
   const [justMarked, setJustMarked] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
@@ -65,6 +71,13 @@ export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
   const [checkStep, setCheckStep] = useState(0);
   const [checkPicked, setCheckPicked] = useState<number | null>(null);
   const [checkDone, setCheckDone] = useState(false);
+
+  // Re-sync the entry view whenever the overlay opens, so the caller's choice
+  // (e.g. "open the Path tab") is honoured even after the user switched tabs
+  // in a previous visit.
+  useEffect(() => {
+    if (open) setView(initialView);
+  }, [open, initialView]);
 
   if (!open) return null;
 

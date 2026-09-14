@@ -41,6 +41,7 @@ import { fmt, pctStr, splitCents } from '@/lib/insights/format';
 import { buildDeck, buildEarningsRows, type DeckTeaser } from '@/lib/insights/deck';
 import { briefAskPrompt } from '@/lib/insights/brief';
 import { Masthead } from '@/components/layout/Masthead';
+import { LearningLibrary } from '@/components/learning/LearningLibrary';
 import { HeroDeck } from './HeroDeck';
 import { MoreFromRufus } from './MoreFromRufus';
 import { PortfolioHealthCard } from './PortfolioHealthCard';
@@ -61,6 +62,9 @@ export function InsightsTab() {
   const { isConnected, isInitialized: isBrokerInitialized } = useBroker();
   const { activeAccount, activeAccountId } = useAccounts();
   const { user } = useAuth();
+  // Self-reported during onboarding; null when the question was skipped.
+  const isNewInvestor = (user as any)?.investment_experience === 'new';
+  const [showLibrary, setShowLibrary] = useState(false);
   const { setTab } = useTabStore();
   const isShowingDemo = activeAccount?.isDemo ?? false;
   const isReadOnly = !isShowingDemo && !(activeAccount?.tradingEnabled ?? false);
@@ -298,6 +302,49 @@ export function InsightsTab() {
           account: 'masthead-account',
         }}
       />
+
+      {/* ── New investors only: single pointer into the Learning Library Path ──
+          One line, no per-screen triggers. Reuses the existing overlay opened on
+          its default (Path) tab. */}
+      {isNewInvestor && (
+        <div style={{ margin: '16px 20px 0' }}>
+          <button
+            onClick={() => setShowLibrary(true)}
+            data-testid="new-here-basics"
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              background: 'var(--v-por-card)',
+              border: '0.5px solid var(--v-card-border)',
+              borderRadius: 14,
+              padding: '12px 14px',
+              cursor: 'pointer',
+              textAlign: 'left',
+              fontFamily: 'var(--font-sans)',
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+              <span aria-hidden style={{ fontSize: 16, flexShrink: 0 }}>📚</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--v-text-primary)' }}>
+                New here?{' '}
+                <span style={{ fontWeight: 400, color: 'var(--v-text-muted)' }}>
+                  Start with the basics
+                </span>
+              </span>
+            </span>
+            <span
+              aria-hidden
+              style={{ color: 'var(--v-accent-label)', fontSize: 16, fontWeight: 600, flexShrink: 0 }}
+            >
+              →
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* ── 3. Balance section (no chart) — directly under the header ──
           This is a real CARD on the canvas (white fill in light, panel fill in
@@ -555,6 +602,12 @@ export function InsightsTab() {
         accountId={activeAccountId || 'demo'}
         onClose={() => setBriefKind(null)}
         onAskRufus={askRufusAboutBrief}
+      />
+      {/* Learning Library overlay — shared component, opened on the Path tab. */}
+      <LearningLibrary
+        open={showLibrary}
+        onClose={() => setShowLibrary(false)}
+        initialView="path"
       />
     </div>
   );

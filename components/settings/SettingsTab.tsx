@@ -6,6 +6,7 @@ import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { LearningLibrary } from '@/components/learning/LearningLibrary';
 
 import {
   CONCENTRATION_PRESETS,
@@ -44,6 +45,7 @@ export function SettingsTab() {
   const [brokerConnected, setBrokerConnected] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
   const [showStylePicker, setShowStylePicker] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
   const [selectedStyle, setSelectedStyle] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('vantage_investor_style') || user?.investorStyle || 'lynch';
@@ -433,7 +435,7 @@ export function SettingsTab() {
             alignItems: 'center',
             padding: '14px 16px',
             background: '#1a2235',
-            borderRadius: '0 0 10px 10px',
+            borderRadius: 0,
             minHeight: '52px',
           }}
         >
@@ -443,6 +445,32 @@ export function SettingsTab() {
                 const s = INVESTOR_STYLES.find(s => s.id === selectedStyle);
                 return s ? `${s.emoji} ${s.name}` : 'Lynch';
               })()}
+            </p>
+          </div>
+          <span style={{ color: 'var(--v-text-muted)', fontSize: '18px' }}>›</span>
+        </div>
+
+        {/* Learning Library */}
+        <div
+          onClick={() => setShowLibrary(true)}
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '14px 16px',
+            background: '#1a2235',
+            borderBottom: '1px solid #0f1829',
+            borderRadius: '0 0 10px 10px',
+            minHeight: '52px',
+            cursor: 'pointer',
+          }}
+        >
+          <div>
+            <p style={{ fontSize: '15px', color: '#ffffff', margin: 0 }}>
+              📚 Learning Library
+            </p>
+            <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>
+              Browse the basics and go at your own pace
             </p>
           </div>
           <span style={{ color: 'var(--v-text-muted)', fontSize: '18px' }}>›</span>
@@ -1293,6 +1321,9 @@ export function SettingsTab() {
           </div>
         </>
       )}
+
+      {/* Learning Library overlay — same component as the chat-header 📚 entry point. */}
+      <LearningLibrary open={showLibrary} onClose={() => setShowLibrary(false)} initialView="path" />
 
 
     </>

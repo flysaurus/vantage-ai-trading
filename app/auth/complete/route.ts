@@ -83,6 +83,11 @@ export async function GET(request: NextRequest) {
         risk_tolerance: meta.risk_tolerance ?? null,
         conc_single_pct: meta.conc_single_pct ? Number(meta.conc_single_pct) : null,
         conc_top3_pct: meta.conc_top3_pct ? Number(meta.conc_top3_pct) : null,
+        investment_experience:
+          typeof meta.investment_experience === 'string' &&
+          ['new', 'some', 'experienced'].includes(meta.investment_experience)
+            ? meta.investment_experience
+            : null,
         investor_style_onboarded: true,
         tier: 'demo',
         first_open: new Date().toISOString(),
