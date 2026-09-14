@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAppState } from '@/lib/app-state';
+import { useAppState, STALLED_ERROR_COPY } from '@/lib/app-state';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import MainApp from '@/components/app/MainApp';
@@ -15,7 +15,7 @@ import { BrokerConnectionsPage } from '@/components/broker/BrokerConnectionsPage
 import { ConnectionLoadingPage } from '@/components/broker/ConnectionLoadingPage';
 
 export default function Page() {
-  const { state, profile, refreshState } = useAppState();
+  const { state, profile, refreshState, stalled, error, retry } = useAppState();
   const router = useRouter();
 
   // Guard against repeated redirects — only run once per mount
@@ -63,19 +63,55 @@ export default function Page() {
     </div>
   ) : null;
 
-  // loading: show minimal orb pulse
+  // loading: show minimal orb pulse — UNLESS resolution hit a terminal
+  // failure, in which case a retry affordance must replace the pulse.
+  // (An endless orb is indistinguishable from a hung app.)
   if (state === 'loading') {
     return (
       <>
         {debugBanner}
         <div style={{
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           height: '100vh',
+          gap: 16,
+          padding: '0 28px',
           background: 'var(--bg-primary)',
         }}>
-          <VantageOrb size={44} animate={true} />
+          <VantageOrb size={stalled ? 32 : 44} animate={!stalled} />
+          {stalled ? (
+            <div data-testid="app-stalled" style={{ textAlign: 'center', maxWidth: 360 }}>
+              <p style={{
+                margin: 0,
+                fontSize: 14.5,
+                lineHeight: 1.5,
+                color: 'var(--text-secondary, #cbd5e1)',
+              }}>
+                {error || STALLED_ERROR_COPY}
+              </p>
+              <button
+                type="button"
+                data-testid="app-stalled-retry"
+                onClick={retry}
+                style={{
+                  marginTop: 16,
+                  background: 'none',
+                  border: '0.5px solid var(--v-card-border, #334155)',
+                  borderRadius: 999,
+                  padding: '9px 20px',
+                  color: 'var(--v-accent, #22d3ee)',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  fontFamily: 'inherit',
+                  cursor: 'pointer',
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
         </div>
       </>
     );
