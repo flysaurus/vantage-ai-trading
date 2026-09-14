@@ -14,7 +14,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTypewriter } from '@/lib/animations/typewriter';
 import { useWordHighlight } from '@/hooks/useWordHighlight';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { NetworkIcon } from '@/components/brand/NetworkIcon';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 import {
   getStyleContent,
   getStyleTag,
@@ -219,7 +219,7 @@ export function StyleReveal({
             Back
           </button>
         )}
-        <NetworkIcon size={36} />
+        <VantageOrb size={36} animate={false} showEntrance={false} />
 
         {/* Right: I have an account */}
         {onSignIn && (

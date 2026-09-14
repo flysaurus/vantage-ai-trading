@@ -32,6 +32,7 @@ import { useTabStore } from '@/store';
 import { HoldingsCallout } from '@/components/ai/HoldingsCallout';
 import { ProgressIndicator, type ChecklistItem } from '@/components/ai/ProgressIndicator';
 import TradeTicket from '@/components/portfolio/TradeTicket';
+import CompassIcon from '@/components/CompassIcon';
 import { LearningLibrary } from '@/components/learning/LearningLibrary';
 import { ChatHistory } from '@/components/ai/ChatHistory';
 

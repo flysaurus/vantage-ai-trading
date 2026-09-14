@@ -8,7 +8,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Loader2 } from 'lucide-react';
-import { NetworkIcon } from '@/components/brand/NetworkIcon';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 import Input from '@/components/ui/Input';
 import { createClient } from '@/lib/supabase';
 
@@ -132,7 +132,7 @@ export default function ForgotPasswordPage() {
             <ChevronLeft size={20} />
             Sign in
           </button>
-          <NetworkIcon size={44} />
+          <VantageOrb size={44} animate showEntrance={false} />
         </div>
 
         {/* ═══ CONTENT ═══ */}
@@ -294,7 +294,7 @@ export default function ForgotPasswordPage() {
           <ChevronLeft size={20} />
           Back
         </button>
-        <NetworkIcon size={44} />
+        <VantageOrb size={44} animate showEntrance={false} />
       </div>
 
       {/* ═══ CONTENT ═══ */}

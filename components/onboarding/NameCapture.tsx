@@ -13,7 +13,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { NetworkIcon } from '@/components/brand/NetworkIcon';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 
 interface NameCaptureProps {
   onSubmit: (firstName: string, lastName: string) => void;
@@ -92,7 +92,7 @@ export function NameCapture({ onSubmit, onBack, onSignIn }: NameCaptureProps) {
             paddingTop: 'env(safe-area-inset-top, 0px)',
           }}
         >
-          <NetworkIcon size={44} />
+          <VantageOrb size={44} animate showEntrance={false} />
         </div>
 
         {/* Right: I have an account */}

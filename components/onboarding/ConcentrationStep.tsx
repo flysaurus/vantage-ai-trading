@@ -7,7 +7,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { NetworkIcon } from '@/components/brand/NetworkIcon';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 import {
   CONCENTRATION_PRESETS,
   suggestedPresetForStyle,
@@ -88,7 +88,7 @@ export default function ConcentrationStep({
             transform: 'translate(-50%, -50%)',
           }}
         >
-          <NetworkIcon size={44} />
+          <VantageOrb size={44} animate showEntrance />
         </div>
 
         <div style={{ width: '60px' }} />

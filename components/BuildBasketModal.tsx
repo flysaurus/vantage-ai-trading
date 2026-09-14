@@ -3,7 +3,7 @@
 import { apiGet, apiPost } from '@/lib/api-client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { NetworkMark } from '@/components/brand/NetworkMark';
+import CompassIcon from '@/components/CompassIcon';
 import { usePageScrollLock, SCROLL_SCOPE_ATTR } from '@/lib/ui/scroll-lock';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
@@ -733,7 +733,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             display: 'flex', flexDirection: 'column', alignItems: 'center',
             justifyContent: 'center', padding: '48px 0', gap: '12px',
           }}>
-            <NetworkMark size={48} />
+            <CompassIcon size={48} color="var(--v-accent)" animated={true} />
             <p style={{ fontSize: '13px', color: 'var(--v-text-secondary)' }}>Loading curated baskets...</p>
           </div>
         )}
@@ -757,7 +757,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             display: 'flex', flexDirection: 'column', alignItems: 'center',
             justifyContent: 'center', padding: '48px 0', gap: '12px',
           }}>
-            <NetworkMark size={48} />
+            <CompassIcon size={48} color="var(--v-accent)" animated={true} />
             <p style={{ fontSize: '14px', color: 'var(--v-text-primary)', fontWeight: '600' }}>
               No baskets yet
             </p>
@@ -1192,7 +1192,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       flex: 1, display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center', padding: '32px', gap: '16px',
     }}>
-      <NetworkMark size={64} />
+      <CompassIcon size={64} color="var(--v-accent)" animated={true} />
       <p style={{ fontSize: '16px', fontWeight: '600', color: 'var(--v-text-primary)', textAlign: 'center' }}>
         Rufus is building your basket...
       </p>
@@ -1596,7 +1596,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         {/* Loading state */}
         {loadingPrices && (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', padding: '48px 0' }}>
-            <NetworkMark size={48} />
+            <CompassIcon size={48} color="var(--v-accent)" animated={true} />
             <span style={{ color: 'var(--v-text-muted)', fontSize: '13px' }}>Fetching live prices...</span>
           </div>
         )}

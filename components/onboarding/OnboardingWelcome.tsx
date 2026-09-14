@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { NetworkMark } from '@/components/brand/NetworkMark';
+import CompassIcon from '../CompassIcon';
 
 interface Props {
   onNext: () => void;
@@ -13,7 +13,7 @@ export function OnboardingWelcome({ onNext, onSkip }: Props) {
     <div style={{ padding: 32 }}>
       {/* Icon */}
       <div style={{ textAlign: 'center', marginBottom: 20 }}>
-        <div style={{ marginBottom: 12 }}><NetworkMark size={48} /></div>
+        <div style={{ marginBottom: 12 }}><CompassIcon size={48} color="#22d3ee" /></div>
         <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>
           Welcome to Vantage
         </h1>

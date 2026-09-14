@@ -17,7 +17,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { ChevronLeft, Check, RefreshCw, ExternalLink, Unlink } from 'lucide-react';
-import { NetworkIcon } from '@/components/brand/NetworkIcon';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import type { BrokerInfo } from '@/lib/snaptrade/auth';
 
@@ -823,7 +823,7 @@ export function BrokerConnectionsPage({
             paddingTop: 'env(safe-area-inset-top, 0px)',
           }}
         >
-          <NetworkIcon size={32} minimal />
+          <VantageOrb size={32} animate showEntrance={false} />
         </div>
       </div>
 

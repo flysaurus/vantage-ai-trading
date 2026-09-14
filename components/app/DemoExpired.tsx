@@ -7,7 +7,7 @@
 
 import React, { useState } from 'react';
 import { ChevronRight, TrendingUp, Zap, X } from 'lucide-react';
-import { NetworkMark } from '@/components/brand/NetworkMark';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 
 export function DemoExpired() {
   const [showComingSoon, setShowComingSoon] = useState(false);
@@ -32,7 +32,7 @@ export function DemoExpired() {
         justifyContent: 'center',
         flexShrink: 0,
       }}>
-        <NetworkMark size={36} />
+        <VantageOrb size={36} animate showEntrance={false} />
       </div>
 
       {/* Hero */}

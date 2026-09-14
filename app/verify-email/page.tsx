@@ -13,7 +13,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, CheckCircle, XCircle, Mail } from 'lucide-react';
-import { NetworkIcon } from '@/components/brand/NetworkIcon';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 
 type VerifyState =
   | 'loading'
@@ -322,7 +322,7 @@ export default function VerifyEmailPage() {
           <ArrowLeft size={18} />
           Back
         </button>
-        <NetworkIcon size={32} minimal />
+        <VantageOrb size={32} />
       </div>
 
       <div style={contentStyle}>

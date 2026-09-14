@@ -10,7 +10,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { NetworkMark } from '@/components/brand/NetworkMark';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 import type { UserProfile } from '@/lib/app-state';
 
 // ── Broker name map ─────────────────────────────────────────
@@ -181,7 +181,7 @@ export default function ConnectionLoadingPage({
           minHeight: '60px',
         }}
       >
-        <NetworkMark size={44} />
+        <VantageOrb size={44} animate />
       </div>
 
       {/* ═══ CONTENT ═══ */}

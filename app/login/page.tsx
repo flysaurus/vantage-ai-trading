@@ -8,7 +8,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Loader2 } from 'lucide-react';
-import { NetworkIcon } from '@/components/brand/NetworkIcon';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 import Input from '@/components/ui/Input';
 import { LoadingSplash } from '@/components/app/LoadingSplash';
 import type { SplashMode } from '@/components/app/LoadingSplash';
@@ -356,7 +356,7 @@ export default function LoginPage() {
           position: 'relative',
         }}
       >
-        <NetworkIcon size={44} />
+        <VantageOrb size={44} animate showEntrance={false} />
       </div>
 
       {/* ═══ CONTENT ═══ */}

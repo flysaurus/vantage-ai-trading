@@ -326,7 +326,7 @@ export function InsightsTab() {
             <span
               aria-hidden="true"
               data-testid="balance-orb"
-              style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--v-orb-node)', flexShrink: 0 }}
+              style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--v-orb)', flexShrink: 0 }}
             />
             <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--v-text-muted)' }}>
               YOUR PORTFOLIO
@@ -472,7 +472,7 @@ export function InsightsTab() {
           >
             <span
               aria-hidden="true"
-              style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--v-orb-node)', flexShrink: 0 }}
+              style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--v-orb)', flexShrink: 0 }}
             />
             <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--v-text-muted)' }}>
               RUFUS NOTICED
@@ -499,7 +499,7 @@ export function InsightsTab() {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--v-orb-node)' }} />
+                <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--v-orb)' }} />
                 <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', color: 'var(--v-hero-text-3)' }}>
                   RUFUS NOTICED
                 </span>

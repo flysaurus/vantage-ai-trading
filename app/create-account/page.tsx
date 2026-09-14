@@ -28,7 +28,6 @@ import {
   Info,
 } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
-import { NetworkIcon } from '@/components/brand/NetworkIcon';
 
 import Input from '@/components/ui/Input';
 import PasswordStrength from '@/components/ui/PasswordStrength';
@@ -835,7 +834,7 @@ export default function CreateAccountPage() {
           <span style={{ fontSize: '15px', fontFamily: 'var(--font-sans)' }}>Back</span>
         </button>
 
-        <NetworkIcon size={36} />
+        <VantageOrb size={36} animate={false} showEntrance={false} />
       </div>
 
       {/* ═══ HEADLINE ═══ */}

@@ -8,7 +8,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { NetworkIcon } from '@/components/brand/NetworkIcon';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 import { Link, TrendingUp, Zap, ChevronRight } from 'lucide-react';
 
 // ── Props ───────────────────────────────────────────────────
@@ -160,7 +160,7 @@ export default function ConnectionOptionsStep({
             transform: 'translate(-50%, -50%)',
           }}
         >
-          <NetworkIcon size={44} />
+          <VantageOrb size={44} animate showEntrance />
         </div>
 
         {/* Right: spacer for balance */}

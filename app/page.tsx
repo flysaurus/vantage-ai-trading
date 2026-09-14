@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/app-state';
-import { NetworkMark } from '@/components/brand/NetworkMark';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import MainApp from '@/components/app/MainApp';
 import { BrokerChoicePage } from '@/components/broker/BrokerChoicePage';
@@ -75,7 +75,7 @@ export default function Page() {
           height: '100vh',
           background: 'var(--bg-primary)',
         }}>
-          <NetworkMark size={44} />
+          <VantageOrb size={44} animate={true} />
         </div>
       </>
     );
@@ -98,7 +98,7 @@ export default function Page() {
           height: '100vh',
           background: 'var(--bg-primary)',
         }}>
-          <NetworkMark size={44} />
+          <VantageOrb size={44} animate={true} />
         </div>
       </>
     );
