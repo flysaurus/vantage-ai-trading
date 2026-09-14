@@ -1182,6 +1182,9 @@ export async function POST(req: Request) {
       riskTolerance: body.riskTolerance || 'Moderate',
       name: body.name || 'M',
       timezone: timezone || 'America/New_York',
+      // Literacy tier (self-reported once during onboarding). DB is authoritative
+      // below; the request body is only a fallback for pre-column sessions.
+      investmentExperience: body.investmentExperience ?? null,
     }
 
     // Fresh profile (investor style + risk tolerance) from DB overrides the
@@ -1194,11 +1197,14 @@ export async function POST(req: Request) {
         const supabase = createServerClient();
         const { data: userRow } = await (supabase as any)
           .from('users')
-          .select('investor_style, risk_tolerance')
+          .select('investor_style, risk_tolerance, investment_experience')
           .eq('id', userId)
           .maybeSingle();
         if (userRow?.investor_style) profile.investorStyle = userRow.investor_style;
         if (userRow?.risk_tolerance) profile.riskTolerance = userRow.risk_tolerance.charAt(0).toUpperCase() + userRow.risk_tolerance.slice(1);
+        // Literacy tier — DB is the source of truth. NULL = skipped → the
+        // builder falls back to neutral (no inline definitions).
+        if (userRow?.investment_experience) profile.investmentExperience = userRow.investment_experience;
       } catch (e) {
         console.error('[chat] fresh profile fetch failed (non-fatal):', e);
       }

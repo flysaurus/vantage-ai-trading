@@ -7,6 +7,44 @@ export interface UserProfile {
   riskTolerance: 'Conservative' | 'Moderate' | 'Aggressive'
   name: string
   timezone?: string
+  /**
+   * Self-reported investing familiarity, captured once during onboarding.
+   * 'new' | 'some' | 'experienced' | null (skipped / pre-dates the column).
+   * Drives the three-tier literacy adaptation only — never scoring.
+   */
+  investmentExperience?: string | null
+}
+
+/**
+ * Literacy tier block — the three-tier response adaptation (Phase 1).
+ * Plain language is a FLOOR at every tier; the tier only changes explanatory
+ * scaffolding and word choice. It must NEVER remove numbers, target ranges, or
+ * coverage of anything the user explicitly asked about.
+ */
+// Shared across every tier — simplicity and completeness are different axes.
+const TIER_MANDATE =
+  'MANDATORY at every tier — this never relaxes with literacy: never remove specific numbers, target ranges, or coverage of anything the user explicitly asked about. Simpler wording is not less complete.'
+
+export function getLiteracyTierPrompt(tier?: string | null): string {
+  const t = (tier || '').toLowerCase().trim()
+
+  if (t === 'new') {
+    return `USER INVESTMENT EXPERIENCE: New to investing
+Apply the NEW-TO-INVESTING tier: when a financial term appears for the FIRST time in this conversation, add a short one-clause plain-language explanation inline (not on every later occurrence). MANDATORY, no exceptions for familiar-looking acronyms: "ETF", "P/E", "beta", "expense ratio", "volatility", "concentration", "expense ratio" all get a gloss on first use — an unexplained specialist term is a failure at this tier. Avoid words with a conflicting everyday meaning in a financial context — "leverage", "hedge", "short", "spread" used idiomatically — rephrase them in plain words instead. ${TIER_MANDATE}`
+  }
+
+  if (t === 'experienced') {
+    return `USER INVESTMENT EXPERIENCE: Experienced
+Apply the EXPERIENCED tier: HARD LENGTH BUDGET — total prose outside markdown tables must be ≤150 words and ≤60% of the words you would use to answer the same question at the beginner tier. Denser tables are expected (e.g. add a target-range column where the context supplies targets). No inline definitions. Going over budget means cutting explanation, never numbers or sub-component coverage. ${TIER_MANDATE}`
+  }
+
+  if (t === 'some') {
+    return `USER INVESTMENT EXPERIENCE: Some experience
+Apply the SOME-EXPERIENCE tier: no inline definitions; verdict-first structure and tables over prose still apply. ${TIER_MANDATE}`
+  }
+
+  return `USER INVESTMENT EXPERIENCE: not provided
+No tier was self-reported — default to clear, plain language with no inline definitions. ${TIER_MANDATE}`
 }
 
 export function getInvestorStylePrompt(
@@ -87,6 +125,8 @@ Name: ${profile.name}
 Investor Style: ${profile.investorStyle}
 Risk Tolerance: ${profile.riskTolerance}
 ${timeContext}
+
+${getLiteracyTierPrompt(profile.investmentExperience)}
 
 ${getInvestorStylePrompt(profile.investorStyle)}
 

@@ -2580,6 +2580,37 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                     recs={recs}
                     readOnly={isReadOnly}
                     disabled={loading}
+                    // "Download plan" — package THIS response's recommendation
+                    // through the existing .xlsx export pattern ([RECOMMEND] /
+                    // [PORTFOLIO] markers → rows). Falls back to the rebalance
+                    // flow only when the response has no downloadable structure.
+                    onDownload={() => {
+                      const payload = deriveDownloadPayload(msg.content || '');
+                      if (payload) { void handleDownloadExport(payload); return; }
+                      // No marker/table structure (e.g. a trim stated in prose) —
+                      // package the recommendation THIS CARD is already showing
+                      // (exact qty/amount, already parsed for the Trade button)
+                      // through the identical .xlsx path. Never leave an
+                      // actionable recommendation with no downloadable plan.
+                      if (recs.length > 0) {
+                        const total = recs.reduce((s, r) => s + (r.amount ?? 0), 0);
+                        void handleDownloadExport({
+                          title: 'Recommended trades',
+                          subtitle: null,
+                          grandTotal: total > 0 ? Math.round(total * 100) / 100 : null,
+                          rows: recs.map((r) => ({
+                            ticker: r.ticker,
+                            action: (r.side === 'trim' ? 'sell' : 'buy') as 'buy' | 'sell' | 'hold',
+                            qty: r.shares ?? null,
+                            amountUsd: r.amount ?? null,
+                            lineTotal: r.amount ?? null,
+                            note: r.note ?? null,
+                          })),
+                        });
+                        return;
+                      }
+                      sendMessage('rebalance', 'chat');
+                    }}
                     onRebalance={() => sendMessage('rebalance', 'chat')}
                     onReviewPosition={(ticker) => { openPositionDetail(ticker, 'insights'); onClose && onClose(); }}
                   />

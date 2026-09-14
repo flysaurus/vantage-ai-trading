@@ -10,8 +10,8 @@ import { TradeRec, formatTradeRec } from '@/lib/ai/trade-recs';
 // recommendation must never be left as prose with no structured action.
 //
 // Uses the exact same `ActionButton` pattern as the concentration-risk hero
-// card, so the trade-enabled ("Trade" + "Download") and read-only ("Download")
-// behaviours stay identical across the app.
+// card, so the trade-enabled ("Trade" + "Download plan") and read-only
+// ("Download plan" only) behaviours stay identical across the app.
 
 interface Props {
   recs: TradeRec[];
@@ -102,7 +102,9 @@ export function TradeRecCard({ recs, readOnly, onRebalance, onDownload, onReview
         </div>
       ))}
 
-      {/* Real execution controls — identical to the hero card's action row */}
+      {/* Real execution controls.
+          Read-only: ActionButton's primary IS the download control, so it
+          must run the real .xlsx export — not the rebalance flow. */}
       <div style={{ marginTop: '10px' }}>
         <ActionButton
           action="REBALANCE"
@@ -110,7 +112,7 @@ export function TradeRecCard({ recs, readOnly, onRebalance, onDownload, onReview
           showDismiss={false}
           readOnly={readOnly}
           disabled={disabled}
-          onRebalance={onRebalance}
+          onRebalance={readOnly ? (onDownload || onRebalance) : onRebalance}
           onDownload={onDownload || onRebalance}
         />
       </div>

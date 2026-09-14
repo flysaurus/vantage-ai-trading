@@ -61,12 +61,12 @@ export default function ActionButton({
 
   if (action === 'REBALANCE') {
     if (readOnly) {
-      primaryLabel = 'Download';
+      primaryLabel = 'Download plan';
       onPrimary = onRebalance;
     } else {
       primaryLabel = 'Trade';
       onPrimary = onRebalance;
-      downloadLabel = 'Download';
+      downloadLabel = 'Download plan';
       onDownloadLink = onDownload ?? onRebalance;
     }
   } else if (action.startsWith('REVIEW_POSITION:')) {
