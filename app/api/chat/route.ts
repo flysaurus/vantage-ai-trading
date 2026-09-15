@@ -63,6 +63,7 @@ import { classify, detectVisualRequestIntent, type ClassifierResult } from '@/li
 import { logClassifierAudit } from '@/lib/ai/classifier-audit'
 import { validateResponse } from '@/lib/ai/validator'
 import { detectProjectedScoreClaim, suppressProjectedScores, enforceTierLimits, shouldAttachHealthChart } from '@/lib/ai/response-guards'
+import { findShareClassSibling, siblingMentionedNear, shareClassNote } from '@/lib/ai/share-class'
 
 /** Fetch the user's DCA schedules + open/queued orders and render the answer. */
 async function fetchScheduledActivityAnswer(userId: string, accountId?: string | null): Promise<string> {
@@ -2329,6 +2330,41 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // The LIGHT path returns early before the full pipeline, so the guards
         // live here and every site that finalises a user-visible response calls
         // them. Prompt-only rules are not enforcement; these are.
+        const heldSymbols: string[] = Array.isArray(portfolioSnapshot?.positions)
+          ? (portfolioSnapshot!.positions as any[])
+              .map((p) => String(p?.symbol || '').trim().toUpperCase())
+              .filter(Boolean)
+          : [];
+        // ITEM 2: share-class guard. GOOG/GOOGL both resolve to "Alphabet Inc.",
+        // so both trade gates pass a marker written beside the sibling class.
+        // We cannot silently rewrite the ticker (the user may want that class),
+        // so we disclose it right next to the action instead of letting a
+        // wrong-ticker button go out unflagged.
+        const applyShareClassDisclosure = (text: string): string => {
+          if (heldSymbols.length === 0 && !/\[RECOMMEND:/.test(text)) return text;
+          const notes: string[] = [];
+          const seen = new Set<string>();
+          const markerRe = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):/g;
+          for (const m of text.matchAll(markerRe)) {
+            const sym = m[1];
+            const heldSibling = heldSymbols.length
+              ? findShareClassSibling(sym, heldSymbols)
+              : null;
+            const proseSibling = siblingMentionedNear(text, sym, m.index ?? 0);
+            const sibling = heldSibling || proseSibling;
+            if (!sibling) continue;
+            const key = `${sym}->${sibling}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            console.warn(
+              `[chat] ⚠️ Share-class risk: marker ${sym} vs sibling ${sibling}` +
+                ` (held=${Boolean(heldSibling)}, prose=${Boolean(proseSibling)})`,
+            );
+            const note = shareClassNote(sym, sibling, Boolean(heldSibling));
+            if (note && notes.length < 2) notes.push(note);
+          }
+          return notes.length ? text + notes.join('') : text;
+        };
         const applyProjectedScoreSuppression = (text: string): string => {
           const claim = detectProjectedScoreClaim(text);
           if (!claim) return text;
@@ -2360,11 +2396,12 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // marker validation uses). Without this the guards would be cosmetic.
         const finalizeGuardedText = (text: string): string => {
           const guarded = applyChartAndTierGuards(applyProjectedScoreSuppression(text));
-          if (guarded !== text) {
+          const finalText = applyShareClassDisclosure(guarded);
+          if (finalText !== text) {
             console.log('[chat] 🛡️ post-generation guards changed the text — emitting correctedText');
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ correctedText: guarded })}\n\n`));
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ correctedText: finalText })}\n\n`));
           }
-          return guarded;
+          return finalText;
         };
 
         if (!isFullPipeline) {
