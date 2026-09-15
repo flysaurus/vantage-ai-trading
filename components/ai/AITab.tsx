@@ -26,6 +26,8 @@ import { PositionCards } from '@/components/ai/PositionCards';
 import { ExportControls } from '@/components/ai/ExportControls';
 import ActionButton from '@/components/ai/ActionButton';
 import TradeRecCard from '@/components/ai/TradeRecCard';
+import TradeRecTicket from '@/components/ai/TradeRecTicket';
+import type { TradeRec } from '@/lib/ai/trade-recs';
 import { detectTradeRecommendations } from '@/lib/ai/trade-recs';
 import { humanizeNoticedItem } from '@/lib/insights/noticed-copy';
 import { useTabStore } from '@/store';
@@ -487,6 +489,11 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
     /** ID of the AI message the marker came from — for persisting execution state */
     messageId?: string;
   } | null>(null);
+
+  // ── Multi-leg order ticket for a recommendation card ──
+  // Opened by TradeRecCard's "Trade" CTA. Replaces the old behaviour where
+  // Trade fired sendMessage('rebalance') and started the rebalance flow.
+  const [tradeRecTicket, setTradeRecTicket] = useState<{ recs: TradeRec[]; messageId?: string } | null>(null);
   // Track tickers the user asked about in their last message (for deviation scenarios)
 
   // ── Executed markers: permanent state across sessions ──
@@ -2583,6 +2590,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                     recs={recs}
                     readOnly={isReadOnly}
                     disabled={loading}
+                    onTrade={(recs) => setTradeRecTicket({ recs, messageId: msg.id })}
                     // "Download plan" — package THIS response's recommendation
                     // through the existing .xlsx export pattern ([RECOMMEND] /
                     // [PORTFOLIO] markers → rows). Falls back to the rebalance
@@ -3636,6 +3644,34 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           </div>
         </div>
       )}
+
+      {/* ─── Multi-leg order ticket (recommendation card "Trade") ─── */}
+      <TradeRecTicket
+        isOpen={tradeRecTicket !== null}
+        onClose={() => setTradeRecTicket(null)}
+        recs={tradeRecTicket?.recs || []}
+        readOnly={isReadOnly}
+        availableCash={computeAvailableCash(liveAccount)}
+        onExecuteLeg={async (leg) => {
+          const res = await executeTrade(
+            leg.ticker,
+            leg.side,
+            leg.shares,
+            leg.price,
+            'market',
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            leg.amount,
+            tradeRecTicket?.messageId,
+            undefined,
+          );
+          return { success: !!res?.success, error: (res as any)?.error };
+        }}
+      />
 
       {/* ─── TradeTicket (inline chat entry) ─── */}
       <TradeTicket

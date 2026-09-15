@@ -12,17 +12,25 @@ import { TradeRec, formatTradeRec } from '@/lib/ai/trade-recs';
 // Uses the exact same `ActionButton` pattern as the concentration-risk hero
 // card, so the trade-enabled ("Trade" + "Download plan") and read-only
 // ("Download plan" only) behaviours stay identical across the app.
+// The primary CTA names the actual trade ("Trim XLF") rather than a generic
+// "Trade" — the recommendation is already parsed at this point.
 
 interface Props {
   recs: TradeRec[];
   readOnly?: boolean;
   onRebalance: () => void;
+  /**
+   * Opens the multi-leg ORDER TICKET for these recs. When provided (and the
+   * account is trade-enabled) this replaces the REBALANCE CTA — a specific
+   * trade recommendation must open an order ticket, never the rebalance flow.
+   */
+  onTrade?: (recs: TradeRec[]) => void;
   onDownload?: () => void;
   onReviewPosition?: (ticker: string) => void;
   disabled?: boolean;
 }
 
-export function TradeRecCard({ recs, readOnly, onRebalance, onDownload, onReviewPosition, disabled }: Props) {
+export function TradeRecCard({ recs, readOnly, onRebalance, onTrade, onDownload, onReviewPosition, disabled }: Props) {
   if (!recs || recs.length === 0) return null;
 
   return (
@@ -103,21 +111,80 @@ export function TradeRecCard({ recs, readOnly, onRebalance, onDownload, onReview
       ))}
 
       {/* Real execution controls.
-          Read-only: ActionButton's primary IS the download control, so it
-          must run the real .xlsx export — not the rebalance flow. */}
-      <div style={{ marginTop: '10px' }}>
-        <ActionButton
-          action="REBALANCE"
-          flush
-          showDismiss={false}
-          readOnly={readOnly}
-          disabled={disabled}
-          onRebalance={readOnly ? (onDownload || onRebalance) : onRebalance}
-          onDownload={onDownload || onRebalance}
-        />
-      </div>
+          Specific trade recs → ORDER TICKET (onTrade). The REBALANCE CTA is a
+          fallback for callers that don't supply a ticket; read-only accounts
+          keep the download-only control. */}
+      {onTrade && !readOnly ? (
+        <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            type="button"
+            data-testid="trade-rec-trade"
+            disabled={disabled}
+            onClick={(e) => {
+              e.stopPropagation();
+              onTrade(recs);
+            }}
+            style={{
+              background: 'var(--v-accent-button)',
+              color: 'var(--v-accent-text)',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '7px 14px',
+              fontSize: '12.5px',
+              fontWeight: 700,
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit',
+              opacity: disabled ? 0.6 : 1,
+            }}
+          >
+            {recs.length === 1
+              ? `${recs[0].side === 'trim' ? 'Trim' : 'Buy'} ${recs[0].ticker}`
+              : `Trade ${recs.length} legs`}
+          </button>
+          {onDownload && (
+            <button
+              type="button"
+              data-testid="trade-rec-download"
+              disabled={disabled}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDownload();
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--v-accent-label)',
+                padding: '7px 4px',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                fontFamily: 'inherit',
+                textDecoration: 'underline',
+                textUnderlineOffset: '3px',
+                opacity: disabled ? 0.6 : 1,
+              }}
+            >
+              Download plan
+            </button>
+          )}
+        </div>
+      ) : (
+        <div style={{ marginTop: '10px' }}>
+          <ActionButton
+            action="REBALANCE"
+            flush
+            showDismiss={false}
+            readOnly={readOnly}
+            disabled={disabled}
+            // Read-only: ActionButton's primary IS the download control, so it
+            // must run the real .xlsx export — not the rebalance flow.
+            onRebalance={readOnly ? (onDownload || onRebalance) : onRebalance}
+            onDownload={onDownload || onRebalance}
+          />
+        </div>
+      )}
 
-      <div style={{ fontSize: '11px', color: 'var(--v-chat-text-5)', marginTop: '6px' }}>
+      <div style={{ fontSize: '11px', color: 'var(--v-chat-text-3)', marginTop: '6px' }}>
         {formatTradeRec(recs[0])}
         {recs.length > 1 ? ` +${recs.length - 1} more` : ''} — review before you execute.
       </div>
