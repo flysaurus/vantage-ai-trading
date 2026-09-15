@@ -63,7 +63,7 @@ import { classify, detectVisualRequestIntent, type ClassifierResult } from '@/li
 import { logClassifierAudit } from '@/lib/ai/classifier-audit'
 import { validateResponse } from '@/lib/ai/validator'
 import { detectProjectedScoreClaim, suppressProjectedScores, enforceTierLimits, shouldAttachHealthChart } from '@/lib/ai/response-guards'
-import { findShareClassSibling, siblingMentionedNear, shareClassNote } from '@/lib/ai/share-class'
+import { stripConflictingRecommendMarkers } from '@/lib/ai/share-class'
 
 /** Fetch the user's DCA schedules + open/queued orders and render the answer. */
 async function fetchScheduledActivityAnswer(userId: string, accountId?: string | null): Promise<string> {
@@ -2339,35 +2339,22 @@ Use these for any market-direction questions ("how are markets today?", "any sel
               .map((p) => String(p?.symbol || '').trim().toUpperCase())
               .filter(Boolean)
           : [];
-        // ITEM 2: share-class guard. GOOG/GOOGL both resolve to "Alphabet Inc.",
-        // so both trade gates pass a marker written beside the sibling class.
-        // We cannot silently rewrite the ticker (the user may want that class),
-        // so we disclose it right next to the action instead of letting a
-        // wrong-ticker button go out unflagged.
-        const applyShareClassDisclosure = (text: string): string => {
-          if (heldSymbols.length === 0 && !/\[RECOMMEND:/.test(text)) return text;
-          const notes: string[] = [];
-          const seen = new Set<string>();
-          const markerRe = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):/g;
-          for (const m of text.matchAll(markerRe)) {
-            const sym = m[1];
-            const heldSibling = heldSymbols.length
-              ? findShareClassSibling(sym, heldSymbols)
-              : null;
-            const proseSibling = siblingMentionedNear(text, sym, m.index ?? 0);
-            const sibling = heldSibling || proseSibling;
-            if (!sibling) continue;
-            const key = `${sym}->${sibling}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
+        // ITEM 2 — HARD BLOCK (Em, 2026-09-16): GOOG/GOOGL both resolve to
+        // "Alphabet Inc.", so both trade gates accept a marker written beside the
+        // sibling share class. We no longer annotate and let the button through:
+        // the marker is stripped entirely, so NO trade button can render next to
+        // an unresolved share-class ambiguity. The prose is left standing — the
+        // same outcome the light path already produces when it strips markers.
+        const applyShareClassBlock = (text: string): string => {
+          if (!text.includes('[RECOMMEND:')) return text;
+          const { text: blocked, stripped } = stripConflictingRecommendMarkers(text, heldSymbols);
+          for (const h of stripped) {
             console.warn(
-              `[chat] ⚠️ Share-class risk: marker ${sym} vs sibling ${sibling}` +
-                ` (held=${Boolean(heldSibling)}, prose=${Boolean(proseSibling)})`,
+              `[chat] 🚫 Share-class block: stripped [RECOMMEND:${h.symbol}...] — sibling ${h.sibling}` +
+                ` (held=${h.held}) — no trade button will render`,
             );
-            const note = shareClassNote(sym, sibling, Boolean(heldSibling));
-            if (note && notes.length < 2) notes.push(note);
           }
-          return notes.length ? text + notes.join('') : text;
+          return blocked;
         };
         const applyProjectedScoreSuppression = (text: string): string => {
           const claim = detectProjectedScoreClaim(text);
@@ -2400,7 +2387,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // marker validation uses). Without this the guards would be cosmetic.
         const finalizeGuardedText = (text: string): string => {
           const guarded = applyChartAndTierGuards(applyProjectedScoreSuppression(text));
-          const finalText = applyShareClassDisclosure(guarded);
+          const finalText = applyShareClassBlock(guarded);
           if (finalText !== text) {
             console.log('[chat] 🛡️ post-generation guards changed the text — emitting correctedText');
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ correctedText: finalText })}\n\n`));

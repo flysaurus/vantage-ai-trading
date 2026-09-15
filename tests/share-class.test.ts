@@ -4,6 +4,7 @@ import {
   findShareClassSibling,
   siblingMentionedNear,
   shareClassNote,
+  stripConflictingRecommendMarkers,
 } from '@/lib/ai/share-class';
 
 describe('shareClassFamily', () => {
@@ -72,5 +73,72 @@ describe('shareClassNote', () => {
   it('returns null when there is nothing to say', () => {
     expect(shareClassNote('GOOG', 'GOOG', true)).toBeNull();
     expect(shareClassNote('', 'GOOGL', true)).toBeNull();
+  });
+});
+
+// ── HARD BLOCK (Em, 2026-09-16) ──────────────────────────────────────────────
+// The guard no longer annotates a conflicting marker — it removes it, so the
+// trade button cannot render. These tests assert the BUTTON-level outcome by
+// running the client's real parser regex over the guarded text.
+const CLIENT_MARKER_PATTERN = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):(BUY|SELL)(?::(\$?[\d,]+(?:\.\d+)?))?\]/g;
+const buttons = (t: string) => [...t.matchAll(CLIENT_MARKER_PATTERN)].length;
+
+describe('stripConflictingRecommendMarkers (hard block)', () => {
+  it('strips the incident-shaped marker (prose names the sibling class)', () => {
+    const incident =
+      'Your biggest positions are NVDA ($28.3K), MSFT ($20.7K) and GOOGL ($13.6K). ' +
+      'Add to your Google exposure here.\n\n[RECOMMEND:GOOG:BUY:$500]';
+    expect(buttons(incident)).toBe(1); // a button WOULD have rendered
+    const { text, stripped } = stripConflictingRecommendMarkers(incident, ['GOOGL', 'GOOG']);
+    expect(buttons(text)).toBe(0); // …and now none can
+    expect(text).not.toContain('[RECOMMEND:');
+    expect(stripped).toEqual([{ symbol: 'GOOG', sibling: 'GOOGL', held: true }]);
+    // the prose stands, unharmed
+    expect(text).toContain('GOOGL ($13.6K)');
+    expect(text).toContain('Add to your Google exposure here.');
+  });
+
+  it('blocks on a held sibling even when the prose does not name it', () => {
+    const t = 'Adding to the Class C line now.\n\n[RECOMMEND:GOOG:BUY:$500]';
+    const { text, stripped } = stripConflictingRecommendMarkers(t, ['GOOGL']);
+    expect(buttons(t)).toBe(1);
+    expect(buttons(text)).toBe(0);
+    expect(stripped[0]).toEqual({ symbol: 'GOOG', sibling: 'GOOGL', held: true });
+  });
+
+  it('leaves a marker with no share-class conflict completely untouched', () => {
+    const t = 'AVGO looks strong.\n\n[RECOMMEND:AVGO:BUY:$500]';
+    const { text, stripped } = stripConflictingRecommendMarkers(t, ['GOOGL', 'NVDA']);
+    expect(text).toBe(t);
+    expect(stripped).toEqual([]);
+    expect(buttons(text)).toBe(1); // legitimate button still renders
+  });
+
+  it('strips only the conflicting marker when several are present', () => {
+    const t = '[RECOMMEND:AVGO:BUY:$500] and [RECOMMEND:GOOG:BUY:$500] beside GOOGL.';
+    const { text, stripped } = stripConflictingRecommendMarkers(t, ['GOOGL']);
+    expect(stripped).toHaveLength(1);
+    expect(text).toContain('[RECOMMEND:AVGO:BUY:$500]');
+    expect(text).not.toContain('[RECOMMEND:GOOG');
+    expect(buttons(text)).toBe(1);
+  });
+
+  it('leaves clean prose and collapses the whitespace the marker left behind', () => {
+    const t = 'Line one.\n\n[RECOMMEND:GOOG:BUY:$500]\n\nLine two names GOOGL.';
+    const { text } = stripConflictingRecommendMarkers(t, ['GOOGL']);
+    expect(text).toBe('Line one.\n\nLine two names GOOGL.');
+    expect(text).not.toMatch(/[ \t]$/m);
+    expect(text).not.toMatch(/\n{3,}/);
+  });
+
+  it('does nothing without holdings or a marker', () => {
+    expect(stripConflictingRecommendMarkers('plain prose', []).text).toBe('plain prose');
+    expect(stripConflictingRecommendMarkers('', ['GOOGL']).text).toBe('');
+  });
+
+  it('never strips a marker for the class the user holds when the prose is clean', () => {
+    const t = 'Adding to the Class A line.\n\n[RECOMMEND:GOOGL:BUY:$500]';
+    const { stripped } = stripConflictingRecommendMarkers(t, ['GOOGL', 'AVGO']);
+    expect(stripped).toEqual([]);
   });
 });

@@ -99,6 +99,63 @@ export function siblingMentionedNear(
   return null
 }
 
+export interface ShareClassStrip {
+  /** The marker's ticker that was removed. */
+  symbol: string
+  /** The sibling class that made it ambiguous. */
+  sibling: string
+  /** True when the user actually holds the sibling class. */
+  held: boolean
+}
+
+/** Collapse the whitespace left behind by removing a marker. */
+function tidyAfterStrip(text: string): string {
+  const lines = text.split('\n').map((l) => l.replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+$/, ''))
+  const out: string[] = []
+  for (const l of lines) {
+    if (l.trim() === '' && out.length && out[out.length - 1].trim() === '') continue
+    out.push(l)
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+/**
+ * HARD-BLOCK variant (Em, 2026-09-16).
+ *
+ * When a `[RECOMMEND:SYM:...]` marker sits beside prose that names a DIFFERENT
+ * share class of the same company (the incident shape), or when the user holds
+ * that sibling class, the marker is REMOVED from the text ENTIRELY so no trade
+ * button can render next to an unresolved share-class ambiguity. The prose is
+ * left standing — the same outcome as the light path, which strips markers
+ * before finalisation and therefore never builds a button.
+ *
+ * Markers with no share-class conflict are returned untouched.
+ */
+export function stripConflictingRecommendMarkers(
+  text: string,
+  heldSymbols: readonly string[] = [],
+): { text: string; stripped: ShareClassStrip[] } {
+  if (!text || !text.includes('[RECOMMEND:')) return { text, stripped: [] }
+  const markerRe = /\[RECOMMEND:([A-Z]{1,5}(?:[.\-][A-Z]{1,2})?):[^\]]*\]/g
+  const stripped: ShareClassStrip[] = []
+  const seen = new Set<string>()
+  const replaced = text.replace(markerRe, (match, sym: string, offset: number) => {
+    const s = norm(sym)
+    const heldSibling = heldSymbols.length ? findShareClassSibling(s, heldSymbols) : null
+    const proseSibling = siblingMentionedNear(text, s, offset)
+    const sibling = heldSibling || proseSibling
+    if (!sibling) return match
+    const key = `${s}->${sibling}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      stripped.push({ symbol: s, sibling, held: Boolean(heldSibling) })
+    }
+    return ''
+  })
+  if (!stripped.length) return { text, stripped: [] }
+  return { text: tidyAfterStrip(replaced), stripped }
+}
+
 /**
  * Builds the user-facing disclosure for a share-class risk. Returns null
  * when there is nothing to say.
