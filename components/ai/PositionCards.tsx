@@ -8,8 +8,8 @@
 import type { PositionMarker } from '@/lib/portfolio-types';
 
 const CARD_STYLE: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.03)',
-  border: '1px solid rgba(255,255,255,0.08)',
+  background: 'var(--v-chat-fill)',
+  border: '1px solid var(--v-chat-border)',
   borderRadius: '10px',
   padding: '10px 12px',
 };
@@ -24,19 +24,19 @@ export function PositionCard({ card }: { card: PositionMarker }) {
         gap: '8px',
         marginBottom: card.thesis ? '4px' : '0',
       }}>
-        <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#ffffff' }}>
+        <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--v-chat-text)' }}>
           {card.ticker}
           {card.name ? (
-            <span style={{ color: '#94a3b8', fontWeight: 600 }}> — {card.name}</span>
+            <span style={{ color: 'var(--v-chat-text-3)', fontWeight: 600 }}> — {card.name}</span>
           ) : null}
         </div>
         {card.pct != null && !Number.isNaN(card.pct) ? (
           <span style={{
             fontSize: '11px',
             fontWeight: 700,
-            color: '#22d3ee',
-            background: 'rgba(34,211,238,0.12)',
-            border: '1px solid rgba(34,211,238,0.25)',
+            color: 'var(--v-accent-label)',
+            background: 'var(--v-chat-accent-soft)',
+            border: '1px solid var(--v-chat-accent-border)',
             borderRadius: '999px',
             padding: '2px 8px',
             whiteSpace: 'nowrap',
@@ -46,7 +46,7 @@ export function PositionCard({ card }: { card: PositionMarker }) {
         ) : null}
       </div>
       {card.thesis ? (
-        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.72)', lineHeight: 1.55 }}>
+        <div style={{ fontSize: '12px', color: 'var(--v-chat-text-2)', lineHeight: 1.55 }}>
           {card.thesis}
         </div>
       ) : null}

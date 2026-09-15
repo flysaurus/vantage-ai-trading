@@ -120,13 +120,13 @@ export function SummaryCard({
         justifyContent: 'space-between',
         gap: '8px',
         padding: '14px 16px',
-        borderBottom: '1px solid var(--border-subtle)',
+        borderBottom: '1px solid var(--v-chat-border)',
       }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
             fontSize: '11px',
             fontWeight: 700,
-            color: '#22d3ee',
+            color: 'var(--v-accent-label)',
             textTransform: 'uppercase',
             letterSpacing: '0.05em',
             marginBottom: '4px',
@@ -135,7 +135,7 @@ export function SummaryCard({
           </div>
           <div style={{
             fontSize: '13px',
-            color: '#e2e8f0',
+            color: 'var(--v-chat-text)',
             lineHeight: 1.5,
             wordBreak: 'break-word',
           }}>
@@ -150,13 +150,13 @@ export function SummaryCard({
             alignItems: 'center',
             gap: '4px',
             background: copied
-              ? 'rgba(34,211,238,0.15)'
-              : 'rgba(255,255,255,0.06)',
+              ? 'var(--v-chat-accent-soft)'
+              : 'var(--v-chat-fill)',
             border: `1px solid ${copied
-              ? 'rgba(34,211,238,0.3)'
-              : 'rgba(255,255,255,0.08)'}`,
+              ? 'var(--v-chat-accent-border)'
+              : 'var(--v-chat-border)'}`,
             borderRadius: '8px',
-            color: copied ? '#22d3ee' : '#94a3b8',
+            color: copied ? 'var(--v-accent-label)' : 'var(--v-chat-text-3)',
             fontSize: '11px',
             fontWeight: 600,
             padding: '6px 12px',
@@ -185,7 +185,7 @@ export function SummaryCard({
         }}>
           <thead>
             <tr style={{
-              borderBottom: '1px solid var(--border-subtle)',
+              borderBottom: '1px solid var(--v-chat-border)',
             }}>
               <th style={thStyle}>Ticker</th>
               <th style={{ ...thStyle, textAlign: 'left' }}>Name</th>
@@ -205,12 +205,12 @@ export function SummaryCard({
 
               return (
                 <tr key={item.symbol} style={{
-                  borderBottom: '1px solid var(--border-subtle)',
+                  borderBottom: '1px solid var(--v-chat-border)',
                 }}>
                   <td style={{
                     ...tdStyle,
                     fontWeight: 700,
-                    color: '#e2e8f0',
+                    color: 'var(--v-chat-text)',
                     letterSpacing: '0.03em',
                     whiteSpace: 'nowrap',
                   }}>
@@ -219,7 +219,7 @@ export function SummaryCard({
                   <td style={{
                     ...tdStyle,
                     textAlign: 'left',
-                    color: '#94a3b8',
+                    color: 'var(--v-chat-text-3)',
                     maxWidth: '140px',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -230,7 +230,7 @@ export function SummaryCard({
                   <td style={{
                     ...tdStyle,
                     textAlign: 'right',
-                    color: '#22d3ee',
+                    color: 'var(--v-accent-label)',
                     fontWeight: 600,
                     whiteSpace: 'nowrap',
                   }}>
@@ -239,7 +239,7 @@ export function SummaryCard({
                   <td style={{
                     ...tdStyle,
                     textAlign: 'right',
-                    color: '#e2e8f0',
+                    color: 'var(--v-chat-text)',
                     fontWeight: 600,
                     whiteSpace: 'nowrap',
                   }}>
@@ -257,10 +257,10 @@ export function SummaryCard({
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '3px',
-                          background: 'rgba(16,185,129,0.12)',
-                          border: '1px solid rgba(16,185,129,0.35)',
+                          background: 'var(--v-gain-dim)',
+                          border: '1px solid var(--v-gain-dim)',
                           borderRadius: '5px',
-                          color: '#10b981',
+                          color: 'var(--v-chat-gain)',
                           fontSize: '10px',
                           fontWeight: 700,
                           padding: '3px 8px',
@@ -283,11 +283,11 @@ export function SummaryCard({
               <td colSpan={5} style={{
                 padding: '10px 16px',
                 fontSize: '11px',
-                color: '#64748b',
+                color: 'var(--v-chat-text-3)',
                 textAlign: 'right',
                 fontWeight: 600,
               }}>
-                Total: <span style={{ color: '#e2e8f0' }}>${total.toLocaleString()}</span> · {buyItems.length} position{buyItems.length !== 1 ? 's' : ''}
+                Total: <span style={{ color: 'var(--v-chat-text)' }}>${total.toLocaleString()}</span> · {buyItems.length} position{buyItems.length !== 1 ? 's' : ''}
               </td>
             </tr>
           </tfoot>
@@ -301,7 +301,7 @@ const thStyle: React.CSSProperties = {
   padding: '10px 12px',
   fontSize: '10px',
   fontWeight: 700,
-  color: '#64748b',
+  color: 'var(--v-chat-text-3)',
   textTransform: 'uppercase',
   letterSpacing: '0.05em',
   textAlign: 'left',

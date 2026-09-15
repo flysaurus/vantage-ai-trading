@@ -101,8 +101,8 @@ export default function ActionButton({
   if (!primaryLabel || !onPrimary) return null;
 
   const primaryStyle: React.CSSProperties = {
-    background: '#22d3ee',
-    color: '#0b1220',
+    background: 'var(--v-accent-button)',
+    color: 'var(--v-accent-text)',
     border: 'none',
     borderRadius: '8px',
     padding: '7px 14px',
@@ -117,7 +117,7 @@ export default function ActionButton({
   const linkStyle: React.CSSProperties = {
     background: 'transparent',
     border: 'none',
-    color: '#22d3ee',
+    color: 'var(--v-accent-label)',
     padding: '7px 4px',
     fontSize: '12.5px',
     fontWeight: 600,
@@ -132,7 +132,7 @@ export default function ActionButton({
   const dismissStyle: React.CSSProperties = {
     background: 'transparent',
     border: 'none',
-    color: 'rgba(255,255,255,0.55)',
+    color: 'var(--v-chat-text-3)',
     padding: '7px 4px',
     fontSize: '12.5px',
     fontWeight: 600,

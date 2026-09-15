@@ -51,7 +51,7 @@ export function TradeRecCard({ recs, readOnly, onRebalance, onTrade, onDownload,
           letterSpacing: '0.07em',
           textTransform: 'uppercase',
           fontWeight: 700,
-          color: 'var(--v-chat-text-4)',
+          color: 'var(--v-chat-text-3)',
           marginBottom: '8px',
         }}
       >
@@ -75,7 +75,7 @@ export function TradeRecCard({ recs, readOnly, onRebalance, onTrade, onDownload,
               fontSize: '11px',
               fontWeight: 800,
               letterSpacing: '0.03em',
-              color: r.side === 'trim' ? 'var(--v-chat-accent)' : 'var(--v-gain)',
+              color: r.side === 'trim' ? 'var(--v-accent-label)' : 'var(--v-gain-label)',
               minWidth: '34px',
             }}
           >
@@ -84,7 +84,7 @@ export function TradeRecCard({ recs, readOnly, onRebalance, onTrade, onDownload,
           <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--v-chat-text)' }}>
             {r.ticker}
           </span>
-          <span style={{ fontSize: '13px', color: 'var(--v-chat-text-4)', flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: '13px', color: 'var(--v-chat-text-3)', flex: 1, minWidth: 0 }}>
             {r.shares !== undefined
               ? `${r.shares.toLocaleString()} share${r.shares === 1 ? '' : 's'}`
               : `$${Math.round(r.amount || 0).toLocaleString()}`}
@@ -99,7 +99,7 @@ export function TradeRecCard({ recs, readOnly, onRebalance, onTrade, onDownload,
                 padding: 0,
                 fontSize: '12.5px',
                 fontWeight: 600,
-                color: 'var(--v-chat-accent)',
+                color: 'var(--v-accent-label)',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
               }}
