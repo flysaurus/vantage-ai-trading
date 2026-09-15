@@ -1409,12 +1409,15 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
       }
     }
 
-    // Only block when chatRemaining is explicitly 0 (confirmed loaded + depleted).
-    // null = not yet loaded → allow through (server enforces the real limit).
+    // ── DAILY CHAT LIMIT DISABLED (Em, Sep 15 2026) ──
+    // The server no longer reports a daily chat cap, so `chatRemaining` can only
+    // reach 0 through the MONTHLY counter. The composer is therefore never
+    // locked by the daily counter. If chatRemaining is 0, it is monthly.
+    // (To restore: bring back the daily/day-reset branch here.)
     if (chatRemaining === 0) {
       const resetMsg = usageStats?.chat?.monthly
         ? `Monthly chat limit reached — resets on the 1st. Upgrade to Gold for more messages.`
-        : `Daily chat limit reached — resets tomorrow.`;
+        : `Chat usage limit reached.`;
       setMessages(prev => [...prev, {
         role: 'ai',
         content: `📊 ${resetMsg}`
@@ -3307,11 +3310,15 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 </div>
                 {usageStats ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12px' }}>
-                    {/* Chat messages */}
+                    {/* Chat messages — daily cap is DISABLED (Em, Sep 15 2026):
+                        limit 0 means unlimited, so show the count without styling
+                        it as exhausted. */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: 'var(--v-chat-text-2)' }}>Today&apos;s chat messages</span>
-                      <span style={{ color: usageStats.chat.daily.used >= usageStats.chat.daily.limit ? WARNING : 'var(--v-chat-text-2)', fontWeight: 600 }}>
-                        {usageStats.chat.daily.used} / {usageStats.chat.daily.limit}
+                      <span style={{ color: usageStats.chat.daily.limit > 0 && usageStats.chat.daily.used >= usageStats.chat.daily.limit ? WARNING : 'var(--v-chat-text-2)', fontWeight: 600 }}>
+                        {usageStats.chat.daily.limit > 0
+                          ? `${usageStats.chat.daily.used} / ${usageStats.chat.daily.limit}`
+                          : `${usageStats.chat.daily.used} · unlimited`}
                       </span>
                     </div>
                     {/* Monthly chat (Silver/Gold) */}

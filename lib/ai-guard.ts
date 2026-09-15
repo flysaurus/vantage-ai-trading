@@ -177,22 +177,35 @@ export async function checkUsageLimit(
     dailyUsed = data?.[config.dbField] || 0;
   }
 
-  // Get daily limit from DB tier tables — never hardcoded
+  // ── DAILY CHAT LIMIT — DISABLED (Em, Sep 15 2026) ─────────────────────────
+  // The daily chat-message cap is intentionally OFF. For `message` we skip the
+  // daily-limit lookup entirely, so `dailyLimit` stays 0 → the daily branch
+  // below can never fire and `remaining` falls through to its generous value.
+  // This also bypasses the fail-closed path, so a tier-RPC outage can no longer
+  // lock chat. Every other surface (brief / greeting / snapshot / noticed) is
+  // UNAFFECTED and still enforces its own daily limit.
+  //
+  // The MONTHLY cap (monthly_chat_limit) further down STILL APPLIES — it is the
+  // remaining backstop against runaway usage.
+  //
+  // TO RESTORE THE DAILY CAP: delete the `type !== 'message' &&` guard.
   let dailyLimit = 0;
-  try {
-    const limit = await getUserTierLimit(userId, config.dailyFeature);
-    if (typeof limit === 'number') dailyLimit = limit;
-    else console.warn(`[ai-guard] get_tier_limit(${config.dailyFeature}) returned non-number:`, limit);
-  } catch (err: any) {
-    console.error(`[ai-guard] get_tier_limit(${config.dailyFeature}) RPC failed:`, err.message);
-    // If we can't read the limit, fail closed (block usage) rather than
-    // silently allowing with a wrong hardcoded number.
-    return {
-      allowed: false,
-      remaining: 0,
-      resetsIn: 'unknown',
-      reason: `Unable to verify ${type} limit — tier system unavailable`,
-    };
+  if (type !== 'message') {
+    try {
+      const limit = await getUserTierLimit(userId, config.dailyFeature);
+      if (typeof limit === 'number') dailyLimit = limit;
+      else console.warn(`[ai-guard] get_tier_limit(${config.dailyFeature}) returned non-number:`, limit);
+    } catch (err: any) {
+      console.error(`[ai-guard] get_tier_limit(${config.dailyFeature}) RPC failed:`, err.message);
+      // If we can't read the limit, fail closed (block usage) rather than
+      // silently allowing with a wrong hardcoded number.
+      return {
+        allowed: false,
+        remaining: 0,
+        resetsIn: 'unknown',
+        reason: `Unable to verify ${type} limit — tier system unavailable`,
+      };
+    }
   }
 
   // Calculate hours until user's LOCAL midnight (not UTC)
@@ -200,7 +213,10 @@ export async function checkUsageLimit(
   // so the countdown reflects actual timezone, not server UTC
   const hoursLeft = getHoursUntilLocalMidnight(timezone);
 
-  // Check daily limit
+  // Check daily limit.
+  // NOTE: for `message` this is dead code while the daily cap is disabled
+  // (dailyLimit stays 0, guarded above). Left intact so restoring the cap is a
+  // one-line change.
   if (dailyLimit > 0 && dailyUsed >= dailyLimit) {
     return {
       allowed: false,
@@ -242,6 +258,9 @@ export async function checkUsageLimit(
     } catch { /* fail open */ }
   }
 
+  // `dailyLimit` is 0 for `message` while the daily cap is disabled → this
+  // reports a generous remaining count and the client never locks the composer
+  // on the daily counter (the monthly counter can still report 0).
   const remaining = dailyLimit > 0 ? Math.max(0, dailyLimit - dailyUsed) : 999;
   return { allowed: true, remaining, resetsIn: `${hoursLeft}h` };
 }
