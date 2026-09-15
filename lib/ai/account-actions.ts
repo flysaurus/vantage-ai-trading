@@ -9,6 +9,7 @@ import { getStyleConfig, getAllStyleLabels } from '@/lib/investor-style-defaults
 import { getInvestorStyleTargets, resolveRebalanceTargets, type AssetClass } from '@/lib/investor-style-targets';
 import { getRiskTolerancePrompt } from '@/lib/ai/userProfile';
 import { NOT_TICKERS } from '@/lib/symbol-resolution';
+import { detectHoldingsCountMismatch } from './response-guards';
 
 const VALID_STYLES = ['buffett', 'lynch', 'livermore', 'soros', 'munger'];
 
@@ -1351,5 +1352,9 @@ export function detectPortfolioGroundingMismatch(text: string, snapshot: Portfol
   );
   const tickers = detectUnheldTickerClaim(text, held);
   if (tickers) parts.push(tickers);
+  if ((snapshot.positions || []).length > 0) {
+    const holdings = detectHoldingsCountMismatch(text, snapshot.positions.length);
+    if (holdings) parts.push(holdings);
+  }
   return parts.length > 0 ? parts.join('\n') : null;
 }

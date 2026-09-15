@@ -62,6 +62,7 @@ import {
 import { classify, detectVisualRequestIntent, type ClassifierResult } from '@/lib/ai/classifier'
 import { logClassifierAudit } from '@/lib/ai/classifier-audit'
 import { validateResponse } from '@/lib/ai/validator'
+import { detectProjectedScoreClaim, suppressProjectedScores, enforceTierLimits, shouldAttachHealthChart } from '@/lib/ai/response-guards'
 
 /** Fetch the user's DCA schedules + open/queued orders and render the answer. */
 async function fetchScheduledActivityAnswer(userId: string, accountId?: string | null): Promise<string> {
@@ -2324,6 +2325,48 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           }
         };
 
+        // ── Shared post-generation guards (used by BOTH finalisation paths) ──
+        // The LIGHT path returns early before the full pipeline, so the guards
+        // live here and every site that finalises a user-visible response calls
+        // them. Prompt-only rules are not enforcement; these are.
+        const applyProjectedScoreSuppression = (text: string): string => {
+          const claim = detectProjectedScoreClaim(text);
+          if (!claim) return text;
+          console.warn('[chat] ⚠️ Projected-score claim detected:', claim);
+          const s = suppressProjectedScores(text);
+          console.warn(`[chat] ✂️ Suppressed ${s.removed} projected-score phrase(s)`);
+          return s.text;
+        };
+        const applyChartAndTierGuards = (text: string): string => {
+          let out = text;
+          // ITEM 5: user asked about the health score, model emitted no chart of
+          // its own → attach the trusted one deterministically.
+          if (portfolioSnapshot?.positions?.length && shouldAttachHealthChart(lastMessage, out)) {
+            out += '\n\n[CHART:bar|health-subscores]';
+            console.log('[chat] 📊 deterministic health-subscores chart attached');
+          }
+          // ITEM 6: literacy-tier word/section budget (never for CLARIFY).
+          if (!/\[CLARIFY:/.test(out)) {
+            const tiered = enforceTierLimits(out, profile.investmentExperience);
+            if (tiered.trimmedWords > 0 || tiered.droppedSections > 0) {
+              console.log(`[chat] ✂️ tier limits (${profile.investmentExperience}): trimmed ${tiered.trimmedWords} words, dropped ${tiered.droppedSections} section(s)`);
+              out = tiered.text;
+            }
+          }
+          return out;
+        };
+        // The client streams text as it arrives, so a post-generation edit is only
+        // user-visible through the existing `correctedText` channel (the same one
+        // marker validation uses). Without this the guards would be cosmetic.
+        const finalizeGuardedText = (text: string): string => {
+          const guarded = applyChartAndTierGuards(applyProjectedScoreSuppression(text));
+          if (guarded !== text) {
+            console.log('[chat] 🛡️ post-generation guards changed the text — emitting correctedText');
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ correctedText: guarded })}\n\n`));
+          }
+          return guarded;
+        };
+
         if (!isFullPipeline) {
           // Defensive: strip any leaked [RECOMMEND:...] markers so no ghost
           // buy/sell buttons render for a message that wasn't a recommendation.
@@ -2339,6 +2382,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: correction })}\n\n`));
             }
           }
+          responseText = finalizeGuardedText(responseText);
           await emitResolvedCharts(responseText);
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           if (userId && userId !== 'anonymous') {
@@ -2482,6 +2526,48 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
           return;
+        }
+        // ── Projected-score gate (invented/illustrative scores) ──
+        // The model must never invent a forward-looking health score
+        // ("would push this to 98–99", "would move the score from 91 to 92–94").
+        // Regenerate once; if it persists (retry exhausted), deterministically
+        // strip the projection phrase rather than ship a fabricated number.
+        const projectedClaim = detectProjectedScoreClaim(responseText);
+        if (projectedClaim) {
+          console.warn('[chat] ⚠️ Projected-score claim detected:', projectedClaim);
+          try {
+            if (userId && userId !== 'anonymous') {
+              const supabase = createServerClient();
+              const rawMarkers = [...responseText.matchAll(/\[RECOMMEND:[^\]]*\]/g)].map(m => m[0]);
+              await (supabase as any)
+                .from('validation_failures')
+                .insert({
+                  user_id: userId,
+                  attempt: (retryAttempt || 0) + 1,
+                  prompt: lastMessage.slice(0, 2000),
+                  raw_response: responseText.slice(0, 5000),
+                  raw_markers: rawMarkers.length > 0 ? rawMarkers : null,
+                  failures: [{ check: 'projected_score', detail: projectedClaim, offendingMarkers: [] }],
+                  budget: effectiveBudget,
+                  allocation: 0,
+                });
+              console.log('[chat] Projected-score failure logged to DB');
+            }
+          } catch (logErr) {
+            console.error('[chat] Projected-score failure DB log error:', logErr);
+          }
+
+          if (retryAttempt < 1) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ regenerate: true, failures: [{ check: 'projected_score', detail: projectedClaim, offendingMarkers: [] }], budget: effectiveBudget })}\n\n`)
+            );
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+            return;
+          }
+          const suppressed = suppressProjectedScores(responseText);
+          console.warn(`[chat] ✂️ Suppressed ${suppressed.removed} projected-score phrase(s)`);
+          responseText = suppressed.text;
         }
         // ── Precompute marker presence BEFORE any gate code references it ──
         const hasRecommendMarkers = /\[RECOMMEND:[A-Z0-9]{1,5}(?:\.[A-Z]{1,2})?:(BUY|SELL)/i.test(responseText);
@@ -2660,6 +2746,9 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // mismatches and keys whose data is unavailable resolve to null, so the
         // marker is stripped and the prose stands — never a guessed chart.
         if (!validationRejected) {
+          // Deterministic guards on the MAIN generated response (shared helper).
+          // Regeneration was already attempted above; this is the backstop.
+          responseText = finalizeGuardedText(responseText);
           await emitResolvedCharts(responseText);
         }
 

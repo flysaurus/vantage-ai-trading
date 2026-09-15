@@ -18,6 +18,7 @@ import {
   detectPortfolioGroundingMismatch,
   type PortfolioSnapshot,
 } from '../lib/ai/account-actions';
+import { detectHoldingsCountMismatch } from '../lib/ai/response-guards';
 
 const SNAPSHOT: PortfolioSnapshot = {
   equity: 101000,
@@ -131,5 +132,32 @@ describe('detectPortfolioGroundingMismatch (composite)', () => {
   it('returns null for null snapshot or empty text', () => {
     expect(detectPortfolioGroundingMismatch('', SNAPSHOT)).toBeNull();
     expect(detectPortfolioGroundingMismatch('Your portfolio is worth $1,000.', null as unknown as PortfolioSnapshot)).toBeNull();
+  });
+
+  it('flags a fabricated holdings COUNT against the real position count', () => {
+    // SNAPSHOT holds 2 positions.
+    const r = detectPortfolioGroundingMismatch('You currently hold 198 holdings.', SNAPSHOT)!;
+    expect(r).toContain('2 positions');
+    expect(r).toContain('not 198');
+  });
+
+  it('accepts a matching holdings count', () => {
+    expect(detectPortfolioGroundingMismatch('You hold 2 holdings.', SNAPSHOT)).toBeNull();
+  });
+
+  it('skips qualified subset claims ("your top 10 holdings")', () => {
+    expect(detectPortfolioGroundingMismatch('Your top 10 holdings are all tech.', SNAPSHOT)).toBeNull();
+  });
+});
+
+describe('detectHoldingsCountMismatch (direct)', () => {
+  it('fires when the claimed total is >5% off', () => {
+    expect(detectHoldingsCountMismatch('You hold 198 holdings.', 372)).toContain('372');
+  });
+
+  it('returns null when the count matches, is unknown, or is qualified', () => {
+    expect(detectHoldingsCountMismatch('You hold 372 holdings.', 372)).toBeNull();
+    expect(detectHoldingsCountMismatch('You hold 198 holdings.', 0)).toBeNull();
+    expect(detectHoldingsCountMismatch('Your 5 largest positions.', 372)).toBeNull();
   });
 });
