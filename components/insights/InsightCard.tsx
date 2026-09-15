@@ -23,6 +23,7 @@ import {
   followUpPrompt,
 } from '@/lib/insights/format';
 import type { DeckCard } from '@/lib/insights/deck';
+import DonutRing from '@/components/charts/DonutRing';
 
 /* ── Semantic color on the (always dark-navy) hero island ──── */
 function heroSemantic(variant: string): string {
@@ -55,37 +56,6 @@ function donutSlices(positions: Position[], topN = 3): DonutSlice[] {
   return slices;
 }
 
-/** The ring itself — identical geometry in every donut variant. */
-function DonutRing({ slices, size, stroke }: { slices: DonutSlice[]; size: number; stroke: number }) {
-  const box = 80;
-  const R = (box - stroke) / 2 - 1;
-  const C = 2 * Math.PI * R;
-  let offset = 0;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${box} ${box}`} style={{ flexShrink: 0 }} aria-hidden="true">
-      <g transform={`rotate(-90 ${box / 2} ${box / 2})`}>
-        {slices.map((s) => {
-          const len = (s.pct / 100) * C;
-          const el = (
-            <circle
-              key={s.symbol}
-              cx={box / 2}
-              cy={box / 2}
-              r={R}
-              fill="none"
-              stroke={s.color}
-              strokeWidth={stroke}
-              strokeDasharray={`${len} ${C - len}`}
-              strokeDashoffset={-offset}
-            />
-          );
-          offset += len;
-          return el;
-        })}
-      </g>
-    </svg>
-  );
-}
 
 /** Wide variant: ring on the left, full legend beside it.
  *  Used by non-concentration cards that show a donut. */
