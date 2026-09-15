@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { apiPost } from '@/lib/api-client';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
+import { brokerConnectionsPath } from '@/lib/broker-connections/origin';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -321,7 +322,7 @@ export function SettingsTab() {
             </p>
           </div>
           <button
-            onClick={() => window.location.href = '/broker-setup'}
+            onClick={() => window.location.href = brokerConnectionsPath('settings')}
             style={{
               background: 'rgba(34, 211, 238, 0.1)',
               border: '1px solid rgba(34, 211, 238, 0.3)',
@@ -752,7 +753,7 @@ export function SettingsTab() {
               <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>Not connected</p>
             </div>
             <button
-              onClick={() => router.push('/broker-setup')}
+              onClick={() => router.push(brokerConnectionsPath('settings'))}
               style={{
                 background: '#22d3ee',
                 color: '#000000',

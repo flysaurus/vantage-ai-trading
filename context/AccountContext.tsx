@@ -104,29 +104,39 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     } catch { /* store not initialized in all contexts */ }
   }, [activeAccountId]);
 
-  // ── Auto-select the user's connected broker over the demo default ──
-  // When accounts load and the current selection is still the unset default
-  // (no explicit choice stored) — or points at an account that no longer
-  // exists — prefer a connected live/paper broker account so the Portfolio
-  // and AI Advisor reflect the user's real holdings. Fall back to demo only
-  // when no broker account is connected.
+  // ── Resolve a VISIBLE account when the current selection isn't in the list ──
+  // When accounts load and the current selection is the unset default, or
+  // points at an account that no longer exists, prefer a connected live/paper
+  // broker account so the Portfolio and AI Advisor reflect the user's real
+  // holdings (demo only as a last resort).
+  //
+  // ⚠️ This is a DISPLAY fallback, not a selection: it must never write to
+  // localStorage. It used to call `setActiveAccount()` (which persists), so
+  // merely loading a screen that mounts the provider — e.g. backing out of
+  // Broker Connections, which re-mounts the shell at '/?' — silently promoted
+  // an unrelated account (the first non-demo one, e.g. Fidelity) to "active".
+  // The user's stored choice is only ever written by an explicit action
+  // (picker selection, connect flow, account switcher) via setActiveAccount().
   useEffect(() => {
     if (isLoading || accounts.length === 0) return;
 
-    const hasExplicitChoice =
-      typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY) !== null;
+    const storedChoice =
+      typeof window === 'undefined' ? null : localStorage.getItem(STORAGE_KEY);
+    const selectionResolves = accounts.some((a) => a.id === activeAccountId);
 
-    // Respect an explicit, still-valid choice.
-    if (hasExplicitChoice && accounts.some((a) => a.id === activeAccountId)) {
-      return;
-    }
+    // An explicit choice that still resolves is never touched.
+    if (storedChoice !== null && selectionResolves) return;
+    // Nothing was ever chosen and the selection already points at a real
+    // account (not the 'demo' placeholder) — leave it alone.
+    if (storedChoice === null && selectionResolves && activeAccountId !== 'demo') return;
 
     const preferred =
       accounts.find((a) => !a.isDemo) || accounts.find((a) => a.isDemo);
     if (preferred && preferred.id !== activeAccountId) {
-      setActiveAccount(preferred.id);
+      // DISPLAY fallback only — intentionally NOT persisted (see above).
+      setActiveAccountId(preferred.id);
     }
-  }, [accounts, isLoading, activeAccountId, setActiveAccount]);
+  }, [accounts, isLoading, activeAccountId]);
 
   const activeAccount = useMemo(
     () => accounts.find(a => a.id === activeAccountId) || null,

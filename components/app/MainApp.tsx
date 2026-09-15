@@ -30,6 +30,7 @@ import { AccountProvider, useAccounts } from '@/context/AccountContext';
 import { AccountSwitcher } from '@/components/accounts/AccountSwitcher';
 import AccountSelectScreen from '@/components/accounts/AccountSelectScreen';
 import { rememberTab } from '@/lib/nav-back';
+import { brokerConnectionsPath } from '@/lib/broker-connections/origin';
 import { consumeTlhCancelNotice } from '@/lib/tax-harvest/origin';
 import { PortfolioProvider, useLivePortfolio } from '@/context/PortfolioContext';
 import { useAppState } from '@/lib/app-state';
@@ -303,7 +304,9 @@ function AppShell() {
   }, [setActiveAccount]);
 
   const handleAddBroker = useCallback(() => {
-    router.push('/broker-setup');
+    // Origin-aware: the picker is a real entry point of Broker Connections, so
+    // Back from there must re-open the picker (was hardcoded to Settings).
+    router.push(brokerConnectionsPath('account-picker'));
   }, [router]);
 
   const handleAccountSelectDismiss = useCallback(() => {
