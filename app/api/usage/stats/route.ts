@@ -59,15 +59,22 @@ export async function GET(req: NextRequest) {
   } catch { /* fail open */ }
 
   // ── Daily limits — always from the DB tier tables, never hardcoded ──
+  // DAILY CHAT LIMIT DISABLED (Em, Sep 15 2026): reported as 0 so the panel
+  // renders "unlimited" and nothing can style it as exhausted. The daily
+  // counter above is still returned for information. Restore by deleting the
+  // `DAILY_CHAT_LIMIT_DISABLED` override below.
   let dailyChatLimit = 0;
+  const DAILY_CHAT_LIMIT_DISABLED = true;
 
-  try {
-    const { data: chatLimit } = await (supabase as any)
-      .rpc('get_tier_limit', { p_user_id: userId, p_feature_key: 'ai_message_limit' });
-    if (typeof chatLimit === 'number') dailyChatLimit = chatLimit;
-    else console.warn('[usage/stats] get_tier_limit(ai_message_limit) returned non-number:', chatLimit);
-  } catch (err: any) {
-    console.error('[usage/stats] get_tier_limit(ai_message_limit) RPC failed:', err.message);
+  if (!DAILY_CHAT_LIMIT_DISABLED) {
+    try {
+      const { data: chatLimit } = await (supabase as any)
+        .rpc('get_tier_limit', { p_user_id: userId, p_feature_key: 'ai_message_limit' });
+      if (typeof chatLimit === 'number') dailyChatLimit = chatLimit;
+      else console.warn('[usage/stats] get_tier_limit(ai_message_limit) returned non-number:', chatLimit);
+    } catch (err: any) {
+      console.error('[usage/stats] get_tier_limit(ai_message_limit) RPC failed:', err.message);
+    }
   }
 
   return NextResponse.json({
