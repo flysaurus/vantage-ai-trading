@@ -16,6 +16,8 @@ import { fetchRecentSessions, clearUserMessages, type DBSession } from '@/lib/ch
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
 import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, parsePositions, stripRecommendationMarkers, markMarkerExecuted, isMarkerExecutedInStorage, type Suggestion, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
+import ChatChart from '@/components/charts/ChatChart';
+import type { ResolvedChart } from '@/lib/ai/chart-registry';
 import StrategyCards from '@/components/ai/StrategyCards';
 import { parsePortfolioBlocks } from '@/lib/portfolio-blocks';
 import type { PortfolioBlock } from '@/lib/portfolio-types';
@@ -340,6 +342,13 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
       else localStorage.removeItem('vantage:data-callout');
     } catch {}
   }, [dataCallout]);
+
+  // ── Charts (SSE `charts` event) ──
+  // The server resolved the real values from the marker's KEY — the model never
+  // supplies numbers. Tagged to the AI message that carried the markers so the
+  // chart renders under THAT message only (same contract as dataCallout).
+  // Live-session only: charts are not persisted with the message.
+  const [charts, setCharts] = useState<{ charts: ResolvedChart[]; msgId: string } | null>(null);
 
   // ── TL;DR toggle state (set of collapsed message indices) ──
   const [collapsedTLDRs, setCollapsedTLDRs] = useState<Set<number>>(new Set());
@@ -1622,6 +1631,11 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
                 // (rebalance plan / portfolio build). Attach at stream end.
                 downloadRef.current = data.download as DownloadPayload;
               }
+              if (data.charts) {
+                // Server-resolved charts (real computed data, keyed marker). Renders
+                // under this AI message once the stream settles.
+                setCharts({ charts: data.charts as ResolvedChart[], msgId: aiMsgId });
+              }
               if (data.corrections) {
                 // Server-side marker validation caught a hallucinated ticker
                 correctedTextRef.current = data.correctedText;
@@ -2825,6 +2839,14 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                     ? `${msg.download.rows.length} line${msg.download.rows.length === 1 ? '' : 's'} · ${msg.download.title}`
                     : null}
                 />
+              )}
+              {/* Server-resolved charts for this message — real data, keyed markers. */}
+              {charts && charts.msgId === msg.id && charts.charts.length > 0 && (
+                <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {charts.charts.map((c, ci) => (
+                    <ChatChart key={`${c.type}:${c.key}:${ci}`} chart={c} />
+                  ))}
+                </div>
               )}
               {/* Inline trade buttons (Demo/Gold only) */}
               {(() => {

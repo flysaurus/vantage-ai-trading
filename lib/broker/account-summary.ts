@@ -16,6 +16,8 @@ export interface PositionInput {
   dayChange?: number | null;
   dayChangePct?: number | null;
   openPnl?: number;
+  /** Per-position sector, resolved at broker sync (lib/sector-resolver.ts). */
+  sector?: string | null;
 }
 
 export interface ComputedTotals {

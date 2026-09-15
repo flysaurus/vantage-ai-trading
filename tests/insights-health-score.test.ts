@@ -159,4 +159,18 @@ describe('portfolio health — guards', () => {
     expect(sectorBeta(null)).toBe(1.0);
     expect(RISK_BANDS.moderate.mid).toBeGreaterThan(RISK_BANDS.conservative.mid);
   });
+
+  it('maps the resolver asset-class buckets used for funds/ETFs', () => {
+    // Labels emitted by lib/portfolio/position-sectors-server.ts; before these
+    // entries existed every one of them fell through to 'unknown' → 1.00.
+    expect(sectorBeta('Broad Market')).toBe(1.0);
+    expect(sectorBeta('Fixed Income')).toBe(0.35);
+    expect(sectorBeta('Commodities')).toBe(0.45);
+    expect(sectorBeta('International')).toBe(0.9);
+    // Guard: the new keys must not shadow the existing equity buckets.
+    expect(sectorBeta('Technology')).toBe(1.25);
+    expect(sectorBeta('Financial Services')).toBe(1.1);
+    expect(sectorBeta('Consumer Staples')).toBe(0.6);
+    expect(sectorBeta('Information Technology')).toBe(1.25);
+  });
 });

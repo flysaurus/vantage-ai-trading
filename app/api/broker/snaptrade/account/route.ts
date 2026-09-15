@@ -19,6 +19,9 @@ import { computeAccountSummary, type PositionInput } from '@/lib/broker/account-
 import { extractPositionTicker, extractPositionName } from '@/lib/snaptrade/mapping';
 import { fetchFinnhubQuotes, positionDayChange } from '@/lib/finnhub-quote';
 import { createTtlCache } from '@/lib/ttl-cache';
+import { createServerClient } from '@/lib/supabase';
+import { canonicalizeSymbol } from '@/lib/sector-resolver';
+import { resolvePositionSectors } from '@/lib/portfolio/position-sectors-server';
 
 // ─── Dev mode — synthetic data ────────────────────────────
 const DEV_ACCOUNT = {
@@ -177,6 +180,24 @@ export async function GET(req: NextRequest) {
       pos.dayChangePct = dayChangePct;
     }
 
+    // ── Enrich per-position sector (single authority, at sync) ──
+    // SnapTrade reports no sector; without this every downstream feature saw
+    // null. Same resolver + ETF look-through as the /positions route, so the two
+    // broker payloads can never disagree about a symbol's sector.
+    // Additive: a missing Supabase key or resolver failure must not take down
+    // the account payload.
+    let sectors = new Map<string, string>();
+    try {
+      sectors = await resolvePositionSectors(allPositions, {
+        supabase: createServerClient(),
+      });
+    } catch (err) {
+      console.error('[snaptrade/account] sector enrichment skipped:', (err as Error)?.message);
+    }
+    for (const pos of allPositions) {
+      pos.sector = sectors.get(canonicalizeSymbol(pos.symbol)) ?? null;
+    }
+
     // ── Step C: Compute using SHARED function ──────────
     const summary = computeAccountSummary(totalCash, totalBuyingPower ?? 0, allPositions);
 
@@ -211,6 +232,7 @@ export async function GET(req: NextRequest) {
           dayChangePct: p.dayChangePct ?? null,
           assetType: 'stock' as const,
           currency: 'USD',
+          sector: p.sector ?? null,
         })),
         orders: [], // orders come from the dedicated /orders endpoint
       };

@@ -111,6 +111,14 @@ export const SECTOR_BETA: Record<string, number> = {
   materials: 1.00,
   utilities: 0.55,
   'real estate': 0.95,
+  // Asset-class buckets emitted by the portfolio sector resolver
+  // (lib/portfolio/position-sectors-server.ts) for funds/ETFs. Same coarse
+  // sector-proxy basis as the equity rows above — broad published-market betas,
+  // not per-position precision.
+  'broad market': 1.00,
+  'fixed income': 0.35,
+  commodities: 0.45,
+  international: 0.90,
   etf: 1.00,
   unknown: 1.00,
 };

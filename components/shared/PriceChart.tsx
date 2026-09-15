@@ -26,6 +26,8 @@ interface PriceChartProps {
   gradientId?: string;
   lineColor?: string; // optional override; else derived from return sign
   valuePrefix?: string; // prefix shown in the tooltip (default '$')
+  /** Hide the range pills (the chat chart pins a fixed range + no-op handler). */
+  hideRangeSelector?: boolean;
 }
 
 const RANGES: ChartRange[] = ['1D', '1W', '1M', 'YTD', 'ALL'];
@@ -81,6 +83,7 @@ export default function PriceChart({
   gradientId = 'priceGradient',
   lineColor,
   valuePrefix = '$',
+  hideRangeSelector = false,
 }: PriceChartProps) {
   const hasReturn = points.length >= 2;
   const rangeReturn = hasReturn ? points[points.length - 1].value - points[0].value : 0;
@@ -243,6 +246,7 @@ export default function PriceChart({
       )}
 
       {/* Range selector pills */}
+      {!hideRangeSelector && (
       <div
         style={{
           display: 'flex',
@@ -274,6 +278,7 @@ export default function PriceChart({
           </button>
         ))}
       </div>
+      )}
     </div>
   );
 }

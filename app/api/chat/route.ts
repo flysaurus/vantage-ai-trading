@@ -12,6 +12,9 @@ import { CHAT_SAFETY_BLOCKS } from '@/lib/ai/shared-safety-blocks';
 import { CHAT_PRINCIPLES } from '@/lib/ai-principles';
 import { resolveTickers } from '@/lib/ticker-resolver';
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
+import { buildChartCatalog } from '@/lib/ai/chart-catalog'
+import { parseChartRequests, resolveCharts } from '@/lib/ai/chart-markers'
+import { buildChartCtx } from '@/lib/ai/chart-ctx'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { buildProfileAnswer, type ProfileQuestionKind } from '@/lib/ai/profile-answers'
 import { buildAppHelpAnswer, type AppHelpKind } from '@/lib/ai/app-help'
@@ -56,7 +59,7 @@ import {
   resolveVehicleForRequest,
   detectVehicleAnswer,
 } from '@/lib/ai/manager'
-import { classify, type ClassifierResult } from '@/lib/ai/classifier'
+import { classify, detectVisualRequestIntent, type ClassifierResult } from '@/lib/ai/classifier'
 import { logClassifierAudit } from '@/lib/ai/classifier-audit'
 import { validateResponse } from '@/lib/ai/validator'
 
@@ -1486,7 +1489,7 @@ export async function POST(req: Request) {
         return textSSEResponse(formatRebalanceBudgetPrompt(portfolioSnapshot, targetStyle), { kind: 'rebalance_budget' });
       }
 
-      if (classification.category === 'account_state') {
+      if (classification.category === 'account_state' && !detectVisualRequestIntent(lastMessage)) {
         if (portfolioSnapshot && (portfolioSnapshot.equity > 0 || portfolioSnapshot.positions.length > 0)) {
           return textSSEResponse(buildAccountStateAnswer(portfolioSnapshot, profile.riskTolerance), undefined, { scope: 'holdings' });
         }
@@ -1865,6 +1868,12 @@ Use these for any market-direction questions ("how are markets today?", "any sel
 
     console.log(`[chat] 🚦 Vehicle resolved: ${resolvedVehicle}${isMixedVehicle ? ' (mixed)' : ''}`);
     tMark('screening done → building system prompt');
+    // Visual-response catalog: the model may attach charts by naming a KEY
+    // (`[CHART:<type>|<key>]` / `[STAT:<key>]`). Only offered when there is a
+    // real portfolio to chart — and never with values, only keys.
+    const chartCatalogContext = portfolioSnapshot && portfolioSnapshot.positions.length > 0
+      ? buildChartCatalog()
+      : '';
     const systemBlocks: SystemBlock[] = [
     ...CHAT_PRINCIPLES,
     ...CHAT_SAFETY_BLOCKS,
@@ -1875,7 +1884,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
       },
       {
         type: 'text' as const,
-        text: [dateContext, accountMeta ? buildAccountContext(accountMeta) : '', profileContext, portfolioContext || '', additionalContext || '', searchContext, liveMarketContext, preResolvedContext, deviationContext, tickerResolverContext, screeningContext].filter(Boolean).join('\n\n'),
+        text: [dateContext, accountMeta ? buildAccountContext(accountMeta) : '', profileContext, portfolioContext || '', additionalContext || '', searchContext, liveMarketContext, preResolvedContext, deviationContext, tickerResolverContext, screeningContext, chartCatalogContext].filter(Boolean).join('\n\n'),
       },
     ];
 
@@ -2277,6 +2286,44 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // market data). Only recommendation requests — or an explicit
         // stocks/ETFs/mixed vehicle, or DeepSeek's 'portfolio' queryType — take the
         // full screening → checklist → validation path.
+        // ── Chart markers → server-resolved visuals (BOTH response paths) ──
+        // The model emits [CHART:<type>|<key>] / [STAT:<key>] — a KEY, never a
+        // value. We resolve the real numbers from the same libs the UI trusts
+        // (computePortfolioHealth, sector mix, the portfolio value series, broker
+        // activities) and ship them as a `charts` event. Unknown keys, type/key
+        // mismatches and keys whose data is unavailable resolve to null, so the
+        // marker is stripped and the prose stands — never a guessed chart.
+        //
+        // Defined here because the LIGHT path (informational questions — the very
+        // questions charts answer) returns early before the full-pipeline block.
+        // Charts must ride whichever path the response took, so the resolution
+        // is a single shared helper called by both.
+        const emitResolvedCharts = async (text: string): Promise<void> => {
+          try {
+            const reqs = parseChartRequests(text);
+            if (reqs.length === 0) return;
+            const chartCtx = await buildChartCtx({
+              portfolioSnapshot,
+              rawPositions: (portfolio as any)?.positions ?? null,
+              isDemo: !!accountMeta?.isDemo,
+              accountId: accountMeta?.accountId ?? null,
+              userId: userId && userId !== 'anonymous' ? userId : null,
+              investorStyle: profile.investorStyle,
+              riskTolerance: profile.riskTolerance,
+              supabase: createServerClient(),
+            });
+            const charts = await resolveCharts(reqs, chartCtx);
+            if (charts.length > 0) {
+              console.log(`[chat] 📊 charts: ${charts.map((c) => `${c.type}:${c.key}`).join(', ')} (${reqs.length} marker(s))`);
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ charts })}\n\n`));
+            } else {
+              console.log(`[chat] 📊 ${reqs.length} chart marker(s) — none resolvable, stripped to prose`);
+            }
+          } catch (chartErr) {
+            console.error('[chat] chart resolution error:', chartErr);
+          }
+        };
+
         if (!isFullPipeline) {
           // Defensive: strip any leaked [RECOMMEND:...] markers so no ghost
           // buy/sell buttons render for a message that wasn't a recommendation.
@@ -2292,6 +2339,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: correction })}\n\n`));
             }
           }
+          await emitResolvedCharts(responseText);
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           if (userId && userId !== 'anonymous') {
             const totalTokens = totalInputTokens + totalOutputTokens;
@@ -2602,6 +2650,17 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           if (downloadPayload) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ download: downloadPayload })}\n\n`));
           }
+        }
+
+        // ── Chart markers → server-resolved visuals ──
+        // The model emits [CHART:<type>|<key>] / [STAT:<key>] — a KEY, never a
+        // value. We resolve the real numbers from the same libs the UI trusts
+        // (computePortfolioHealth, sector mix, the portfolio value series, broker
+        // activities) and ship them as a `charts` event. Unknown keys, type/key
+        // mismatches and keys whose data is unavailable resolve to null, so the
+        // marker is stripped and the prose stands — never a guessed chart.
+        if (!validationRejected) {
+          await emitResolvedCharts(responseText);
         }
 
         // [DONE] signal
