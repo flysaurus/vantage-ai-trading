@@ -214,6 +214,39 @@ async function putCachedEtfWeights(
 }
 
 /**
+ * Batch-read the `etf_sector_weights` cache for many symbols in ONE round-trip.
+ * Fresh (≤7d) rows only. Never throws — returns an empty Map on any failure,
+ * so callers can fall back to static profiles / provider lookups.
+ */
+export async function getCachedEtfWeightsBatch(
+  supabase: any,
+  symbols: string[],
+): Promise<Map<string, Record<string, number>>> {
+  const out = new Map<string, Record<string, number>>();
+  if (!supabase) return out;
+  const uniq = Array.from(
+    new Set(symbols.map((s) => (s || '').toUpperCase().trim()).filter(Boolean)),
+  );
+  if (uniq.length === 0) return out;
+  try {
+    const { data } = await supabase
+      .from('etf_sector_weights')
+      .select('symbol, weights, fetched_at')
+      .in('symbol', uniq);
+    for (const row of (data || []) as any[]) {
+      if (Date.now() - new Date(row.fetched_at).getTime() > ETF_CACHE_TTL_MS) continue;
+      const weights = row.weights as Record<string, number>;
+      if (weights && Object.keys(weights).length > 0) {
+        out.set(String(row.symbol).toUpperCase(), weights);
+      }
+    }
+  } catch {
+    // Non-fatal.
+  }
+  return out;
+}
+
+/**
  * Resolve sector weights for a single symbol.
  * Chain: fresh cache → Yahoo Finance → static profile → null (caller falls
  * back to the position's single sector). Never throws.

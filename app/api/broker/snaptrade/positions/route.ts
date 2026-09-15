@@ -13,6 +13,9 @@ import {
 import { extractPositionTicker, extractPositionName } from '@/lib/snaptrade/mapping';
 import { fetchFinnhubQuotes, positionDayChange } from '@/lib/finnhub-quote';
 import { createTtlCache } from '@/lib/ttl-cache';
+import { createServerClient } from '@/lib/supabase';
+import { canonicalizeSymbol } from '@/lib/sector-resolver';
+import { resolvePositionSectors } from '@/lib/portfolio/position-sectors-server';
 
 export interface SnapTradePosition {
   symbol: string;
@@ -27,6 +30,10 @@ export interface SnapTradePosition {
   dayChangePct: number | null;
   assetType: string;
   currency: string;
+  /** Per-position sector, resolved at broker sync
+   *  (lib/portfolio/position-sectors-server.ts).
+   *  Absent/null = genuinely unresolvable (e.g. a commodity or treasury fund). */
+  sector?: string | null;
 }
 
 // ─── Dev mode — synthetic portfolio ────────────────────────
@@ -115,6 +122,27 @@ export async function GET(req: NextRequest) {
       const { dayChange, dayChangePct } = positionDayChange(pos.units, quoteMap[pos.symbol]);
       pos.dayChange = dayChange;
       pos.dayChangePct = dayChangePct;
+    }
+
+    // ── Enrich per-position sector ────────────────────────
+    // SnapTrade reports no sector, so the field lands null and every downstream
+    // feature (chat chart context, Portfolio Health, concentration math) used to
+    // see nothing. Resolve it ONCE here — at broker sync — via the single
+    // authority lib/portfolio/position-sectors-server.ts (static symbol map →
+    // live Finnhub, plus the SAME ETF look-through the sector-mix donut uses
+    // (lib/etf-sectors.ts). Never throws; unresolved symbols stay null.
+    // Enrichment is additive: a missing Supabase key (ETF weight cache) or any
+    // resolver failure must NOT take down the broker payload.
+    let sectors = new Map<string, string>();
+    try {
+      sectors = await resolvePositionSectors(allPositions, {
+        supabase: createServerClient(),
+      });
+    } catch (err) {
+      console.error('[snaptrade/positions] sector enrichment skipped:', (err as Error)?.message);
+    }
+    for (const pos of allPositions) {
+      pos.sector = sectors.get(canonicalizeSymbol(pos.symbol)) ?? null;
     }
 
     return allPositions;

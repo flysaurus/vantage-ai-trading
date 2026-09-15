@@ -536,7 +536,12 @@ export function usePortfolio() {
         totalPnlPercent: bp.totalPnlPercent,
         portfolioPercent:
           totalValue > 0 ? (bp.marketValue / totalValue) * 100 : 0,
-        sector: SECTOR_MAP[bp.symbol] || 'Other',
+        // Prefer the sector resolved at broker sync (server-side single
+        // authority: lib/sector-resolver.ts + the same ETF look-through the
+        // sector-mix donut uses). SECTOR_MAP is a legacy client-side fallback
+        // for symbols the server could not resolve, and /api/sectors below
+        // covers anything still unknown.
+        sector: bp.sector || SECTOR_MAP[bp.symbol] || 'Other',
       }));
 
       // Resolve unknown sectors from Alpaca asset data

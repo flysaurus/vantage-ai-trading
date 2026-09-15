@@ -50,6 +50,8 @@ interface RawPosition {
   dayChangePct: number | null;
   assetType?: string;
   currency?: string;
+  /** Per-position sector resolved server-side at broker sync (lib/sector-resolver.ts). */
+  sector?: string | null;
 }
 
 export class SnapTradeAdapter implements BrokerAdapter {
@@ -156,7 +158,8 @@ export class SnapTradeAdapter implements BrokerAdapter {
       totalPnl: p.openPnl || 0,
       totalPnlPercent: p.costBasis > 0 ? (p.openPnl / p.costBasis) * 100 : 0,
       portfolioPercent: (p.marketValue || 0) / totalValue * 100,
-      sector: undefined,
+      // Populated server-side by /api/broker/snaptrade/* (see lib/sector-resolver.ts).
+      sector: p.sector || undefined,
       currency: p.currency || 'USD',
       exchange: undefined,
     }));

@@ -12,7 +12,8 @@ import {
   SnapTradeAuthError,
   SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
-import { resolveSectorsForSymbols, canonicalizeSymbol } from '@/lib/sector-resolver';
+import { canonicalizeSymbol } from '@/lib/sector-resolver';
+import { resolvePositionSectors } from '@/lib/portfolio/position-sectors-server';
 
 export async function POST(req: NextRequest) {
   try {
@@ -50,14 +51,20 @@ export async function POST(req: NextRequest) {
 
     const supabase = createServerClient();
 
-    // Enrich positions with sectors before persisting. Prefer a sector the
-    // broker already reported; resolve the rest via static map + live Finnhub.
-    const toResolve = positions
-      .filter((p: any) => !(p.sector || '').trim())
-      .map((p: any) => ({ symbol: p.symbol }));
-    const resolvedSectors = toResolve.length > 0
-      ? await resolveSectorsForSymbols(toResolve)
-      : new Map<string, string | null>();
+    // Enrich positions with sectors before persisting. Single authority:
+    // lib/portfolio/position-sectors-server.ts — static symbol map → live
+    // Finnhub, plus the SAME ETF look-through the sector-mix donut uses for
+    // funds. Runs over every position (not just the ones missing a sector) so a
+    // fund-family label is applied even when the broker sent a bare symbol.
+    // Never throws; unresolvable symbols persist as null.
+    const resolvedSectors = await resolvePositionSectors(
+      positions.map((p: any) => ({
+        symbol: p.symbol,
+        industry: p.industry,
+        sector: p.sector,
+      })),
+      { supabase },
+    );
 
     // Build upsert rows: map BrokerPosition → positions table columns
     const rows = positions.map((p: any) => {
