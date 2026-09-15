@@ -208,7 +208,15 @@ function deterministicTier0(message: string): ClassifierResult | null {
     return { category: 'account_state', vehicle: 'unspecified', needsSearch: false, searchQuery: null, source: 'fast_path', confidence: 1, handler: 'order_history' };
   }
 
-  if (detectAccountStateIntent(m)) {
+  // A request that explicitly asks for a CHART must reach the model, even when
+  // it also reads like a balance query ("chart my portfolio value over the last
+  // month"). Chart visuals are emitted as markers BY THE MODEL, while the
+  // deterministic account_state answer below is plain text — routing a visual
+  // request there drops the chart silently and leaves prose pointing at a
+  // chart that was never drawn ("the chart above shows…" with nothing above).
+  const wantsVisual = detectVisualRequestIntent(m);
+
+  if (!wantsVisual && detectAccountStateIntent(m)) {
     return { category: 'account_state', vehicle: 'unspecified', needsSearch: false, searchQuery: null, source: 'fast_path', confidence: 1 };
   }
 
@@ -217,6 +225,38 @@ function deterministicTier0(message: string): ClassifierResult | null {
   }
 
   return null;
+}
+
+/**
+ * Explicit request for a CHART / visual answer.
+ *
+ * "show my health subscores as a bar chart", "plot my positions on a scatter",
+ * "treemap of my holdings", "waterfall of my account value".
+ *
+ * Chart visuals are emitted as MARKERS BY THE MODEL (lib/ai/chart-markers.ts),
+ * and the deterministic Tier-0 answers (account_state, order history, tax-loss)
+ * are plain text that never call the model. A visual request therefore has to
+ * reach the model on purpose — otherwise the requested chart silently never
+ * exists and the user is left with prose that narrates a chart that isn't there.
+ *
+ * Biased toward TRUE on purpose: a false positive only means a wording that
+ * looks like a chart request is answered by the model instead of a canned
+ * readout (still correct, just not canned); a false negative loses the chart.
+ */
+export function detectVisualRequestIntent(m: string): boolean {
+  const s = m.trim().toLowerCase();
+  if (!s || s.length > 400) return false;
+
+  // A visual noun/verb is conclusive on its own — "bar chart", "line plot",
+  // "as a graph", "visualize this", "treemap", "scatter", "waterfall".
+  if (/\b(?:charts?|charted|plots?|plotted|graphs?|diagrams?|visuali[sz]e|visuali[sz]ation|treemaps?|heatmaps?|waterfalls?|histograms?|scatter(?:plot|plotting|s)?|donuts?|sparklines?)\b/.test(s)) return true;
+
+  // Bare type nouns that only make sense as a visual in a portfolio sentence
+  // ("pie of my sectors"). "bar"/"line" alone stay out — "line of credit" is
+  // not a chart request.
+  if (/\b(?:pie|stacked|grouped)\b/.test(s) && /\b(?:my|mine|portfolio|holdings?|positions?|allocation|sectors?|account|health|sub-?scores?|returns?|risk|weights?)\b/.test(s)) return true;
+
+  return false;
 }
 
 // ─── GPT-5 nano classifier ────────────────────────────────────
@@ -271,6 +311,8 @@ Categories (choose exactly one):
 - "profile_mutation" — the user is COMMANDING a change to their own investor profile: their risk tolerance ("change it to aggressive", "make me more conservative", "I want to be a high-risk investor") or their investor style ("change my style to Lynch", "switch me to Buffett"). This is a COMMAND, not a question — do NOT use this category for "should I be more aggressive?" or "what style should I use?" (those are questions, classify as portfolio_relative_question or educational).
 - "account_state" — a QUESTION about the user's OWN account numbers: "how much cash do I have", "what are my positions", "what's my equity", "how much am I invested". Read-only — never triggers any action.
 - "scheduled_activity" — a QUESTION about the user's OWN scheduled or queued activity: recurring buys (DCA), scheduled/upcoming buys, open or pending orders, "what am I waiting to fill", "what's queued to execute". Read-only — never triggers any action.
+
+VISUAL REQUESTS: when the user explicitly asks to SEE something drawn — a chart, plot, graph, treemap, scatter, donut, waterfall, sparkline, "visualise" — decide the category by WHAT is being drawn, never "account_state". A visual of the user's own portfolio, allocation, sector mix, health or positions is "portfolio_relative_question"; a visual of one named security is "single_security_research". ("chart my portfolio value over the last month" → portfolio_relative_question, NOT account_state.)
 
 Also output these fields:
 - "vehicle": ONLY relevant when category is "portfolio_construction". One of "stocks", "etfs", "mixed", "unspecified". Use "unspecified" when the user did not indicate which vehicle.

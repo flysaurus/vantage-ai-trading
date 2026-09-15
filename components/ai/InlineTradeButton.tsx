@@ -308,11 +308,15 @@ function stripRawStrategyJson(text: string): string {
   return result;
 }
 
+/** `[CHART:type|key(|param)]` / `[STAT:key]` — resolved server-side from real data, never shown raw. */
+const CHART_MARKER_PATTERN = /\[(?:CHART|STAT):[^\]\n]*\]?/g;
+
 /** Strip [RECOMMEND:...] and [RECOMMEND_CHOICE:...] markers + JSON blocks from visible text — users never see raw markers. */
 export function stripRecommendationMarkers(text: string): string {
   let result = stripPositionMarkers(stripRawStrategyJson(stripPortfolioMarkers(stripClarifyMarkers(text))))
     .replace(MARKER_PATTERN, '')
     .replace(CHOICE_MARKER_PATTERN, '')
+    .replace(CHART_MARKER_PATTERN, '')  // chart/stat markers become real visuals server-side
     .replace(/\[SUMMARY_TLDR:.+?\]\s*/g, '')  // Remove TL;DR marker from visible text
     .replace(/\[CLARIFY:[^\n]*/g, '')  // Fallback: strip any remaining CLARIFY fragments not caught by bracket counter
     // Remove JSON candidate blocks that follow choice markers
