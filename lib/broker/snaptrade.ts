@@ -104,7 +104,7 @@ export class SnapTradeAdapter implements BrokerAdapter {
       lastSynced: string | null;
       holdingsUnavailable: boolean;
       positions?: RawPosition[];
-    }>('/api/broker/snaptrade/account');
+    }>(url);
 
     return {
       id: `snaptrade-${this.underlyingBroker || 'unknown'}`,
