@@ -30,6 +30,14 @@ export default function ConcentrationStep({
   const [hovered, setHovered] = useState<string | null>(null);
   const suggested = suggestedPresetForStyle(style);
   const styleLabel = getStyleContent(style).shortLabel;
+  // Two-step interaction: tapping a card only selects it; the thresholds are
+  // committed with the "Save & continue" button below the list. The suggested
+  // preset is pre-selected so the recommendation stays the one-tap default.
+  const [selected, setSelected] = useState<string>(suggested);
+  const selectedPreset =
+    CONCENTRATION_PRESETS.find((p) => p.id === selected) ??
+    CONCENTRATION_PRESETS.find((p) => p.id === suggested) ??
+    CONCENTRATION_PRESETS[0];
 
   return (
     <div
@@ -183,21 +191,23 @@ export default function ConcentrationStep({
         >
           {CONCENTRATION_PRESETS.map((preset: ConcentrationPreset) => {
             const isSuggested = preset.id === suggested;
+            const isSelected = preset.id === selected;
             const isHovered = hovered === preset.id;
             return (
               <button
                 key={preset.id}
-                onClick={() => onSelect(preset.single, preset.top3)}
+                onClick={() => setSelected(preset.id)}
                 onMouseEnter={() => setHovered(preset.id)}
                 onMouseLeave={() => setHovered(null)}
+                aria-pressed={isSelected}
                 style={{
                   width: '100%',
                   padding: '18px 20px',
                   borderRadius: '16px',
-                  border: isSuggested || isHovered
+                  border: isSelected || isSuggested || isHovered
                     ? '2px solid var(--v-accent)'
                     : '2px solid var(--v-card-border)',
-                  background: isSuggested || isHovered
+                  background: isSelected || isSuggested || isHovered
                     ? 'var(--v-accent-dim)'
                     : 'var(--v-card)',
                   boxShadow: 'var(--v-shadow-card)', // locked elevation
@@ -249,21 +259,73 @@ export default function ConcentrationStep({
                   <div
                     style={{
                       flexShrink: 0,
-                      textAlign: 'right',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      color: 'var(--v-text-secondary)',
-                      lineHeight: 1.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
                     }}
                   >
-                    <div>{preset.single}% single</div>
-                    <div>{preset.top3}% top&nbsp;3</div>
+                    <div
+                      style={{
+                        textAlign: 'right',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: 'var(--v-text-secondary)',
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      <div>{preset.single}% single</div>
+                      <div>{preset.top3}% top&nbsp;3</div>
+                    </div>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '50%',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        lineHeight: 1,
+                        background: isSelected ? 'var(--v-accent-button)' : 'transparent',
+                        color: 'var(--v-accent-text)',
+                        border: isSelected
+                          ? '2px solid var(--v-accent-button)'
+                          : '2px solid var(--v-card-border)',
+                      }}
+                    >
+                      {isSelected ? '✓' : ''}
+                    </span>
                   </div>
                 </div>
               </button>
             );
           })}
         </div>
+
+        {/* ── COMMIT ── */}
+        <button
+          onClick={() => onSelect(selectedPreset.single, selectedPreset.top3)}
+          style={{
+            width: '100%',
+            maxWidth: '380px',
+            marginTop: '16px',
+            minHeight: '52px',
+            padding: '14px 20px',
+            borderRadius: '14px',
+            border: 'none',
+            background: 'var(--v-accent-button)',
+            color: 'var(--v-accent-text)',
+            fontSize: '16px',
+            fontWeight: 700,
+            fontFamily: 'var(--font-sans)',
+            cursor: 'pointer',
+            WebkitTapHighlightColor: 'transparent',
+          }}
+        >
+          Save &amp; continue
+        </button>
       </div>
     </div>
   );
