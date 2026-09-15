@@ -318,7 +318,10 @@ export function findConcentrationTriggers(
           symbols,
           pct,
           totalValue,
-          action: 'REBALANCE',
+          // Top-3 concentration is a DIVERSIFICATION ask, not a rebalance of an
+          // existing target — it must open the basket-build flow, not the
+          // Portfolio Rebalancing wizard.
+          action: 'BUILD_BASKET',
         },
         follow_up: `How should I diversify beyond ${symbols.join(', ')}?`,
         context: `Your top 3 holdings (${symbols.join(', ')}) make up ${pct}% of your portfolio — heavy concentration risk.`,

@@ -614,6 +614,11 @@ function buildPrimaryAction(ctx: CtaCtx): { label: string; onClick: () => void }
 
   const openChat = (prompt: string) => { setPendingPrompt(prompt); setChatOpen(true); };
 
+  if (action === 'BUILD_BASKET') {
+    if (isReadOnly) return { label: 'Download', onClick: () => openChat('Build me a diversified basket to reduce my portfolio concentration.') };
+    return { label: 'Build basket', onClick: () => openChat('Build me a diversified basket to reduce my portfolio concentration.') };
+  }
+
   if (action === 'REBALANCE') {
     if (isReadOnly) return { label: 'Download', onClick: () => openChat('rebalance') };
     return { label: 'Trade', onClick: () => openChat('rebalance') };

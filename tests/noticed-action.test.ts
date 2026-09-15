@@ -260,7 +260,7 @@ describe('noticed engine — deterministic action markers', () => {
     const triggers = findConcentrationTriggers(input, new Set());
     const top3 = triggers.find((t) => t.trigger_type === 'concentration_top3');
     expect(top3).toBeDefined();
-    expect(top3!.meta.action).toBe('REBALANCE');
+    expect(top3!.meta.action).toBe('BUILD_BASKET');
     expect(top3!.meta.symbols).toEqual(['SPY', 'VOO', 'QQQ']);
     expect(Math.round(top3!.meta.pct)).toBe(64);
   });
@@ -327,6 +327,6 @@ describe('noticed engine — deterministic action markers', () => {
     const lowThreshold = findConcentrationTriggers(input, new Set(), 20, 40);
     const top3 = lowThreshold.find((t) => t.trigger_type === 'concentration_top3');
     expect(top3).toBeDefined();
-    expect(top3!.meta.action).toBe('REBALANCE');
+    expect(top3!.meta.action).toBe('BUILD_BASKET');
   });
 });

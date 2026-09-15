@@ -3466,6 +3466,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                           onRebalance={() => { setShowExplore(false); sendToChat('rebalance'); }}
                           onReviewPosition={(ticker) => { setShowExplore(false); openPositionDetail(ticker, 'insights'); }}
                           onInvestCash={(amount) => { setShowExplore(false); sendToChat(`Build me a portfolio with my $${amount.toLocaleString()} of idle cash.`); }}
+                          onBuildBasket={() => { setShowExplore(false); sendToChat('Build me a diversified basket to reduce my portfolio concentration.'); }}
                           onDismiss={() => setSnoozeTarget(snoozeTarget === item.id ? null : item.id)}
                         />
                       )}

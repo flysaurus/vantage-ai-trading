@@ -6,6 +6,7 @@ import React from 'react';
 // Renders below a noticed card's copy. The action string is emitted
 // DETERMINISTICALLY by the rules engine (never free-text LLM parsing):
 //   'REBALANCE'                 → concentration-risk / allocation drift
+//   'BUILD_BASKET'              → top-3 concentration → diversify via basket build
 //   'REVIEW_POSITION:<TICKER>'  → single-position flag
 //   'INVEST_CASH:<amount>'      → idle-cash suggestion (dollar amount)
 // Primary CTA uses the existing cyan-fill token. The secondary control is a
@@ -21,6 +22,8 @@ interface ActionButtonProps {
   onRebalance?: () => void;
   onReviewPosition?: (ticker: string) => void;
   onInvestCash?: (amount: number) => void;
+  /** Top-3 concentration → basket-build flow (NOT the rebalance wizard). */
+  onBuildBasket?: () => void;
   onDismiss?: () => void;
   /**
    * Optional: download-only secondary CTA for REBALANCE. Falls back to
@@ -46,6 +49,7 @@ export default function ActionButton({
   onRebalance,
   onReviewPosition,
   onInvestCash,
+  onBuildBasket,
   onDismiss,
   onDownload,
   disabled = false,
@@ -68,6 +72,16 @@ export default function ActionButton({
       onPrimary = onRebalance;
       downloadLabel = 'Download plan';
       onDownloadLink = onDownload ?? onRebalance;
+    }
+  } else if (action === 'BUILD_BASKET') {
+    if (readOnly) {
+      primaryLabel = 'Download plan';
+      onPrimary = onBuildBasket;
+    } else {
+      primaryLabel = 'Build basket';
+      onPrimary = onBuildBasket;
+      downloadLabel = 'Download plan';
+      onDownloadLink = onDownload ?? onBuildBasket;
     }
   } else if (action.startsWith('REVIEW_POSITION:')) {
     const ticker = action.slice('REVIEW_POSITION:'.length).trim();
