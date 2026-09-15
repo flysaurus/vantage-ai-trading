@@ -40,11 +40,14 @@ Apply the EXPERIENCED tier: HARD LENGTH BUDGET — total prose outside markdown 
 
   if (t === 'some') {
     return `USER INVESTMENT EXPERIENCE: Some experience
-Apply the SOME-EXPERIENCE tier: no inline definitions; verdict-first structure and tables over prose still apply. ${TIER_MANDATE}`
+Apply the SOME-EXPERIENCE tier: no inline definitions; verdict-first structure and tables over prose still apply. Soft length budget ~350 words of prose and 6 distinct sections. ${TIER_MANDATE}`
   }
 
-  return `USER INVESTMENT EXPERIENCE: not provided
-No tier was self-reported — default to clear, plain language with no inline definitions. ${TIER_MANDATE}`
+  // NULL = skipped the (optional) onboarding question. That is a COMMON state, so
+  // it must not mean "no guidance and no length budget" — default to the
+  // some-experience tier rather than leaving the response unbounded.
+  return `USER INVESTMENT EXPERIENCE: not provided (defaulted to some experience)
+No tier was self-reported, so apply the SOME-EXPERIENCE tier: no inline definitions, verdict-first structure, tables over prose, and keep the answer tight — roughly 350 words of prose and no more than 6 distinct sections. ${TIER_MANDATE}`
 }
 
 export function getInvestorStylePrompt(

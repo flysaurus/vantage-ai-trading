@@ -1208,8 +1208,12 @@ export async function POST(req: Request) {
         if (userRow?.investor_style) profile.investorStyle = userRow.investor_style;
         if (userRow?.risk_tolerance) profile.riskTolerance = userRow.risk_tolerance.charAt(0).toUpperCase() + userRow.risk_tolerance.slice(1);
         // Literacy tier — DB is the source of truth. NULL = skipped → the
-        // builder falls back to neutral (no inline definitions).
+        // builder falls back to the some-experience default (never unbounded).
         if (userRow?.investment_experience) profile.investmentExperience = userRow.investment_experience;
+        console.log(
+          '[chat] 🎚️ literacy tier:',
+          profile.investmentExperience ?? 'not provided → default (some-experience 350w/6 sections)',
+        );
       } catch (e) {
         console.error('[chat] fresh profile fetch failed (non-fatal):', e);
       }
@@ -2385,7 +2389,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           if (!/\[CLARIFY:/.test(out)) {
             const tiered = enforceTierLimits(out, profile.investmentExperience);
             if (tiered.trimmedWords > 0 || tiered.droppedSections > 0) {
-              console.log(`[chat] ✂️ tier limits (${profile.investmentExperience}): trimmed ${tiered.trimmedWords} words, dropped ${tiered.droppedSections} section(s)`);
+              console.log(`[chat] ✂️ tier limits (${tiered.tier}): trimmed ${tiered.trimmedWords} words, dropped ${tiered.droppedSections} section(s)`);
               out = tiered.text;
             }
           }

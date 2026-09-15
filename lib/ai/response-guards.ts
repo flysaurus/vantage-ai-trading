@@ -260,7 +260,13 @@ export function suppressProjectedScores(text: string): { text: string; removed: 
 const TIER_BUDGETS: Record<string, { words: number; sections: number }> = {
   experienced: { words: 150, sections: 4 },
   'some-experience': { words: 350, sections: 6 },
+  new: { words: 450, sections: 6 },
 }
+// The literacy question is deliberately skippable, so NULL is a COMMON real-user
+// state, not an edge case. An unbounded NULL tier left the original complaint
+// (very long, chart-less responses) live for every user who skipped onboarding.
+const DEFAULT_TIER: keyof typeof TIER_BUDGETS = 'some-experience'
+const DEFAULT_TIER_BUDGET = TIER_BUDGETS[DEFAULT_TIER]
 
 const isTableLine = (l: string) => /^\s*\|/.test(l)
 const isMarkerOnlyLine = (l: string) => /^\s*\[[^\]]*\]\s*$/.test(l)
@@ -288,9 +294,15 @@ const isProseLine = (l: string) =>
 export function enforceTierLimits(
   text: string,
   tier: string | null | undefined,
-): { text: string; trimmedWords: number; droppedSections: number; overBudget: boolean } {
-  const budget = tier ? TIER_BUDGETS[String(tier).trim().toLowerCase()] : undefined
-  if (!text || !budget) return { text, trimmedWords: 0, droppedSections: 0, overBudget: false }
+): { text: string; trimmedWords: number; droppedSections: number; overBudget: boolean; tier: string } {
+  const key = String(tier ?? '').trim().toLowerCase()
+  // Unknown or missing tier → the default budget. There is deliberately NO
+  // unbounded path: a NULL/absent tier must not mean "no cap at all".
+  const appliedTier = TIER_BUDGETS[key] ? key : DEFAULT_TIER
+  const budget = TIER_BUDGETS[appliedTier]
+  if (!text || !budget) {
+    return { text, trimmedWords: 0, droppedSections: 0, overBudget: false, tier: appliedTier }
+  }
 
   const lines = text.split('\n')
   const countProse = () =>
@@ -301,37 +313,38 @@ export function enforceTierLimits(
   const startSections = countSections()
   const overBudget = startProse > budget.words || startSections > budget.sections
 
-  // ── 1. Trim whole trailing sentences that carry no number/$/%/ticker ──
+  const floor = 40 // never trim the response below this many prose words
+
+  // ── 1. Trim digit-free sentences, working back from the end ──
+  // Sentences carrying a number/$/% or an ALL-CAPS ticker are NEVER removed, but
+  // they no longer stop the trim: the guard skips them and keeps looking further
+  // back, so a trailing "keep the 6% buffer" sentence can't block every trim.
   let guard = 0
-  while (countProse() > budget.words && guard++ < 500) {
-    // last trimmable prose line (skip TL;DR)
-    let idx = -1
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (isProseLine(lines[i]) && !isTldrLine(lines[i])) {
-        idx = i
+  while (countProse() > budget.words && countProse() > floor && guard++ < 500) {
+    let removed = false
+    for (let i = lines.length - 1; i >= 0 && !removed; i--) {
+      if (!isProseLine(lines[i]) || isTldrLine(lines[i])) continue
+      const sentences = lines[i].split(/(?<=[.!?])\s+/).filter((s) => s.trim() !== '')
+      let target = -1
+      for (let j = sentences.length - 1; j >= 0; j--) {
+        const sentence = sentences[j]
+        if (NUMBERISH_RE.test(sentence) || TICKER_RE.test(sentence)) continue
+        if (countProse() - wordsOf(sentence) < floor) break
+        target = j
         break
       }
+      if (target === -1) continue
+      sentences.splice(target, 1)
+      if (sentences.length === 0) lines.splice(i, 1)
+      else lines[i] = sentences.join(' ')
+      removed = true
     }
-    if (idx === -1) break
-    const sentences = lines[idx].split(/(?<=[.!?])\s+/).filter((s) => s.trim() !== '')
-    if (sentences.length === 0) {
-      lines.splice(idx, 1)
-      continue
-    }
-    const last = sentences[sentences.length - 1]
-    // Never remove a sentence that carries a number/$/% or an ALL-CAPS ticker.
-    if (NUMBERISH_RE.test(last) || TICKER_RE.test(last)) break
-    sentences.pop()
-    if (sentences.length === 0) {
-      lines.splice(idx, 1)
-    } else {
-      lines[idx] = sentences.join(' ')
-    }
+    if (!removed) break
   }
 
   // ── 2. Drop trailing sections whose content carries no digits/$/% ──
   guard = 0
-  while (countSections() > budget.sections && guard++ < 100) {
+  while (countSections() > budget.sections && countSections() > 1 && guard++ < 100) {
     let secIdx = -1
     for (let i = lines.length - 1; i >= 0; i--) {
       if (isSectionLine(lines[i])) {
@@ -360,6 +373,7 @@ export function enforceTierLimits(
     trimmedWords: Math.max(0, startProse - finalProse),
     droppedSections: Math.max(0, startSections - finalSections),
     overBudget,
+    tier: appliedTier,
   }
 }
 

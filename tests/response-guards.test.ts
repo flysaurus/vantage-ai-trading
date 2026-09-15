@@ -132,14 +132,14 @@ describe('suppressProjectedScores', () => {
 const FILLER = 'Diversification keeps the portfolio steady across market regimes.';
 
 describe('enforceTierLimits', () => {
-  it('leaves an unknown/null tier unchanged', () => {
-    const t = `${'word '.repeat(400)}tail.`;
+  it('defaults a NULL/unknown tier to some-experience and trims (never unbounded)', () => {
+    const t = Array.from({ length: 60 }, () => 'Sentence about process and patience and staying the course.').join(' ');
     const r = enforceTierLimits(t, null);
-    expect(r.text).toBe(t);
-    expect(r.trimmedWords).toBe(0);
-    expect(r.droppedSections).toBe(0);
-    expect(r.overBudget).toBe(false);
-    expect(enforceTierLimits(t, 'beginner').text).toBe(t);
+    expect(r.tier).toBe('some-experience');
+    expect(r.overBudget).toBe(true);
+    expect(r.trimmedWords).toBeGreaterThan(0);
+    expect(r.text.length).toBeGreaterThan(0); // never trimmed to nothing
+    expect(enforceTierLimits(t, 'beginner').tier).toBe('some-experience');
   });
 
   it('trims an over-budget experienced response down to 150 prose words', () => {
@@ -302,5 +302,39 @@ describe('multi-match scanning', () => {
   it('finds a real projection after a skipped market-context match', () => {
     const t = 'NVDA could climb 8% and that would push your score to 94+.';
     expect(detectProjectedScoreClaim(t)).toBe('would push your score to 94+');
+  });
+});
+
+// ── NULL / unknown / beginner tiers must NOT be unbounded ──
+describe('tier default (NULL is a common real state, not an edge case)', () => {
+  // ~600 prose words of digit-free filler plus number-bearing sentences.
+  const filler = Array.from(
+    { length: 40 },
+    () => 'Explanatory sentence about process and discipline and staying the course.',
+  ).join(' ');
+  const long = [
+    '**Verdict:** your book is fine overall and the plan below keeps risk flat while adding breadth.',
+    filler,
+    'You should keep NVDA at 7.5% and hold cash near 6% of the account because the thesis is intact for now.',
+    '**Bottom line:** add to SPY gradually, keep the 6% cash buffer, and revisit after the next CPI print.',
+  ].join('\n\n');
+
+  it('applies the some-experience default when the tier is NULL', () => {
+    const r = enforceTierLimits(long, null);
+    expect(r.tier).toBe('some-experience');
+    expect(r.overBudget).toBe(true);
+    expect(r.trimmedWords).toBeGreaterThan(0);
+  });
+  it('defaults unknown tiers instead of leaving them uncapped', () => {
+    expect(enforceTierLimits(long, 'expert').tier).toBe('some-experience');
+    expect(enforceTierLimits(long, 'nonsense').trimmedWords).toBeGreaterThan(0);
+  });
+  it('routes beginners through their own budget', () => {
+    expect(enforceTierLimits(long, 'new').tier).toBe('new');
+  });
+  it('never removes a sentence carrying numbers', () => {
+    const r = enforceTierLimits(long, null);
+    expect(r.text).toContain('7.5%');
+    expect(r.text).toContain('6%');
   });
 });
