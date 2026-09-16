@@ -577,6 +577,34 @@ function sendChecklist(
   );
 }
 
+/** Honest UI label for a tool the model ACTUALLY invoked. Unknown tools return
+ *  null so the client never shows a made-up stage. */
+function statusForTool(name: string): string | null {
+  if (!name) return null;
+  if (name === 'resolveSymbol') return 'Checking tickers';
+  if (name.startsWith('preview')) return 'Preparing that order';
+  if (/portfolio|position|holding|account|balance/i.test(name)) return 'Reading your portfolio';
+  if (/market|quote|price|screen|etf|technical|analyst|earnings|news|sentiment/i.test(name)) {
+    return 'Fetching market data';
+  }
+  if (/tax|lot|harvest/i.test(name)) return 'Checking tax lots';
+  if (/backtest|risk|concentration/i.test(name)) return 'Checking risk';
+  return null;
+}
+
+// ─── Status event helper (item 8) ───
+// ONE truthful progress line, driven by what the server is actually doing.
+// Deliberately no canned phrase list and no client-side timer: the client holds
+// the last real status until the answer's first token arrives, so the line can
+// never claim progress that is not happening.
+function sendStatus(
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder,
+  label: string,
+) {
+  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ status: label })}\n\n`));
+}
+
 /** Build a CLARIFY event from validation failures, replacing fatal errors with
  *  user-facing questions. */
 function buildClarifyFromFailures(
@@ -2041,6 +2069,10 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     const readable = new ReadableStream({
       async start(controller) {
         try {
+        // Item 8: the model request is already in flight, so this is a literal
+        // statement of what is happening — one line, held until a real stage or
+        // the first token replaces it.
+        sendStatus(controller, encoder, 'Thinking');
         let totalInputTokens = 0;
         let totalOutputTokens = 0;
         let turn = 0;
@@ -2234,6 +2266,10 @@ Use these for any market-direction questions ("how are markets today?", "any sel
             ],
           });
           for (const tb of turnToolBlocks) {
+            // Real per-tool status: the label describes the tool that is
+            // actually running, and unknown tools emit nothing.
+            const toolStatus = statusForTool(tb.name);
+            if (toolStatus) sendStatus(controller, encoder, toolStatus);
             let result: string;
             if (tb.name === 'resolveSymbol') {
               const t0 = Date.now();

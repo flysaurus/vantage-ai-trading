@@ -250,6 +250,9 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
   const [loading, setLoading] = useState(false);
   const loadingRef = useRef(false); // breaks stale closure — auto-retry reads this, not state
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  // Item 8: ONE real server status line (source: sendStatus in app/api/chat/route.ts).
+  // Replaced, never appended; holds the last real stage until text renders.
+  const [statusLine, setStatusLine] = useState<string | null>(null);
   // Screening meta for strategy-card transparency (criteria, match count, provider)
   const [screeningMeta, setScreeningMeta] = useState<{
     criteria: Record<string, any>;
@@ -1534,6 +1537,7 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
       validationRejectRef.current = null;
       correctedSymbolsRef.current = new Set();
       checklistFrameRef.current = 0; // reset checklist animation stagger
+      setStatusLine(null); // item 8: never carry a stale status into a new send
 
       const aiMsgId = deepTarget ?? crypto.randomUUID();
       lastAiMessageIdRef.current = aiMsgId;
@@ -1593,11 +1597,18 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
                 // reasoning hidden behind the checklist
                 continue;
               }
+              if (data.status) {
+                // Real server stage (what the server is actually doing). Replace
+                // rather than append — the UI shows one line at a time.
+                setStatusLine(String(data.status));
+                continue;
+              }
               if (data.screeningMeta) {
                 setScreeningMeta(data.screeningMeta);
                 continue;
               }
               if (data.text) {
+                setStatusLine(null); // answer is rendering — status line is done
                 charQueueRef.current.push(...data.text.split(''));
                 lastAiResponseRef.current = displayedContentRef.current + charQueueRef.current.join('');
                 startDrainer();
@@ -1748,6 +1759,7 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
           console.log('[chat] Validation failed — auto-regenerating (content hidden)...');
           setMessages(prev => prev.slice(0, -1)); // Remove empty AI message stub
           setChecklistItems([]); // Clear stale checklist so new stages animate fresh
+          setStatusLine(null); // item 8: same for the single status line
           setLoading(false); loadingRef.current = false;
           await new Promise(r => setTimeout(r, 50));
           try {
@@ -3051,12 +3063,19 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           </div>
         )}
 
-        {/* Thinking indicator — hidden during progress (ProgressIndicator takes over) */}
+        {/* Thinking status — hidden during the portfolio progress checklist (that
+            takes over). Shows the ONE real server stage currently in flight; the
+            dots are a visual cue only, they do not imply sub-stages. */}
         {loading && checklistItems.length === 0 && (
           <div style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', padding: '12px 0 4px' }}>
             <span className="vantage-typing-dot" style={{ animationDelay: '0s' }} />
             <span className="vantage-typing-dot" style={{ animationDelay: '0.2s' }} />
             <span className="vantage-typing-dot" style={{ animationDelay: '0.4s' }} />
+            {statusLine && (
+              <span data-testid="thinking-status-line" style={{ fontSize: '13px', color: 'var(--v-chat-text-3)', marginLeft: '2px' }}>
+                {statusLine}
+              </span>
+            )}
             <style>{`
               .vantage-typing-dot {
                 width: 6px; height: 6px; border-radius: 50%;
