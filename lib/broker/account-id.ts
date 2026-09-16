@@ -1,6 +1,17 @@
 // ═══════════════════════════════════════════════════════════════
 // lib/broker/account-id.ts — Part B step 3b (WRITE-SIDE stamping)
+//                              + Part B step 4 (READ-SIDE filter)
 // ═══════════════════════════════════════════════════════════════
+//
+// READ SIDE (step 4, added after 077/078 + the first stamped syncs):
+//   `resolveBrokerAccountReadFilter` decides whether a reader may narrow to a
+//   single sub-account. Rule: only a connection with **2+ registered
+//   accounts** needs the filter — a single-account connection's connection
+//   scope IS the account scope, so its readers keep today's behaviour and
+//   unstamped legacy rows stay readable. On a shared login with no usable
+//   sub-account scope the reader must NOT fall back to the connection scope:
+//   that is the summed book the original bug produced (item 2's rule — a
+//   multi-account connection hides connection-level rows).
 //
 // Stamps `account_id` (positions / orders / trade_history) and
 // `broker_account_id` (position_lots) at WRITE time, so derived rows stop
@@ -32,6 +43,24 @@ export function accountIdWritesEnabled(
   return env[ACCOUNT_ID_WRITES_ENV] === '1';
 }
 
+export type ReadAccountFilterReason =
+  /** 2+ registered accounts and the scope named one that exists → FILTER. */
+  | 'shared_login_account'
+  /** 0–1 registered accounts: connection scope IS the account scope. */
+  | 'single_account'
+  /** 2+ registered accounts, but no usable sub-account scope → do not widen. */
+  | 'shared_login_no_scope'
+  /** broker_accounts could not be read → behave as before (connection scope). */
+  | 'lookup_failed';
+
+export interface ReadAccountFilter {
+  /** When set, the reader MUST add `.eq('account_id', filterAccountId)`. */
+  filterAccountId: string | null;
+  /** How many sub-accounts the connection has registered (0 = none). */
+  registeredAccounts: number;
+  reason: ReadAccountFilterReason;
+}
+
 export interface WriteAccountScope {
   /** The user who owns the rows. Part of the lookup key — never inferred. */
   userId: string | null | undefined;
@@ -47,6 +76,61 @@ const cache = new Map<string, string | null>();
 /** Test seam — clears the lookup memo. */
 export function __clearAccountIdCache(): void {
   cache.clear();
+}
+
+/**
+ * Decide whether a READ may narrow a connection's derived rows to one
+ * sub-account (Part B step 4). Never throws; never infers an account.
+ *
+ * The lookup is deliberately NOT gated by BROKER_ACCOUNT_ID_WRITES: that flag
+ * governs what the writers stamp, not what readers are allowed to trust.
+ */
+export async function resolveBrokerAccountReadFilter(
+  supabase: SupabaseClient,
+  scope: WriteAccountScope,
+): Promise<ReadAccountFilter> {
+  const { userId, connectionId, snapAccountId } = scope;
+  const failed: ReadAccountFilter = {
+    filterAccountId: null,
+    registeredAccounts: 0,
+    reason: 'lookup_failed',
+  };
+  if (!userId || !connectionId) return failed;
+
+  try {
+    const { data, error } = await (supabase as any)
+      .from('broker_accounts')
+      .select('id, snaptrade_account_id')
+      .eq('connection_id', connectionId);
+    if (error) return failed;
+
+    const rows: any[] = Array.isArray(data) ? data : [];
+    const registeredAccounts = rows.length;
+
+    // One account (or none registered yet) — connection scope is not ambiguous.
+    if (registeredAccounts < 2) {
+      return { filterAccountId: null, registeredAccounts, reason: 'single_account' };
+    }
+
+    // Shared login: only an exact sub-account match may narrow the read.
+    const match = snapAccountId
+      ? rows.find((r) => r?.snaptrade_account_id === snapAccountId)
+      : undefined;
+    if (!match?.id) {
+      return { filterAccountId: null, registeredAccounts, reason: 'shared_login_no_scope' };
+    }
+    return {
+      filterAccountId: String(match.id),
+      registeredAccounts,
+      reason: 'shared_login_account',
+    };
+  } catch (err) {
+    console.warn(
+      '[account-id] read-scope lookup failed — using connection scope:',
+      err instanceof Error ? err.message : err,
+    );
+    return failed;
+  }
 }
 
 /**

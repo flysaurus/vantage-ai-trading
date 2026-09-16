@@ -1,5 +1,6 @@
 import { listConnectedSnapTradeConnections } from '@/lib/snaptrade/client';
-import { connectionIdFromAccountId } from '@/lib/account-scope';
+import { connectionIdFromAccountId, parseAccountScope } from '@/lib/account-scope';
+import { resolveBrokerAccountReadFilter } from '@/lib/broker/account-id';
 
 /**
  * Account-scoped portfolio resolution for AI surfaces (daily brief,
@@ -33,7 +34,35 @@ async function resolveBrokerPositions(
   supabase: any,
   userId: string,
   connectionId?: string | null,
+  snapAccountId?: string | null,
 ): Promise<AccountPositions> {
+  // Part B step 4 — dual-read. On a connection that exposes 2+ sub-accounts
+  // the connection scope is the SUMMED book (the original bug); narrow to the
+  // named sub-account instead. A single-account connection, or a failed
+  // lookup, keeps exactly today's connection-scoped query — unstamped legacy
+  // rows stay readable there, where the scope is not ambiguous either way.
+  const filter = await resolveBrokerAccountReadFilter(supabase, {
+    userId,
+    connectionId,
+    snapAccountId,
+  });
+
+  // Shared login with no usable sub-account scope: returning the connection's
+  // rows would merge two accounts. Report holdings as unavailable (item 2's
+  // rule: a multi-account connection hides connection-level rows).
+  if (filter.reason === 'shared_login_no_scope') {
+    console.warn(
+      '[account-positions] shared login without a sub-account scope — not merging holdings',
+    );
+    return {
+      positions: [],
+      cashBalance: 0,
+      holdingsUnavailable: true,
+      isBrokerConnected: true,
+      accountId: connectionId ? `snaptrade:${connectionId}` : 'broker',
+    };
+  }
+
   let query = (supabase as any)
     .from('positions')
     .select('*')
@@ -44,7 +73,15 @@ async function resolveBrokerPositions(
     query = query.eq('connection_id', connectionId);
   }
 
+  if (filter.filterAccountId) {
+    query = query.eq('account_id', filter.filterAccountId);
+  }
+
   const { data: brokerPositions } = await query;
+
+  console.log(
+    `[account-positions] scope=${filter.reason} account=${filter.filterAccountId ? filter.filterAccountId.slice(0, 8) : '-'} rows=${brokerPositions?.length ?? 0}`,
+  );
 
   // NOTE: holdings-unavailability is a live SnapTrade concept surfaced via the
   // account route (sync_status), not persisted on broker_connections. An empty
@@ -54,7 +91,9 @@ async function resolveBrokerPositions(
     cashBalance: 0, // broker cash is intentionally not folded into the brief
     holdingsUnavailable: false,
     isBrokerConnected: true,
-    accountId: connectionId ? `snaptrade:${connectionId}` : 'broker',
+    accountId: connectionId
+      ? `snaptrade:${connectionId}${snapAccountId ? `:${snapAccountId}` : ''}`
+      : 'broker',
   };
 }
 
@@ -84,9 +123,15 @@ export async function resolveAccountPositions(
 ): Promise<AccountPositions> {
   // Explicit broker account selection
   if (accountId && accountId !== 'demo') {
-    const connId = extractConnectionId(accountId);
+    const parsed = parseAccountScope(accountId);
+    const connId = parsed?.connectionId ?? extractConnectionId(accountId);
     if (connId) {
-      return resolveBrokerPositions(supabase, userId, connId);
+      return resolveBrokerPositions(
+        supabase,
+        userId,
+        connId,
+        parsed?.snapAccountId ?? null,
+      );
     }
     // Unknown account id — fall through to legacy resolution
   }
