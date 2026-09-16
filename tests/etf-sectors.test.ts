@@ -108,7 +108,7 @@ describe('etf-sectors — decomposition', () => {
 
 describe('etf-sectors — dynamic resolver (pure parts)', () => {
   it('yahooSectorWeightingsToBuckets flattens array-of-objects 0–1 fractions → pct buckets', () => {
-    const sw = [
+    const sw: Array<Record<string, number>> = [
       { technology: 0.387 },
       { consumer_cyclical: 0.093 },
       { consumer_defensive: 0.045 },
