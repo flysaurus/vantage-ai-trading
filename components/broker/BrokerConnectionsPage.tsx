@@ -16,6 +16,10 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import {
+  groupLiveAccountsByConnection,
+  type LiveAccountEntry,
+} from '@/lib/broker/connection-cards';
 import { ChevronLeft, Check, RefreshCw, ExternalLink, Unlink } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import { useBroker } from '@/components/providers/BrokerProvider';
@@ -27,6 +31,20 @@ interface BrokerConnectionsPageProps {
   onBack: () => void;
   onEnterApp?: () => void;
   onDisconnect?: () => void;
+}
+
+// ── Live connection cards (A-2) ──────────────────────────────
+// Grouping/enumeration lives in lib/broker/connection-cards.ts (pure + tested);
+// this component only adds presentation (logo) and the per-connection status
+// read. `LiveAccountEntry` is the GET /api/accounts row shape.
+interface ConnectionCard {
+  connectionId: string;
+  brokerName: string;
+  logo: string;
+  environment: string | null;
+  tradingEnabled: boolean;
+  holdingsAvailable: boolean | null;
+  subAccounts: { id: string; name: string; totalValue: number }[];
 }
 
 interface BrokerRow {
@@ -86,6 +104,8 @@ function ConnectedCard({
   environment,
   balance,
   tradingEnabled,
+  subAccounts,
+  holdingsUnavailable,
   connectedAt,
   syncedAt,
   onRefresh,
@@ -98,6 +118,15 @@ function ConnectedCard({
   environment: string | null;
   balance: string;
   tradingEnabled: boolean;
+  /**
+   * Per-sub-account rows, each with its OWN standalone value. A connection is
+   * never represented by the sum of its sub-accounts — the same invariant the
+   * account/positions routes enforce — so a multi-sub-account login (Fidelity:
+   * "Taxable SMA" + "ANIKET - YOUTH") lists both rows and no total.
+   */
+  subAccounts?: { id: string; name: string; totalValue: number }[];
+  /** True when the broker reports holdings unavailable for this connection. */
+  holdingsUnavailable?: boolean;
   connectedAt?: string;
   syncedAt?: string;
   onRefresh?: () => void;
@@ -234,6 +263,63 @@ function ConnectedCard({
           <Check size={12} color="var(--v-badge-gain)" strokeWidth={3} />
         </div>
       </div>
+
+      {/* Sub-accounts — one row each, standalone values, never a total */}
+      {subAccounts && subAccounts.length > 0 && (
+        <div
+          style={{
+            paddingLeft: '54px',
+            marginBottom: '10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '5px',
+          }}
+        >
+          {subAccounts.map((sa) => (
+            <div
+              key={sa.id}
+              style={{
+                display: 'flex',
+                alignItems: 'baseline',
+                justifyContent: 'space-between',
+                gap: '10px',
+                fontFamily: 'var(--font-sans)',
+                fontSize: '12.5px',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              <span
+                style={{
+                  color: 'var(--v-text-secondary)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {sa.name}
+              </span>
+              <span style={{ color: 'var(--v-text-primary)', flexShrink: 0 }}>
+                {fmtMoney(sa.totalValue)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {holdingsUnavailable && (
+        <p
+          style={{
+            fontFamily: 'var(--font-sans)',
+            fontSize: '12.5px',
+            color: 'var(--v-text-muted)',
+            fontStyle: 'italic',
+            paddingLeft: '54px',
+            margin: '0 0 10px',
+          }}
+        >
+          Balances not shared by this broker yet.
+        </p>
+      )}
 
       {/* Balance + timestamps */}
       <div
@@ -602,6 +688,15 @@ function actionBtnStyle(): React.CSSProperties {
   };
 }
 
+function fmtMoney(n: number): string {
+  if (!Number.isFinite(n)) return '—';
+  return n.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 2,
+  });
+}
+
 function fmtDate(iso: string): string {
   try {
     const d = new Date(iso);
@@ -643,6 +738,108 @@ export function BrokerConnectionsPage({
 
   const [loadingBroker, setLoadingBroker] = useState<string | null>(null);
   const [toast, setToast] = useState('');
+
+  // ── Live connections → one card EACH (A-2) ──────────────────
+  // The service-wide `useBroker()` status is a single, unscoped read: with 2+
+  // connections it correctly refuses to guess (connected+ambiguous) and returns
+  // no brokerId — which left this page with NO connected card and therefore NO
+  // reachable Disconnect. That guard is working as intended; the bug was this
+  // page asking an unscoped question. So: enumerate connections from the same
+  // account list the switcher uses (per-sub-account ids), and give every
+  // connection its own card whose status is read with an explicit connectionId.
+  const [connectionCards, setConnectionCards] = useState<ConnectionCard[]>([]);
+  const [confirmConnection, setConfirmConnection] = useState<ConnectionCard | null>(null);
+  const [disconnectingConnection, setDisconnectingConnection] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/accounts', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const list: LiveAccountEntry[] = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.accounts)
+            ? data.accounts
+            : [];
+        // Pure grouping — skips demo rows and anything without a connectionId.
+        const groups = groupLiveAccountsByConnection(list);
+        if (groups.length === 0) return; // leave the legacy single-card path alone
+
+        const cards = await Promise.all(
+          groups.map(async (group): Promise<ConnectionCard> => {
+            let environment: string | null = group.environment;
+            let tradingEnabled = group.tradingEnabled;
+            let holdingsAvailable: boolean | null = null;
+
+            // Explicitly scoped status read — never the bare, ambiguous call.
+            try {
+              const sr = await fetch(
+                `/api/broker/status?connectionId=${encodeURIComponent(group.connectionId)}`,
+                { credentials: 'include' },
+              );
+              if (sr.ok) {
+                const s = await sr.json();
+                if (s?.environment) environment = s.environment;
+                if (typeof s?.trading_enabled === 'boolean') tradingEnabled = s.trading_enabled;
+                if (typeof s?.holdings_available === 'boolean') holdingsAvailable = s.holdings_available;
+              }
+            } catch {
+              /* the card still renders from the account list */
+            }
+
+            const slug = String(
+              group.brokerageSlug || group.brokerName || 'snaptrade',
+            ).toLowerCase();
+
+            return {
+              connectionId: group.connectionId,
+              brokerName: group.brokerName,
+              logo: getBrokerLogo(slug),
+              environment,
+              tradingEnabled,
+              holdingsAvailable,
+              subAccounts: group.subAccounts,
+            };
+          }),
+        );
+
+        if (!cancelled) setConnectionCards(cards);
+      } catch {
+        /* non-fatal — fall back to the legacy single card */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ── Disconnect ONE connection (atomic: broker authorization + derived data) ──
+  const handleConfirmDisconnect = useCallback(async () => {
+    if (!confirmConnection || disconnectingConnection) return;
+    setDisconnectingConnection(true);
+    setToast('');
+    try {
+      const res = await fetch(
+        `/api/connections/${encodeURIComponent(confirmConnection.connectionId)}`,
+        { method: 'DELETE', credentials: 'include' },
+      );
+      if (!res.ok) throw new Error(`delete failed (${res.status})`);
+      setConnectionCards((prev) =>
+        prev.filter((c) => c.connectionId !== confirmConnection.connectionId),
+      );
+      setConfirmConnection(null);
+      setToast('Broker disconnected and its data removed.');
+      onDisconnect?.();
+      setTimeout(() => window.location.reload(), 900);
+    } catch {
+      setToast('Could not disconnect the broker. Nothing was changed — please try again.');
+      setConfirmConnection(null);
+    } finally {
+      setDisconnectingConnection(false);
+    }
+  }, [confirmConnection, disconnectingConnection, onDisconnect]);
 
   // ── Dynamic broker list (all SnapTrade brokers) ─────────
   const [brokerList, setBrokerList] = useState<{
@@ -910,29 +1107,55 @@ export function BrokerConnectionsPage({
         </div>
       )}
 
-      {/* ═══ CONNECTED SECTION ═══ */}
-      {isConnected && brokerId && (
+      {/* ═══ CONNECTED SECTION — one card per connection (A-2) ═══ */}
+      {connectionCards.length > 0 ? (
         <>
           <SectionHeader
             accent="connected"
             title="Connected"
-            count={1}
+            count={connectionCards.length}
           />
 
-          <ConnectedCard
-            brokerId={brokerId}
-            brokerName={connectedName}
-            logo={getBrokerLogo(brokerId)}
-            environment={environment}
-            balance={balance}
-            tradingEnabled={tradingEnabled}
-            connectedAt={undefined}
-            syncedAt={undefined}
-            onRefresh={() => window.location.reload()}
-            onViewInApp={onEnterApp}
-            onDisconnect={onDisconnect}
-          />
+          {connectionCards.map((card) => (
+            <ConnectedCard
+              key={card.connectionId}
+              brokerId={card.logo}
+              brokerName={card.brokerName}
+              logo={card.logo}
+              environment={card.environment}
+              balance=""
+              tradingEnabled={card.tradingEnabled}
+              subAccounts={card.subAccounts}
+              holdingsUnavailable={card.holdingsAvailable === false}
+              connectedAt={undefined}
+              syncedAt={undefined}
+              onRefresh={() => window.location.reload()}
+              onViewInApp={onEnterApp}
+              onDisconnect={() => setConfirmConnection(card)}
+            />
+          ))}
         </>
+      ) : (
+        isConnected &&
+        brokerId && (
+          <>
+            <SectionHeader accent="connected" title="Connected" count={1} />
+
+            <ConnectedCard
+              brokerId={brokerId}
+              brokerName={connectedName}
+              logo={getBrokerLogo(brokerId)}
+              environment={environment}
+              balance={balance}
+              tradingEnabled={tradingEnabled}
+              connectedAt={undefined}
+              syncedAt={undefined}
+              onRefresh={() => window.location.reload()}
+              onViewInApp={onEnterApp}
+              onDisconnect={onDisconnect}
+            />
+          </>
+        )
       )}
 
       {/* ═══ TRADING ENABLED SECTION ═══ */}
@@ -1004,6 +1227,125 @@ export function BrokerConnectionsPage({
       )}
 
       <div style={{ height: '30px', flexShrink: 0 }} />
+
+      {/* ═══ Disconnect confirmation (per connection) ═══ */}
+      {confirmConnection && (
+        <>
+          <div
+            onClick={() => !disconnectingConnection && setConfirmConnection(null)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 10050,
+              background: 'rgba(0,0,0,0.6)',
+              backdropFilter: 'blur(4px)',
+            }}
+          />
+          <div
+            data-testid="disconnect-confirm-modal"
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              zIndex: 10051,
+              width: 'calc(100% - 48px)',
+              maxWidth: '360px',
+              background: 'var(--v-card)',
+              border: '1px solid var(--v-card-border)',
+              borderRadius: '16px',
+              padding: '22px',
+              fontFamily: 'var(--font-sans)',
+            }}
+          >
+            <p
+              style={{
+                fontSize: '16px',
+                fontWeight: 700,
+                color: 'var(--v-text-primary)',
+                margin: '0 0 8px',
+              }}
+            >
+              Disconnect {confirmConnection.brokerName}?
+            </p>
+            <p
+              style={{
+                fontSize: '13px',
+                color: 'var(--v-text-secondary)',
+                lineHeight: 1.5,
+                margin: '0 0 10px',
+              }}
+            >
+              This removes the connection at your brokerage and permanently deletes the
+              data Vantage derived from it.
+            </p>
+            {confirmConnection.subAccounts.length > 0 && (
+              <ul
+                style={{
+                  margin: '0 0 12px',
+                  paddingLeft: '18px',
+                  fontSize: '12.5px',
+                  color: 'var(--v-text-secondary)',
+                  lineHeight: 1.6,
+                }}
+              >
+                {confirmConnection.subAccounts.map((sa) => (
+                  <li key={sa.id}>{sa.name}</li>
+                ))}
+              </ul>
+            )}
+            <p
+              style={{
+                fontSize: '12px',
+                color: 'var(--v-text-muted)',
+                lineHeight: 1.4,
+                margin: '0 0 20px',
+              }}
+            >
+              This cannot be undone. You can reconnect later, but the derived data will not
+              come back.
+            </p>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setConfirmConnection(null)}
+                disabled={disconnectingConnection}
+                style={{
+                  flex: 1,
+                  padding: '11px 0',
+                  borderRadius: '10px',
+                  border: '1px solid var(--v-card-border)',
+                  background: 'transparent',
+                  color: 'var(--v-text-secondary)',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                data-testid="disconnect-confirm-button"
+                onClick={handleConfirmDisconnect}
+                disabled={disconnectingConnection}
+                style={{
+                  flex: 1,
+                  padding: '11px 0',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: 'var(--v-loss-label)',
+                  color: '#ffffff',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  opacity: disconnectingConnection ? 0.6 : 1,
+                }}
+              >
+                {disconnectingConnection ? 'Disconnecting…' : 'Disconnect'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
