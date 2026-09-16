@@ -10,7 +10,41 @@
 //   row 2 — connection dot + investor-style link to Settings + (read-only
 //           only) the two-weight BROKER / VIEW ONLY badge.
 // All colours come from `--v-*` tokens — no hardcoded hex.
+import { useState } from 'react';
 import { AccountSwitcher } from '@/components/accounts/AccountSwitcher';
+import { LearningLibrary } from '@/components/learning/LearningLibrary';
+
+/**
+ * Book-pile mark for the Learning Library entry point. Inline SVG (no icon
+ * dependency, no emoji so it renders identically on every platform) and
+ * `currentColor` so it inherits the masthead's token-driven text colour in
+ * both themes.
+ */
+function BookPileIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {/* shelf / base */}
+      <path d="M3 20h18" />
+      {/* stacked volumes, slightly offset so it reads as a pile */}
+      <rect x="4.5" y="15.2" width="15" height="3.4" rx="0.9" />
+      <rect x="6" y="11.4" width="12" height="3.4" rx="0.9" />
+      <rect x="7.5" y="7.6" width="9" height="3.4" rx="0.9" />
+      {/* upright volume leaning on the pile */}
+      <rect x="8.6" y="2.6" width="6.8" height="3.6" rx="0.9" />
+    </svg>
+  );
+}
 
 export interface MastheadTestIds {
   masthead: string;
@@ -31,6 +65,10 @@ interface Props {
 }
 
 export function Masthead({ accountName, brokerLabel, dotColor, isReadOnly, styleLabel, onStyleClick, testIds }: Props) {
+  // Self-contained so the entry point appears on EVERY screen that renders the
+  // masthead (Insights, Holdings, Trade) without each tab re-wiring it.
+  const [showLibrary, setShowLibrary] = useState(false);
+
   return (
     <>
       {/* ── 1. Masthead ── */}
@@ -51,7 +89,24 @@ export function Masthead({ accountName, brokerLabel, dotColor, isReadOnly, style
               Vantage
             </span>
           </div>
-          <AccountSwitcher variant="masthead" testId={testIds.account} fallbackLabel={accountName} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            <button
+              type="button"
+              data-testid="learning-library-entry"
+              aria-label="Open Learning Library"
+              title="Learning Library"
+              onClick={() => setShowLibrary(true)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                background: 'none', border: 'none', padding: 6, margin: 0,
+                cursor: 'pointer', color: 'var(--v-text-primary)',
+                borderRadius: 8, fontFamily: 'inherit', lineHeight: 0,
+              }}
+            >
+              <BookPileIcon />
+            </button>
+            <AccountSwitcher variant="masthead" testId={testIds.account} fallbackLabel={accountName} />
+          </div>
         </div>
         {/* the ONE deliberate hairline deviation — 2px accent rule */}
         <div data-testid={testIds.rule} style={{ borderTop: '2px solid var(--v-accent)', marginTop: 12 }} />
@@ -120,6 +175,8 @@ export function Masthead({ accountName, brokerLabel, dotColor, isReadOnly, style
           </span>
         )}
       </div>
+      {/* Learning Library overlay — the same component the chat header and Settings use. */}
+      <LearningLibrary open={showLibrary} onClose={() => setShowLibrary(false)} initialView="path" />
     </>
   );
 }
