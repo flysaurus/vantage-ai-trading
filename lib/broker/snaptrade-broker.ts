@@ -1200,15 +1200,21 @@ export class SnapTradeBroker implements BrokerEngine {
   // account picker needs them enumerated separately, each with its OWN
   // balances — never summed. Returns [] on a failed fetch so callers can fall
   // back to the stored snapshot.
-  async listSubAccounts(): Promise<Array<{ id: string; name: string; totalValue: number; cash: number; buyingPower: number | null }>> {
+  async listSubAccounts(): Promise<Array<{ id: string; name: string; totalValue: number | null; cash: number | null; buyingPower: number | null }>> {
     try {
       const accounts = await this._fetchAccounts();
       return accounts.map((a) => ({
         id: a.id,
         name: a.name || 'Brokerage account',
-        totalValue: a.total_value ?? 0,
-        cash: a.cash ?? 0,
-        buyingPower: a.buying_power ?? null,
+        // Pass the balance through UNCHANGED — a `?? 0` here fabricated a real
+        // $0 for every account whose payload omits the field (Fidelity reports
+        // `cash: null`), which then read as "no cash / 100% invested".
+        // ⚠️ The accounts payload is not authoritative for settled cash; the
+        // per-account balances endpoint is (see `getAccount`). Until that is
+        // fetched for the switcher too, an absent figure stays unknown.
+        totalValue: a.total_value,
+        cash: a.cash,
+        buyingPower: a.buying_power,
       }));
     } catch {
       return [];
@@ -1224,11 +1230,13 @@ export class SnapTradeBroker implements BrokerEngine {
     // Normalize SnapTrade's nested balance structure into flat fields
     return raw.map((a) => {
       const bal = a.balance || {};
-      const totalValue = a.total_value ?? bal.total?.amount ?? bal.total ?? 0;
+      // `?? null`, never `?? 0`: an absent balance is UNKNOWN. A fabricated 0
+      // total value reads as an empty account.
+      const totalValue = a.total_value ?? bal.total?.amount ?? bal.total ?? null;
       const cash =
-        a.cash ?? bal.cash?.amount ?? bal.cash ?? bal.available_cash?.amount ?? bal.available_cash ?? undefined;
+        a.cash ?? bal.cash?.amount ?? bal.cash ?? bal.available_cash?.amount ?? bal.available_cash ?? null;
       const buyingPower =
-        a.buying_power ?? bal.buying_power?.amount ?? bal.buying_power ?? undefined;
+        a.buying_power ?? bal.buying_power?.amount ?? bal.buying_power ?? null;
       return {
         id: a.id,
         name: a.name,

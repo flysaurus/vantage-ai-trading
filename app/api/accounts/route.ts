@@ -27,7 +27,9 @@ import { deriveTradingCapability, type TradingCapability } from '@/lib/broker/tr
 //      tab navigation) don't re-pay the round-trip.
 const ACCOUNTS_LIVE_TIMEOUT_MS = 8_000;
 const ACCOUNTS_CACHE_TTL_MS = 30_000;
-type SubAccountSummary = { id: string | null; name: string; totalValue: number; cash: number; buyingPower: number | null };
+// Live sub-account row. Balances are `null` when the broker payload omits them
+// — unknown, never a fabricated 0 (see SnapTradeBroker.listSubAccounts).
+type SubAccountSummary = { id: string | null; name: string; totalValue: number | null; cash: number | null; buyingPower: number | null };
 const subAccountsCache = new Map<string, { at: number; value: SubAccountSummary[] }>();
 
 export interface AccountEntry {
