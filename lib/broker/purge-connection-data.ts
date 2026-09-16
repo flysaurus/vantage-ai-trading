@@ -111,7 +111,6 @@ export async function purgeConnectionDerivedData(
     const { data: acctRows, error: acctErr } = await supabase
       .from('broker_accounts')
       .select('id')
-      .eq('user_id', userId)
       .eq('connection_id', connId);
     if (acctErr) {
       console.warn(`[purge] broker_accounts lookup failed (conn ${connId}):`, acctErr.message);

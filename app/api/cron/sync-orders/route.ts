@@ -132,7 +132,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const { data, error } = await supabase
         .from('broker_accounts')
         .select('id')
-        .eq('user_id', userId)
         .eq('connection_id', connectionId);
       if (error) {
         console.warn('[sync-orders] broker_accounts lookup failed — lot writes stay connection-scoped:', error.message);
