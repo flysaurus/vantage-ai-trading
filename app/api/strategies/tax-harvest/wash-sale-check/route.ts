@@ -41,8 +41,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   // The raw SnapTrade connection id (no `snaptrade:` prefix) and/or demo=1.
-  // Used to LABEL the answer (is the newest buy in another connection?) and to
-  // pick the demo dataset — never to narrow the repurchase window.
+  //
+  // ⚠️ NOT decorative — do not remove as "unused": `buildWashSaleCheck` feeds
+  // it into TWO response fields the tax-harvesting screen renders:
+  //   • `accountScoped`   — was this check made against a real account?
+  //   • `crossConnection` — the newest repurchase came from a DIFFERENT
+  //                         connection (the "bought back elsewhere" warning).
+  // It never narrows the repurchase window: a wash sale is taxpayer-wide, and
+  // the window always comes from every fill across every connection.
   const connectionId = searchParams.get('connectionId') || null;
   const isDemo = searchParams.get('demo') === '1';
 

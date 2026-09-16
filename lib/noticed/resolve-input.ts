@@ -1,4 +1,5 @@
 import { parseAccountScope, applyAccountScopeFilter } from '@/lib/account-scope';
+import { resolveBrokerAccountReadFilter } from '@/lib/broker/account-id';
 import type { NoticedRuleInput, PortfolioPosition } from './engine';
 
 /**
@@ -55,12 +56,33 @@ export async function resolveBrokerNoticedInput(
   const scope = parseAccountScope(accountId);
   if (!scope || scope.isDemo || !scope.connectionId) return null;
 
+  // Part B step 4 — the standing dual-read rule (same shape as
+  // `lib/ai/account-positions.ts`):
+  //   2+ registered accounts on the connection → strict `account_id` filter,
+  //     never widened; 0–1 accounts → the connection-level query is unchanged;
+  //     shared login with no resolvable sub-account scope → report unavailable,
+  //     never merge two accounts into one card.
+  const readFilter = await resolveBrokerAccountReadFilter(supabase, {
+    userId,
+    connectionId: scope.connectionId,
+    snapAccountId: scope.snapAccountId ?? null,
+  });
+  if (readFilter.reason === 'shared_login_no_scope') {
+    console.warn(
+      '[noticed] shared login without a sub-account scope — not merging holdings',
+    );
+    return null; // caller returns a quiet/empty result — never a merged card
+  }
+
   let positionsQuery = supabase
     .from('positions')
     .select('*')
     .eq('user_id', userId)
     .neq('qty', 0);
   positionsQuery = applyAccountScopeFilter(positionsQuery, scope);
+  if (readFilter.filterAccountId) {
+    positionsQuery = positionsQuery.eq('account_id', readFilter.filterAccountId);
+  }
   const { data: positions } = await positionsQuery;
   if (!positions || positions.length === 0) return null;
 
@@ -73,7 +95,9 @@ export async function resolveBrokerNoticedInput(
     totalPnl += p.totalPnl;
   }
 
-  // Broker cash from the connection's snap accounts (sum across sub-accounts).
+  // Broker cash from the connection's snap accounts. On a shared login only
+  // the scoped sub-account's cash may be used — summing the siblings' cash is
+  // the same merge bug on the cash axis.
   let cash = 0;
   try {
     const { data: conn } = await supabase
@@ -83,7 +107,10 @@ export async function resolveBrokerNoticedInput(
       .eq('id', scope.connectionId)
       .maybeSingle();
     const snapAccounts = (conn?.snaptrade_accounts as any[]) || [];
-    cash = snapAccounts.reduce((sum: number, a: any) => sum + (Number(a?.cash) || 0), 0);
+    const cashAccounts = readFilter.filterAccountId
+      ? snapAccounts.filter((a: any) => a?.id === scope.snapAccountId)
+      : snapAccounts;
+    cash = cashAccounts.reduce((sum: number, a: any) => sum + (Number(a?.cash) || 0), 0);
   } catch { /* ignore */ }
 
   if (cash === 0 && equity > 0) cash = Math.round(equity * 0.25);
@@ -103,10 +130,17 @@ export async function resolveBrokerNoticedInput(
   const dayPnlPct = totalValue > 0 ? (dayPnl / totalValue) * 100 : 0;
 
   // Days since last trade, scoped to this account (orders.filled_at).
+  // A shared login narrows to the sub-account too; `orders.account_id` is not
+  // stamped yet (cron gap recorded in docs/part-b-account-model-migration.md),
+  // so on that path the honest answer is the 999 sentinel = "unknown" rather
+  // than the sibling's trade date.
   let daysSinceLastTrade = 999;
   try {
     let lastTradeQuery = supabase.from('orders').select('filled_at').eq('user_id', userId);
     lastTradeQuery = applyAccountScopeFilter(lastTradeQuery, scope);
+    if (readFilter.filterAccountId) {
+      lastTradeQuery = lastTradeQuery.eq('account_id', readFilter.filterAccountId);
+    }
     const { data: lastTrade } = await lastTradeQuery
       .order('filled_at', { ascending: false })
       .limit(1)
