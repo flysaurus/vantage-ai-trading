@@ -79,10 +79,11 @@ export function SettingsTab() {
   const [isAdmin, setIsAdmin] = useState(false);
   // ── Confirmation dialog state ─────────────────────────
   const [confirmDialog, setConfirmDialog] = useState<{
-    type: 'style' | 'risk';
+    type: 'style' | 'risk' | 'disconnect';
     value: string;
     label: string;
   } | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   useEffect(() => {
     fetch('/api/auth/is-admin')
@@ -90,6 +91,31 @@ export function SettingsTab() {
       .then(d => { if (d.isAdmin) setIsAdmin(true); })
       .catch(() => {});
   }, []);
+
+  // ── Disconnect broker ──────────────────────────────────
+  // One destructive action that (a) removes the authorization at the broker
+  // (SnapTrade) level and (b) purges every derived row tied to the connection
+  // server-side. Both halves run in a single request so there is no window in
+  // which a user can end up half-disconnected. Reload afterwards so no stale
+  // account/brief/Noticed data can survive in memory.
+  async function confirmDisconnect() {
+    setDisconnecting(true);
+    try {
+      const res = await fetch('/api/broker/disconnect', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(`disconnect failed (${res.status})`);
+      setBrokerConnected(false);
+      setConfirmDialog(null);
+      try { await refreshUser?.(); } catch {}
+      window.location.reload();
+    } catch {
+      setDisconnecting(false);
+      setConfirmDialog(null);
+      setToast('Could not disconnect the broker. Nothing was changed — please try again.');
+    }
+  }
 
   async function selectStyle(styleId: string) {
     setSaving(true);
@@ -792,7 +818,7 @@ export function SettingsTab() {
               <span style={{ color: 'var(--v-text-muted)', fontSize: '18px' }}>›</span>
             </div>
             <div
-              onClick={() => setBrokerConnected(false)}
+              onClick={() => setConfirmDialog({ type: 'disconnect', value: '', label: 'your broker' })}
               style={{
                 display: 'flex',
                 justifyContent: 'center',
@@ -1292,6 +1318,23 @@ export function SettingsTab() {
                 </p>
               </>
             )}
+            {confirmDialog.type === 'disconnect' && (
+              <>
+                <p style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff', margin: '0 0 8px' }}>
+                  Disconnect broker?
+                </p>
+                <p style={{ fontSize: '13px', color: '#e2e8f0', lineHeight: 1.5, margin: '0 0 12px' }}>
+                  This removes the connection at your brokerage and permanently deletes
+                  everything Vantage derived from it — balances, positions, cost-basis lots,
+                  order history, tax-harvest data, Rufus Noticed cards, and chat context for
+                  this account.
+                </p>
+                <p style={{ fontSize: '12px', color: '#fca5a5', fontWeight: 600, lineHeight: 1.4, margin: '0 0 20px' }}>
+                  This cannot be undone. You can reconnect later, but the derived data will
+                  not come back.
+                </p>
+              </>
+            )}
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 onClick={() => setConfirmDialog(null)}
@@ -1305,17 +1348,27 @@ export function SettingsTab() {
                 Cancel
               </button>
               <button
-                onClick={confirmDialog.type === 'style' ? confirmStyleChange : confirmRiskChange}
+                onClick={
+                  confirmDialog.type === 'style'
+                    ? confirmStyleChange
+                    : confirmDialog.type === 'risk'
+                      ? confirmRiskChange
+                      : confirmDisconnect
+                }
+                disabled={disconnecting}
                 style={{
                   flex: 1, padding: '12px 0', borderRadius: '10px',
-                  border: 'none', background: '#22d3ee',
-                  color: '#0a0f1e', fontSize: '14px', fontWeight: 700,
-                  cursor: 'pointer',
+                  border: 'none', background: confirmDialog.type === 'disconnect' ? '#ef4444' : '#22d3ee',
+                  color: confirmDialog.type === 'disconnect' ? '#ffffff' : '#0a0f1e',
+                  fontSize: '14px', fontWeight: 700,
+                  cursor: 'pointer', opacity: disconnecting ? 0.6 : 1,
                 }}
               >
                 {confirmDialog.type === 'style'
                   ? `Switch to ${INVESTOR_STYLES.find(s => s.id === confirmDialog.value)?.name || ''}`
-                  : `Change to ${confirmDialog.label}`
+                  : confirmDialog.type === 'risk'
+                    ? `Change to ${confirmDialog.label}`
+                    : disconnecting ? 'Disconnecting…' : 'Disconnect everything'
                 }
               </button>
             </div>
