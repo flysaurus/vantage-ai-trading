@@ -110,6 +110,30 @@ describe('suppressWithheldValueClaims', () => {
     expect(text).toContain('| Cash | $469 |');
   });
 
+  it('does NOT fire on an honest disclaimer with a figure elsewhere in the line', () => {
+    // Verbatim prod reply (deploy #17) to "include an Opening Position row".
+    const t = `I don't have your opening position as a dollar figure — the portfolio context provides only your current account value ($377,551), total P&L (+$34,259), and today's change (+$1,885).\n\n${MARKER}`;
+    expect(detectWithheldValueClaim(t)).toBeNull();
+    expect(suppressWithheldValueClaims(t).removed).toBe(0);
+  });
+
+  it('does NOT fire on a negation-introduced label', () => {
+    const t = `The opening balance is not available; your current value is $377,551.\n\n${MARKER}`;
+    expect(detectWithheldValueClaim(t)).toBeNull();
+  });
+
+  it('STILL fires when the figure is attached to the label in a sentence', () => {
+    const t = `Your opening capital was about $97,580 in total.\n\n${MARKER}`;
+    expect(detectWithheldValueClaim(t)!.id).toBe('unknown_start');
+  });
+
+  it('does NOT re-process its own injected note (idempotent)', () => {
+    const once = suppressWithheldValueClaims(INCIDENT).text;
+    const twice = suppressWithheldValueClaims(once);
+    expect(twice.removed).toBe(0);
+    expect(twice.text).toBe(once);
+  });
+
   it('leaves a legitimate cost-basis table completely alone', () => {
     const t = `| Lot | Cost Basis | Value |\n|---|---|---|\n| AAPL | $4,120 | $5,010 |\n\n${MARKER}`;
     const { text, removed } = suppressWithheldValueClaims(t);

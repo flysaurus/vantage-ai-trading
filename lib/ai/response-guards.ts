@@ -420,7 +420,7 @@ export interface WithheldValueClaim {
   requiresChartMarker: boolean
 }
 
-const MONEY_RE = /(?:\$\s?\d[\d,]*(?:\.\d+)?\s*[KMB]?\b|\b\d[\d,]*(?:\.\d+)?\s*(?:USD|dollars?)\b)/i
+const MONEY_SRC = String.raw`(?:\$\s?\d[\d,]*(?:\.\d+)?\s*[KMB]?\b|\b\d[\d,]*(?:\.\d+)?\s*(?:USD|dollars?)\b)`
 
 export const WITHHELD_VALUE_CLAIMS: WithheldValueClaim[] = [
   {
@@ -436,14 +436,47 @@ export const WITHHELD_VALUE_CLAIMS: WithheldValueClaim[] = [
   },
 ]
 
+// Two things must BOTH hold for a claim: the figure has to be ATTACHED to the
+// label (a row's second cell, or "was about $X" in a sentence — within a short
+// gap), and neither the run-up to the label nor the gap itself may negate or
+// hedge it. A dollar amount merely sitting elsewhere on the same line is NOT a
+// claim — that is the difference between a real capability claim and an honest
+// disclaimer ("I don't have your opening position as a dollar figure — … your
+// current account value ($377,551) …", captured verbatim off prod).
+const CLAIM_ATTACH_GAP = 30
+const negation = () =>
+  /\b(?:don'?t|do not|doesn'?t|does not|didn'?t|isn'?t|aren'?t|won'?t|no|not|unknown|unavailable|can'?t|cannot|without|missing|lack(?:s|ing)?|never)\b/i
+const NEG_BEFORE_CLAIM = /\b(?:don'?t|do not|doesn'?t|does not|didn'?t|isn'?t|aren'?t|won'?t|no|not|unknown|unavailable|can'?t|cannot|without|missing|lack(?:s|ing)?|never)\b[^.!?\n]{0,24}$/i
+const claimMatcherCache = new Map<string, RegExp>()
+function claimMatcher(c: WithheldValueClaim): RegExp {
+  const cached = claimMatcherCache.get(c.id)
+  if (cached) return cached
+  const re = new RegExp(`(${c.label.source})([^\n]{0,${CLAIM_ATTACH_GAP}}?)(${MONEY_SRC})`, 'i')
+  claimMatcherCache.set(c.id, re)
+  return re
+}
+
 const rgHasChartMarker = (text: string) => /\[CHART:[^\]\n]*\]/.test(text)
 const rgIsTableRow = (l: string) => /^\s*\|/.test(l)
 const rgIsMarkerLine = (l: string) => /^\s*\[[^\]]*\]\s*$/.test(l)
-const rgIsClaimLine = (line: string, c: WithheldValueClaim) => c.label.test(line) && MONEY_RE.test(line)
 
 /**
- * Returns the first withheld-value claim found (label + a currency figure on the
- * same line), else null. `only` restricts the check to specific claim ids.
+ * The label a chunk genuinely STATES as a figure (attached + not hedged), or null.
+ */
+function claimLabelIn(chunk: string, c: WithheldValueClaim): string | null {
+  const m = claimMatcher(c).exec(chunk)
+  if (!m) return null
+  const gap = m[2] ?? ''
+  if (negation().test(gap)) return null
+  const before = chunk.slice(0, m.index).slice(-48)
+  if (NEG_BEFORE_CLAIM.test(before)) return null
+  return (m[1] ?? '').trim()
+}
+const rgIsClaimLine = (chunk: string, c: WithheldValueClaim) => claimLabelIn(chunk, c) !== null
+
+/**
+ * Returns the first withheld-value claim found, else null. `only` restricts the
+ * check to specific claim ids.
  */
 export function detectWithheldValueClaim(
   text: string,
@@ -454,16 +487,9 @@ export function detectWithheldValueClaim(
   for (const c of WITHHELD_VALUE_CLAIMS) {
     if (only && !only.includes(c.id)) continue
     if (c.requiresChartMarker && !charted) continue
-    const g = new RegExp(c.label.source, 'gi')
-    let m: RegExpExecArray | null
-    while ((m = g.exec(text)) !== null) {
-      if (m[0].length === 0) {
-        g.lastIndex++
-        continue
-      }
-      const lineEnd = text.indexOf('\n', m.index)
-      const line = text.slice(m.index, lineEnd === -1 ? text.length : lineEnd)
-      if (MONEY_RE.test(line)) return { id: c.id, match: m[0].trim() }
+    for (const line of text.split('\n')) {
+      const hit = claimLabelIn(line, c)
+      if (hit) return { id: c.id, match: hit }
     }
   }
   return null
@@ -476,8 +502,8 @@ export function detectUnknownStartClaim(text: string): string | null {
 }
 
 /**
- * Strip withheld-value claims: a table row carrying the label+figure is dropped
- * whole; a prose sentence carrying it is dropped whole (sibling sentences and
+ * Strip withheld-value claims: a table row stating the label+figure is dropped
+ * whole; a prose sentence stating it is dropped whole (sibling sentences and
  * their figures are kept). Each removal injects the claim's honest note, placed
  * after the prose/table body but BEFORE any trailing marker-only lines. Counts
  * removals and reports the claim ids touched.
