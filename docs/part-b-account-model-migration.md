@@ -1,9 +1,14 @@
 # Part B — Account-model migration plan (REVIEW ONLY — not executed)
 
 Status: **audit complete + plan written, NO DDL run.** Held for Em's review.
+Rev 3 (2026-09-16): Em's decisions locked in — **3b approved** (own commit, own tests, flagged), **1:1
+heuristic declined permanently** (strict `NULL` + report forever). **Step 1 DDL authored** as
+`supabase/migrations/077_broker_accounts.sql` (+ `supabase/verify-077-broker-accounts.sql`) and
+**awaiting Em's SQL-editor run** — this environment has no DB/DDL access (no `SUPABASE_ACCESS_TOKEN`,
+no connection string), same as every earlier migration.
 Rev 2 (2026-09-16): addresses Em's three review points — (1) explicit dual-read contract,
 (2) the backfill gap for shared-login accounts, (3) wash-sale checker removed from §6 + stale §7
-question dropped. **Still no DDL.**
+question dropped. **Still no DDL run.**
 Owner: Rufus · written 2026-09-16 · scope: connections → accounts normalisation.
 
 This is the root-cause fix behind items **1** (slow/failed first load), **2** (deleted
@@ -76,9 +81,15 @@ broker_connections      -- 1 login (unchanged meaning; still the auth/secret own
         created_at / updated_at
 ```
 
-Derived tables gain a nullable `account_id` FK: `positions`, `orders`, `trade_history`,
-`position_lots` (`position_lots.account_id` changes type text → uuid fk, from the legacy
-connection-id string).
+Derived tables gain a nullable account-scope FK: `positions`, `orders`, `trade_history`
+**and** `position_lots`.
+
+⚠️ **Correction (Rev 3, verified in `058_baskets_lots.sql` line 57):** `position_lots.account_id` is
+already `UUID REFERENCES broker_connections(id)` — it is the **connection** scope, not a legacy
+text string. Retargeting it to `broker_accounts` would be a rename/retype (**not additive**) and
+would break every FIFO writer (`lib/fifo-ledger.ts` writes connection ids into it). So the account
+FK lands as a **separate nullable column `position_lots.broker_account_id`**; both columns coexist
+until the later swap step. What the other three tables need is genuinely new (`account_id`).
 
 ## 4. Migration (staged, each step independently revertible)
 
@@ -160,10 +171,18 @@ nothing in Part B should narrow its read scope.
   (stale).** The item-3 union already reads `trade_history` (`unionBuyFills()`, `d6d7239`) with
   **no** backfill into `orders` (Em's ruling: structurally different records, no conflation).
   Live proof passed 5/5. Nothing about trade_history ingestion remains open.
-- **Backfill attribution** (§4.3): does Em want the 1:1-connection heuristic, or strictly
-  `NULL` + report for every unattributable row? Default in this plan is the strict rule.
-- **Writer stamping** (§4.3b): approving 3b is what makes step 4's flips reachable at all —
-  decide whether it lands in the same change or a follow-up.
+- **Backfill attribution** (§4.3) — ✅ **DECIDED, permanently: strict `NULL` + report.** Em declined
+the 1:1-connection heuristic **for good**, not just for now: 3b gives new rows a real `account_id`
+so inference is unnecessary, and inferring ownership today because the mapping *happens* to be 1:1
+is the same shape of assumption that produced the original bug — if Alpaca ever gains a second
+sub-account, a heuristic written today would be silently wrong.
+- **Writer stamping** (§4.3b) — ✅ **APPROVED.** Own commit, **not** bundled with the DDL/backfill
+work. `account_id` must come from the **same resolved active-account context the read path already
+uses** (`snapAccountId` / `scopedUrl()`) — never independently re-derived from the payload. Its own
+tests, its own review, flagged write-capable.
+- **Migration status** — `supabase/migrations/077_broker_accounts.sql` authored (additive, idempotent,
+`BEGIN/COMMIT`, RLS-on-no-policies like 076, **no backfill**: table starts empty and all new columns
+stay NULL). Verify with `supabase/verify-077-broker-accounts.sql` after applying.
 - Do closed/archived accounts keep rows (needed for tax history) or purge? Interacts with
   Part A-2 delete semantics.
 - `position_lots.account_id` type change (text → uuid) needs a cast plan for live rows.
