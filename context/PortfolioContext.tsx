@@ -276,7 +276,7 @@ const PortfolioContext = createContext<PortfolioContextValue>({
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const { isConnected, broker } = useBroker();
   const { user } = useAuth();
-  const { activeAccount, activeAccountId } = useAccounts();
+  const { activeAccount, activeAccountId, isAccountResolved } = useAccounts();
   const isShowingDemo = activeAccount?.isDemo ?? false;
 
   // ── Load persisted demo state synchronously (SSR-safe lazy init) ──
@@ -596,6 +596,17 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     // When viewing Demo, leave the account state for the demo-init path.
     if (!isConnected || !broker || isShowingDemo) return;
 
+    // ── BOOT GATE (item 1) ────────────────────────────────────────────
+    // This effect fires on mount, when activeAccountId is still the 'demo'
+    // placeholder — so `connectionIdFromAccountId()` yields '' and the account
+    // read goes out UNSCOPED (`?fresh=1` with no connectionId), which the
+    // server's ambiguity guard correctly refuses (409). Wait for a resolved
+    // account; the dep list re-runs this effect the moment it flips.
+    if (!isAccountResolved) {
+      console.error('[portfolio context] broker-load gated — active account not resolved yet');
+      return;
+    }
+
     let cancelled = false;
 
     const loadBrokerAccount = async (silent = false) => {
@@ -680,7 +691,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     // mount / explicit-refresh loads surface errors.
     const interval = setInterval(() => loadBrokerAccount(true), 30000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [isConnected, broker, isShowingDemo, brokerRefreshNonce, activeAccountId]);
+  }, [isConnected, broker, isShowingDemo, brokerRefreshNonce, activeAccountId, isAccountResolved]);
 
   // ── PART 2: invalidate the resolved account the moment the selected
   //    account changes. Broker data must go back to "nothing resolved" so the
