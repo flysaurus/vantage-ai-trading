@@ -28,6 +28,7 @@ import {
   type AccountActivitiesResult,
 } from '@/lib/snaptrade/activities';
 import { unknownStartLabel, type ActivityRecord } from '@/lib/tax-harvest/lot-reconstruction';
+import { resolveActivityAccountScope } from '@/lib/broker/account-id';
 
 export interface WaterfallStep {
   label: string;
@@ -208,41 +209,66 @@ export function buildWaterfallFromRecords(
 }
 
 /**
- * Resolve the broker connection that owns `accountId`, from `broker_connections`.
+ * Resolve the connection AND (when the account id names one) the SnapTrade
+ * sub-account that own `accountId`, from `broker_connections`.
  *
- * Returns the **`broker_connections.id`** — that is the id
+ * `connectionId` is the **`broker_connections.id`** — the id
  * `resolveSnapTradeCredentials()` matches on (`c.id === connectionId`). The
  * `snaptrade_connection_id` column is the SnapTrade-internal authorization id and
  * must NOT be passed back in: doing so throws SnapTradeAuthError and the
  * waterfall silently collapses to null.
  *
- * The app's account key is `snaptrade:<broker_connections.id>`, so the prefix is
- * stripped before matching. `accountId` may also be a SnapTrade account id (as
- * stored inside `snaptrade_accounts`) — both shapes are matched.
+ * `snapAccountId` is the SnapTrade account id (the `snaptrade:<conn>:<account>`
+ * third segment, or a bare SnapTrade account id) — the ONLY thing that can
+ * separate two sub-accounts behind one shared login.
+ *
+ * Ambiguous (2+ connections, no match) → `unusable: true`. It is never correct to
+ * pick an arbitrary connection: that would chart one broker's activity as another
+ * account's.
  */
-async function resolveConnectionId(
+async function resolveConnectionScope(
   supabase: any,
   userId: string,
   accountId: string,
-): Promise<string | null> {
-  if (!supabase) return null;
+): Promise<{ connectionId: string | null; snapAccountId: string | null; unusable: boolean }> {
+  const none = { connectionId: null, snapAccountId: null, unusable: false };
+  if (!supabase) return none;
   try {
-    const target = String(accountId || '').replace(/^[a-z_]+:/i, '');
+    const raw = String(accountId || '');
+    const parts = raw.split(':');
+    // `snaptrade:<conn>` | `snaptrade:<conn>:<snapAccountId>` | bare id
+    const target = parts.length > 1 ? parts[1] : raw;
+    const explicitSnap = parts.length > 2 ? parts[2] : null;
+
     const { data } = await supabase
       .from('broker_connections')
       .select('id, snaptrade_connection_id, snaptrade_accounts')
       .eq('user_id', userId);
     const rows = ((data || []) as any[]).filter((r) => !!r?.snaptrade_connection_id);
-    if (rows.length === 0) return null;
-    const match = rows.find((r) => {
-      if (String(r.id) === target) return true;
+    if (rows.length === 0) return none;
+
+    const byConn = rows.find((r) => String(r.id) === target);
+    if (byConn) {
+      return {
+        connectionId: String(byConn.id),
+        snapAccountId: explicitSnap || null,
+        unusable: false,
+      };
+    }
+    const bySnap = rows.find((r) => {
       const accts = Array.isArray(r.snaptrade_accounts) ? r.snaptrade_accounts : [];
       return accts.some((a: any) => String(a?.id ?? a?.account_id ?? '') === target);
     });
-    const chosen = match || rows[0];
-    return chosen?.id ? String(chosen.id) : null;
+    if (bySnap) {
+      return { connectionId: String(bySnap.id), snapAccountId: explicitSnap || target, unusable: false };
+    }
+    if (rows.length === 1) {
+      return { connectionId: String(rows[0].id), snapAccountId: explicitSnap || null, unusable: false };
+    }
+    // 2+ connections and the id matched none of them: do NOT guess.
+    return { connectionId: null, snapAccountId: null, unusable: true };
   } catch {
-    return null;
+    return none;
   }
 }
 
@@ -258,6 +284,8 @@ export async function buildPnlWaterfall(
   opts: {
     userId?: string | null;
     connectionId?: string | null;
+    /** SnapTrade account id — the only way to separate sub-accounts on a shared login. */
+    snapAccountId?: string | null;
     equity?: number;
     supabase?: any;
   } = {},
@@ -267,10 +295,32 @@ export async function buildPnlWaterfall(
   if (!process.env.SNAPTRADE_CLIENT_ID) return null;
 
   let connectionId = opts.connectionId || null;
-  if (!connectionId) connectionId = await resolveConnectionId(opts.supabase, userId, accountId);
+  let snapAccountId = opts.snapAccountId ?? null;
+  if (!connectionId || !snapAccountId) {
+    const resolved = await resolveConnectionScope(opts.supabase, userId, accountId);
+    if (!connectionId) connectionId = resolved.connectionId;
+    if (!snapAccountId) snapAccountId = resolved.snapAccountId;
+  }
   if (!connectionId) return null;
 
+  // SnapTrade activities come back PER AUTHORIZATION, so on a shared login an
+  // unfiltered read MERGES the sub-accounts. Establish which account ids this
+  // chart may read; an unresolvable shared login is reported unavailable.
+  const activityScope = await resolveActivityAccountScope(opts.supabase, {
+    userId,
+    connectionId,
+    snapAccountId,
+  });
+  if (activityScope.snapAccountIds && activityScope.snapAccountIds.length === 0) {
+    console.warn(
+      `[waterfall] connection ${connectionId} is a shared login with no resolvable sub-account — reporting unavailable instead of merging activity`,
+    );
+    return null;
+  }
+  const allowed = activityScope.snapAccountIds;
+
   let activityResults: AccountActivitiesResult[] = [];
+  let scopedLabel: string | null = null;
   try {
     const creds = await resolveSnapTradeCredentials(userId, connectionId);
     const ep = { userId: creds.snaptradeUserId, userSecret: creds.snaptradeUserSecret };
@@ -283,8 +333,9 @@ export async function buildPnlWaterfall(
     );
     const accounts: SnapTradeAccountRef[] = (Array.isArray(accountsRaw) ? accountsRaw : [])
       .map((a: any) => ({ id: String(a?.id ?? ''), name: a?.name ?? null }))
-      .filter((a) => a.id);
+      .filter((a) => a.id && (!allowed || allowed.includes(a.id)));
     if (accounts.length === 0) return null;
+    if (allowed) scopedLabel = accounts[0]?.name || 'this account';
 
     activityResults = await fetchActivitiesForAuthorization(userId, authorizationId, ep, accounts);
   } catch (err) {
@@ -295,5 +346,10 @@ export async function buildPnlWaterfall(
 
   const records = activityResults.flatMap((r) => r.records || []);
   const window = activitiesWindow(activityResults);
-  return buildWaterfallFromRecords(records, opts.equity ?? 0, window);
+  const result = buildWaterfallFromRecords(records, opts.equity ?? 0, window);
+  if (!result) return null;
+  if (scopedLabel) {
+    result.note = `${result.note} Activity is scoped to ${scopedLabel} only — this broker login holds more than one account, so the others' activity is excluded rather than merged.`;
+  }
+  return result;
 }

@@ -86,6 +86,9 @@ export interface ChartCtx {
   accountId?: string | null;
   userId?: string | null;
   connectionId?: string | null;
+  /** SnapTrade account id when the active account is a sub-account of a shared
+   *  login — the activity readers MUST scope by it instead of merging. */
+  snapAccountId?: string | null;
 }
 
 /** What a resolver returns: the data plus optional presentation metadata. */
@@ -504,6 +507,7 @@ export const CHART_KEYS: Record<string, ChartKeyEntry> = {
       const res = await buildPnlWaterfall(ctx.accountId ?? '', {
         userId: ctx.userId,
         connectionId: ctx.connectionId,
+        snapAccountId: ctx.snapAccountId ?? null,
         equity: ctx.equity,
         supabase: ctx.supabase,
       });

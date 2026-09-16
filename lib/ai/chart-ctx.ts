@@ -63,34 +63,65 @@ function bareAccountId(accountId: string | null | undefined): string {
   return String(accountId || '').replace(/^[a-z_]+:/i, '');
 }
 
+export interface SnapTradeScope {
+  /** `broker_connections.id` — null when there is no unambiguous connection. */
+  connectionId: string | null;
+  /** SnapTrade account id when the active account key names a sub-account. */
+  snapAccountId: string | null;
+}
+
 async function resolveSnapTradeConnectionId(
   supabase: any,
   userId: string,
   accountId: string | null | undefined,
-): Promise<string | null> {
-  if (!supabase || !userId || !accountId) return null;
+): Promise<SnapTradeScope> {
+  const none: SnapTradeScope = { connectionId: null, snapAccountId: null };
+  if (!supabase || !userId || !accountId) return none;
   try {
-    const target = bareAccountId(accountId);
+    // `snaptrade:<conn>` | `snaptrade:<conn>:<snapAccountId>` | bare id.
+    // The sub-account segment is the ONLY thing that separates two accounts
+    // behind a shared login, so it rides along to the activity readers.
+    const bare = bareAccountId(accountId);
+    const segments = String(accountId).split(':');
+    const target = segments.length > 2 ? segments[1] : bare;
+    const explicitSnap = segments.length > 2 ? segments[2] : null;
     const { data } = await supabase
       .from('broker_connections')
       .select('id, snaptrade_connection_id, snaptrade_accounts')
       .eq('user_id', userId);
     const rows = ((data || []) as any[]).filter((r) => !!r?.snaptrade_connection_id);
-    if (rows.length === 0) return null;
+    if (rows.length === 0) return none;
 
-    const match = rows.find(
+    const byConn = rows.find((r) => String(r.id) === target);
+    if (byConn) {
+      return {
+        connectionId: String(byConn.id),
+        snapAccountId: explicitSnap || (segments.length === 1 ? null : null),
+      };
+    }
+    const bySnap = rows.find(
       (r) =>
-        String(r.id) === target ||
-        (Array.isArray(r.snaptrade_accounts) &&
-          r.snaptrade_accounts.some(
-            (a: any) => String(a?.id) === target || String(a?.id) === String(accountId),
-          )),
+        Array.isArray(r.snaptrade_accounts) &&
+        r.snaptrade_accounts.some(
+          (a: any) => String(a?.id) === target || String(a?.id) === String(accountId),
+        ),
     );
-    if (match) return String(match.id);
-    if (rows.length === 1) return String(rows[0].id);
-    return null;
+    if (bySnap) {
+      const snap =
+        explicitSnap ||
+        (() => {
+          const a = (bySnap.snaptrade_accounts as any[]).find(
+            (x: any) => String(x?.id) === target || String(x?.id) === String(accountId),
+          );
+          return a?.id ? String(a.id) : null;
+        })();
+      return { connectionId: String(bySnap.id), snapAccountId: snap };
+    }
+    if (rows.length === 1) return { connectionId: String(rows[0].id), snapAccountId: explicitSnap || null };
+    // 2+ connections, the account id matched none: never guess.
+    return none;
   } catch {
-    return null;
+    return none;
   }
 }
 
@@ -124,10 +155,11 @@ export async function buildChartCtx(input: ChartCtxInput): Promise<ChartCtx> {
   const invested = positions.reduce((s, p) => s + (p.marketValue || 0), 0);
   const equity = num(snapshot?.equity) > 0 ? num(snapshot?.equity) : invested + (cash ?? 0);
 
-  const connectionId =
+  const scope =
     input.isDemo || !input.userId
-      ? null
+      ? { connectionId: null, snapAccountId: null }
       : await resolveSnapTradeConnectionId(input.supabase, input.userId, input.accountId);
+  const connectionId = scope.connectionId;
 
   return {
     positions,
@@ -142,6 +174,7 @@ export async function buildChartCtx(input: ChartCtxInput): Promise<ChartCtx> {
     accountId: input.accountId ?? null,
     userId: input.userId ?? null,
     connectionId,
+    snapAccountId: scope.snapAccountId,
     supabase: input.supabase ?? null,
   };
 }

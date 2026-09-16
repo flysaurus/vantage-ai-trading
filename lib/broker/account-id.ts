@@ -85,6 +85,67 @@ export function __clearAccountIdCache(): void {
  * The lookup is deliberately NOT gated by BROKER_ACCOUNT_ID_WRITES: that flag
  * governs what the writers stamp, not what readers are allowed to trust.
  */
+/**
+ * ── Activity-scope resolution (SnapTrade activities are per-account) ─────────
+ * SnapTrade returns activities PER AUTHORIZATION, so a chart built from
+ * `/authorizations/<id>/accounts` history merges every sub-account under a
+ * shared login. This resolver says which SnapTrade account ids a reader may use:
+ *
+ *   * 0–1 registered accounts → `null` = connection scope (one account anyway).
+ *   * 2+ registered accounts + a matching sub-account scope → exactly that one.
+ *   * 2+ registered accounts + no/unmatched scope → `[]` — the caller MUST
+ *     report unavailable. Never merge the siblings.
+ *   * lookup failure → `null` (behave as before; a DB hiccup cannot blank a chart).
+ */
+export interface ActivityAccountScope {
+  /** SnapTrade account ids to read. `null` = whole connection. `[]` = unavailable. */
+  snapAccountIds: string[] | null;
+  registeredAccounts: number;
+  reason: ReadAccountFilterReason;
+}
+
+export async function resolveActivityAccountScope(
+  supabase: SupabaseClient,
+  scope: WriteAccountScope,
+): Promise<ActivityAccountScope> {
+  const { userId, connectionId, snapAccountId } = scope;
+  const failed: ActivityAccountScope = {
+    snapAccountIds: null,
+    registeredAccounts: 0,
+    reason: 'lookup_failed',
+  };
+  if (!userId || !connectionId) return failed;
+
+  try {
+    const { data, error } = await (supabase as any)
+      .from('broker_accounts')
+      .select('id, snaptrade_account_id')
+      .eq('connection_id', connectionId);
+    if (error) return failed;
+
+    const rows: any[] = Array.isArray(data) ? data : [];
+    const registeredAccounts = rows.length;
+    if (registeredAccounts < 2) {
+      return { snapAccountIds: null, registeredAccounts, reason: 'single_account' };
+    }
+
+    const match = snapAccountId
+      ? rows.find((r) => r?.snaptrade_account_id === snapAccountId)
+      : undefined;
+    const snapId = match?.snaptrade_account_id;
+    if (!snapId) {
+      return { snapAccountIds: [], registeredAccounts, reason: 'shared_login_no_scope' };
+    }
+    return { snapAccountIds: [String(snapId)], registeredAccounts, reason: 'shared_login_account' };
+  } catch (err) {
+    console.warn(
+      '[account-id] activity-scope lookup failed — using connection scope:',
+      err instanceof Error ? err.message : err,
+    );
+    return failed;
+  }
+}
+
 export async function resolveBrokerAccountReadFilter(
   supabase: SupabaseClient,
   scope: WriteAccountScope,

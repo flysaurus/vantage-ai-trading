@@ -8,7 +8,7 @@
 // "Taxable SMA" showed ANIKET-YOUTH's SPY 35.8% concentration card.)
 
 import { describe, it, expect } from 'vitest';
-import { resolveNoticedAccountIds } from '@/app/api/ai/noticed/route';
+import { resolveNoticedAccountIds } from '@/lib/noticed/feed-scope';
 
 const CONN = '0bf72384-7d1c-4fcb-b5bd-7ca6fe21debc';
 const SMA = '47b6f4e3-419e-43fc-ae3d-b67ea579f57d';
