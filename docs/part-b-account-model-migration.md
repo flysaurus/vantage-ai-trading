@@ -1,6 +1,9 @@
 # Part B — Account-model migration plan (REVIEW ONLY — not executed)
 
 Status: **audit complete + plan written, NO DDL run.** Held for Em's review.
+Rev 2 (2026-09-16): addresses Em's three review points — (1) explicit dual-read contract,
+(2) the backfill gap for shared-login accounts, (3) wash-sale checker removed from §6 + stale §7
+question dropped. **Still no DDL.**
 Owner: Rufus · written 2026-09-16 · scope: connections → accounts normalisation.
 
 This is the root-cause fix behind items **1** (slow/failed first load), **2** (deleted
@@ -50,9 +53,13 @@ Live rows for the real user (3 logins, 3 accounts):
    every feature re-invents a rule (first-wins / sum / snapshot) — the source of items 1, 2, 4.
 4. **No cascade on delete.** Derived rows are connection-scoped, so deleting one account
    inside a login is impossible (Part B-2 — correctly blocked on this work).
-5. **Wash-sale blind spot (item 3 verification).** The repurchase window reads `orders`,
-   which is **empty for non-trading connections**, so a repurchase in a connected-but-not-
-   trading account (Fidelity) can never be seen. Cross-connection widening alone does not fix it.
+5. **Wash-sale blind spot (item 3 verification) — CLOSED at the read path; kept here because the
+   data model is what forced the workaround.** The repurchase window read only `orders`, which is
+   **empty for non-trading connections**, so a repurchase in a connected-but-not-trading account
+   (Fidelity) could never be seen. Fixed by the item-3 union (`unionBuyFills()`, commit `d6d7239`):
+   the checker now reads `orders` ∪ `trade_history` and is intentionally **taxpayer-wide /
+   cross-connection**. ⚠️ It is **NOT** in the §6 conversion list — see §6 for why scoping it to an
+   account would re-open this exact blind spot.
 
 ## 3. Target model (additive)
 
@@ -80,11 +87,48 @@ connection-id string).
    add indexes `(account_id)`, `(user_id, account_id)`. **No backfill in this step.**
 2. **Backfill `broker_accounts`** from each connection's `snaptrade_accounts` JSONB
    (idempotent upsert on `snaptrade_account_id`).
-3. **Backfill `account_id`** on derived rows by matching the legacy connection-scope string
-   / `snaptrade_account_id` in the row payload; rows that can't be attributed stay `NULL`
-   and are reported, never guessed.
-4. **Dual-read.** Read paths resolve `account_id` when present, else fall back to the
-   current connection-scoped behaviour. This is the long pole and is feature-by-feature.
+3. **Backfill `account_id`** on derived rows by matching a per-row account discriminator.
+   ⚠️ **No such discriminator exists today — see “Backfill reality” below.** Rows that cannot be
+   attributed stay `NULL` and are **reported, never guessed**.
+
+   ### Backfill reality (verified live 2026-09-16, read-only REST)
+
+   | table | per-row account field? | live state |
+   |---|---|---|
+   | `positions` | **none** — `id,user_id,symbol,qty,avg_cost,current_price,market_value,unrealized_pnl,unrealized_pnl_pct,sector,industry,name,is_demo,updated_at,created_at,connection_id` | 51 rows: 26 Alpaca + **25 Fidelity**, all connection-scoped |
+   | `orders` | **none** — only `connection_id` (plus free-text `source`/`origin`) | 139 rows: 138 Alpaca + 1 null |
+   | `trade_history` | **none** — only `connection_id`; `notes` is `NULL` on every sampled row | 4,157 rows: 4,081 Fidelity + 75 Alpaca + 1 null |
+   | `position_lots` | `account_id` **exists** but holds the **connection** id (`ae013e41-…`), not a SnapTrade account id | 28 rows: 26 = connection id, 2 NULL |
+
+   ⇒ **Consequence, stated explicitly (was implicit): backfill cannot split Fidelity's two
+   accounts.** Every Fidelity `positions` / `trade_history` row stays `NULL` and remains on the
+   legacy connection-scoped fallback **indefinitely**. The original aggregation bug is therefore
+   *not* remedied by this migration's data step — what protects those rows is the **Part A
+   read-path scoping** (which already refuses to sum a connection) plus the server's ambiguity
+   refusal. That is an acceptable outcome; it just must not be sold as “the two-account case gets
+   split by backfill”.
+   - A **1:1 connection** (Alpaca: exactly one account) *could* be attributed deterministically
+     **at backfill time** — but the mapping can change later (adding a 2nd account to that login
+     makes the old rows' true owner unknowable). Treat as a **heuristic requiring an explicit Em
+     ruling**; default stays `NULL` + report.
+   - **Coverage can only improve going forward**, and only if the *writer* stamps `account_id`
+     (step 3b). Without 3b, a NULL-coverage table stays NULL forever.
+
+   3b. **(NEW — proposed) Stamp `account_id` at write time** in the sync/write paths
+   (`/api/positions/sync`, `/api/db/trade-history/create`, the FIFO ledger lot writes) once the
+   active account is resolved. ⚠️ **Write-capable** (INSERT/UPDATE into derived tables) — must be
+   flagged per the standing rule. Without 3b, step 4's dual-read has nothing new to read and no
+   feature flip ever reaches `NOT NULL` coverage.
+
+4. **Dual-read.** Read paths resolve `account_id` when present, else fall back to the **current**
+   connection-scoped behaviour. This is the long pole and is feature-by-feature.
+   - 🔒 **Explicit contract (Em's point 1):** the fallback **calls the existing scoped functions
+     unchanged** — `getAccount()`, `getPositions()`, `getOrders()` in `lib/broker/snaptrade.ts`
+     (already scoped by `connectionId` + `snapAccountId`, and **keeping the ambiguity refusal
+     exactly as-is** — `SnapTradeAmbiguousError`, `status = 409`, in `lib/snaptrade/client.ts`).
+     It is **not a re-implementation**, and it must not
+     duplicate the scope-building logic: there is one implementation, and step 4 only *chooses*
+     between “read the new `account_id`” and “call today's function”.
 5. **Flip** feature-by-feature once a feature reads cleanly with `account_id NOT NULL`
    coverage; only then stop falling back.
 6. **Drop** the legacy scope strings / JSONB reliance (separate, later change).
@@ -97,14 +141,29 @@ into new columns and are re-runnable. Step 5's read-flip is a code revert, not a
 
 ## 6. Feature scope to convert (dual-read → account-scoped)
 
-trading capability · wash-sale checker · tax-lot (FIFO) reconstruction · analyst-consensus
+trading capability · tax-lot (FIFO) reconstruction · analyst-consensus
 resolution · Portfolio Health · chart data resolution · daily/weekly brief context · the
 "Rufus Noticed" rollup · account switcher + `/api/accounts` enumeration.
 
+❌ **`wash-sale checker` is deliberately NOT in this list (Em's point 3, approved).** The wash-sale
+rule is **taxpayer-wide**, not account-scoped: a repurchase in *any* connected account can trigger
+it. Item 3's union fix (`unionBuyFills()`, commit `d6d7239`; live-proven across SPAXX/FDRXX/WDC/
+WELL/WFC; TLH route reuses the same helper, `a5eafad`) made the checker read `orders` ∪
+`trade_history` across **all** connected accounts. Scoping it to a single `account_id` would
+re-open the exact blind spot that fix closed (§2.5). It stays cross-connection **by design**, and
+nothing in Part B should narrow its read scope.
+
 ## 7. Risks / open questions (need a decision before step 1)
 
-- **0-rows-Fidelity** finding above: is the fix "ingest `trade_history` → `orders` for
-  non-trading connections", or "wash-sale reads `trade_history`", or both?
+- ~~**0-rows-Fidelity**: is the fix “ingest `trade_history` → `orders` for non-trading
+  connections”, or “wash-sale reads `trade_history`”, or both?~~ **RESOLVED — question dropped
+  (stale).** The item-3 union already reads `trade_history` (`unionBuyFills()`, `d6d7239`) with
+  **no** backfill into `orders` (Em's ruling: structurally different records, no conflation).
+  Live proof passed 5/5. Nothing about trade_history ingestion remains open.
+- **Backfill attribution** (§4.3): does Em want the 1:1-connection heuristic, or strictly
+  `NULL` + report for every unattributable row? Default in this plan is the strict rule.
+- **Writer stamping** (§4.3b): approving 3b is what makes step 4's flips reachable at all —
+  decide whether it lands in the same change or a follow-up.
 - Do closed/archived accounts keep rows (needed for tax history) or purge? Interacts with
   Part A-2 delete semantics.
 - `position_lots.account_id` type change (text → uuid) needs a cast plan for live rows.
