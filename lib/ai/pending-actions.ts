@@ -15,6 +15,8 @@
 // All access is service-role (RLS disabled + anon/authenticated revoked).
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { stripConflictingRecommendMarkers, type ShareClassStrip } from '@/lib/ai/share-class';
+
 export type PendingStatus = 'pending' | 'executed' | 'cancelled' | 'expired';
 
 export interface PendingAction {
@@ -233,4 +235,59 @@ export async function cancelPendingActionsForSymbols(
     console.error('[pending-actions] cancelBySymbols threw:', e);
     return [];
   }
+}
+
+// ─── Share-class block: strip + cancel, shared by BOTH finalisation branches ──
+/**
+ * Strip conflicting `[RECOMMEND:…]` markers AND cancel the staged ticket for
+ * every blocked symbol. Lives here (server-only module) so both chat branches
+ * run the exact same logic:
+ *
+ *   • success branch — the pruned text is withheld from the client and the
+ *     ticket is cancelled;
+ *   • rejected branch — the text is discarded client-side by design, so the
+ *     strip result is irrelevant, but a ticket staged during the rejected
+ *     attempt is a REAL row that a typed `confirm <SYM>` would execute. The
+ *     cancel is the entire point there.
+ *
+ * ⚠️ WRITES PRODUCTION DATA: updates `pending_actions.status = 'cancelled'`.
+ * Only BLOCKED symbols are cancelled — a surviving symbol in the same response
+ * (e.g. XOM alongside a blocked GOOG) keeps its ticket.
+ *
+ * `getClient` is lazy so no DB client is created when the text has no markers.
+ */
+export async function blockShareClassTickets(
+  getClient: () => any,
+  userId: string | null | undefined,
+  text: string,
+  heldSymbols: readonly string[] = [],
+): Promise<{ text: string; stripped: ShareClassStrip[]; cancelled: string[] }> {
+  if (!text || !text.includes('[RECOMMEND:')) return { text, stripped: [], cancelled: [] };
+
+  const { text: pruned, stripped } = stripConflictingRecommendMarkers(text, heldSymbols);
+  if (!stripped.length) return { text, stripped: [], cancelled: [] };
+
+  for (const h of stripped) {
+    console.warn(
+      `[chat] 🚫 Share-class block: stripped [RECOMMEND:${h.symbol}...] — sibling ${h.sibling}` +
+        ` (held=${h.held}) — no trade button will render`,
+    );
+  }
+
+  let cancelled: string[] = [];
+  if (userId && userId !== 'anonymous') {
+    cancelled = await cancelPendingActionsForSymbols(
+      getClient(),
+      userId,
+      stripped.map((s) => s.symbol),
+    );
+    if (cancelled.length) {
+      console.warn(
+        `[chat] 🚫 Share-class block: cancelled pending action(s) ${cancelled.join(', ')} —` +
+          ` a typed "confirm <symbol>" can no longer execute`,
+      );
+    }
+  }
+
+  return { text: pruned, stripped, cancelled };
 }

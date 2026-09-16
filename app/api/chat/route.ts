@@ -29,7 +29,7 @@ import { MONEY_TOOLS, executeMoneyTool } from '@/lib/ai/money-tools'
 import type { MoneyToolContext } from '@/lib/ai/money-tools'
 import { detectConfirmIntent, actionRequiresSymbolEcho, symbolEchoMatches, findParamConflict } from '@/lib/ai/confirm'
 import { isQuestionLike, isHesitant } from '@/lib/ai/question-guard'
-import { getPendingAction, markPendingAction, createPendingAction, cancelPendingActionsForSymbols } from '@/lib/ai/pending-actions'
+import { getPendingAction, markPendingAction, createPendingAction, blockShareClassTickets } from '@/lib/ai/pending-actions'
 import { executePendingAction } from '@/lib/ai/executors'
 import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
@@ -2409,33 +2409,21 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // strip removes the BUTTON, but the model's `previewBuyStock` ticket is a
         // real DB row that a typed `confirm <SYM>` would execute.
         const shareClassBlockWithCancel = async (text: string): Promise<string> => {
-          if (!text.includes('[RECOMMEND:')) return text;
-          const { text: pruned, stripped: strippedMarkers } = stripConflictingRecommendMarkers(text, heldSymbols);
-          if (!strippedMarkers.length) return text;
-          for (const h of strippedMarkers) {
-            console.warn(
-              `[chat] 🚫 Share-class block: stripped [RECOMMEND:${h.symbol}...] — sibling ${h.sibling}` +
-                ` (held=${h.held}) — no trade button will render`,
-            );
+          const res = await blockShareClassTickets(() => createServerClient(), userId, text, heldSymbols);
+          return res.text;
+        };
+
+        // ── Same block-and-cancel, for the REJECTED branch ──
+        // A rejected attempt is never rendered (the client discards it and
+        // silently regenerates), so the marker strip is moot there — but a ticket
+        // staged during that attempt is a REAL `pending_actions` row that a typed
+        // `confirm <SYM>` would still execute. Cancel it before we emit regenerate.
+        const cancelBlockedOnReject = async (text: string): Promise<void> => {
+          try {
+            await shareClassBlockWithCancel(text);
+          } catch (e) {
+            console.error('[chat] rejected-path share-class cancel error:', e);
           }
-          if (userId && userId !== 'anonymous') {
-            try {
-              const cancelled = await cancelPendingActionsForSymbols(
-                createServerClient(),
-                userId,
-                strippedMarkers.map((s) => s.symbol),
-              );
-              if (cancelled.length) {
-                console.warn(
-                  `[chat] 🚫 Share-class block: cancelled pending action(s) ${cancelled.join(', ')} —` +
-                    ` a typed "confirm <symbol>" can no longer execute`,
-                );
-              }
-            } catch (e) {
-              console.error('[chat] Share-class pending-cancel error:', e);
-            }
-          }
-          return pruned;
         };
 
         if (!isFullPipeline) {
@@ -2584,6 +2572,8 @@ Use these for any market-direction questions ("how are markets today?", "any sel
             console.error('[chat] Coherence failure DB log error:', logErr);
           }
 
+          await cancelBlockedOnReject(responseText);
+
           if (retryAttempt >= 2) {
             // 3 failed attempts — show CLARIFY instead of infinite retry loop
             controller.enqueue(
@@ -2628,6 +2618,8 @@ Use these for any market-direction questions ("how are markets today?", "any sel
             console.error('[chat] Projected-score failure DB log error:', logErr);
           }
 
+          await cancelBlockedOnReject(responseText);
+
           if (retryAttempt < 1) {
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ regenerate: true, failures: [{ check: 'projected_score', detail: projectedClaim, offendingMarkers: [] }], budget: effectiveBudget })}\n\n`)
@@ -2655,6 +2647,8 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           if (budgetGate.hasViolation && budgetGate.responseTotal !== null) {
             console.warn('[chat] ⚠️ Budget coherence gate FAILED:', budgetGate.message);
             sendChecklist(controller, encoder, 'coherence_check', 'failed', `Budget mismatch: $${budgetGate.responseTotal.toLocaleString()} vs $${effectiveBudget.toLocaleString()}`);
+            await cancelBlockedOnReject(responseText);
+
             if (retryAttempt >= 1) {
               // CLARIFY instead of fatal error
               controller.enqueue(
@@ -2732,6 +2726,8 @@ Use these for any market-direction questions ("how are markets today?", "any sel
               } catch (logErr) {
                 console.error('[chat] Validation failure DB log error:', logErr);
               }
+
+              await cancelBlockedOnReject(responseText);
 
               if (retryAttempt >= 1) {
                 // Instead of a fatal error, send a CLARIFY with the specific issue

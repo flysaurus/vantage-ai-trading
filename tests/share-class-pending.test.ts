@@ -3,8 +3,8 @@ import {
   createPendingAction,
   getPendingAction,
   cancelPendingActionsForSymbols,
+  blockShareClassTickets,
 } from '@/lib/ai/pending-actions';
-import { stripConflictingRecommendMarkers } from '@/lib/ai/share-class';
 
 // ── A minimal in-memory double of the service-role Supabase chain we use ─────
 // Supports exactly the shapes pending-actions.ts issues:
@@ -27,7 +27,7 @@ function fakeDb(initial: Row[] = []) {
       row: null,
     };
     const exec = () => {
-      const hit = rows.filter((r) => ctx.filters.every((f) => f(r)));
+      const hit = rows.filter((r: Row) => ctx.filters.every((f: (row: Row) => boolean) => f(r)));
       if (ctx.op === 'insert') {
         const inserted: Row = {
           id: `pa_${rows.length + 1}`,
@@ -62,15 +62,15 @@ function fakeDb(initial: Row[] = []) {
         return api;
       },
       eq(col: string, val: any) {
-        ctx.filters.push((r) => r[col] === val);
+        ctx.filters.push((r: Row) => r[col] === val);
         return api;
       },
       in(col: string, vals: any[]) {
-        ctx.filters.push((r) => vals.includes(r[col]));
+        ctx.filters.push((r: Row) => vals.includes(r[col]));
         return api;
       },
       lt(col: string, val: any) {
-        ctx.filters.push((r) => r[col] < val);
+        ctx.filters.push((r: Row) => r[col] < val);
         return api;
       },
       order() {
@@ -113,13 +113,19 @@ async function stageBuy(sb: any, symbol: string, amount = 500) {
   });
 }
 
-/** Mirror of route.ts `shareClassBlockWithCancel` (the real integration point). */
+/** The REAL shared helper route.ts calls on both branches (`shareClassBlockWithCancel`). */
 async function runGuardPipeline(sb: any, text: string, held: string[]) {
-  const { text: pruned, stripped } = stripConflictingRecommendMarkers(text, held);
-  const cancelled = stripped.length
-    ? await cancelPendingActionsForSymbols(sb, USER, stripped.map((s) => s.symbol))
-    : [];
-  return { pruned, stripped, cancelled };
+  const res = await blockShareClassTickets(() => sb, USER, text, held);
+  return { pruned: res.text, stripped: res.stripped, cancelled: res.cancelled };
+}
+
+/**
+ * Mirror of route.ts `cancelBlockedOnReject` — the REJECTED branch. Same helper,
+ * but the returned (pruned) text is deliberately discarded: the client dropped
+ * this attempt and is regenerating, so nothing from it is ever rendered.
+ */
+async function runRejectedBranch(sb: any, text: string, held: string[]) {
+  await blockShareClassTickets(() => sb, USER, text, held);
 }
 
 const RESPONSE =
@@ -209,5 +215,77 @@ describe('END-TO-END: staged ticket + guard pipeline → row actually cancelled'
     expect(cancelled).toEqual([]);
     expect(pruned).toBe(clean);
     expect((await getPendingAction(db.supabase, USER))?.confirmToken).toBe('AVGO');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The REJECTED branch (regenerate path). A failed validation makes the client
+// throw the whole attempt away and silently retry — so the text (and its
+// markers) never reach the user. The staged ticket, however, is a real DB row
+// that a typed `confirm <SYM>` would still execute. Same helper, one more call
+// site: the cancel must run even though nothing is rendered.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('REJECTED branch: the discarded response still cancels its staged ticket', () => {
+  it('cancels the blocked symbol’s ticket even though the rejected text never renders', async () => {
+    const db = fakeDb();
+    const staged = await stageBuy(db.supabase, 'GOOG'); // staged by previewBuyStock
+    expect(staged?.status).toBe('pending');
+    expect(db.rows).toHaveLength(1);
+
+    // Validation rejected this attempt (budget_reconciliation etc.) → the client
+    // discards it. The pruned text is intentionally NOT used on this branch.
+    await runRejectedBranch(db.supabase, RESPONSE, ['GOOGL']);
+
+    // The ticket is dead even though the user never saw a single character.
+    expect(db.rows[0].status).toBe('cancelled');
+    expect(await getPendingAction(db.supabase, USER)).toBeNull();
+    // ⇒ a typed "confirm GOOG" now finds no ticket and cannot execute the order.
+  });
+
+  it('leaves a non-conflicting ticket alive when the rejected response is fine', async () => {
+    const db = fakeDb();
+    await stageBuy(db.supabase, 'AVGO');
+    const clean = 'Buying AVGO.\n[RECOMMEND:AVGO:BUY:$500]';
+    await runRejectedBranch(db.supabase, clean, ['GOOGL']);
+    expect(db.rows[0].status).toBe('pending');
+  });
+
+  it('cancels only the blocked symbol when the rejected response also stages a survivor', async () => {
+    const db = fakeDb();
+    await stageBuy(db.supabase, 'GOOG');
+    const live = await stageBuy(db.supabase, 'XOM'); // supersedes GOOG
+    expect(live?.confirmToken).toBe('XOM');
+
+    await runRejectedBranch(db.supabase, RESPONSE, ['GOOGL']);
+
+    expect((await getPendingAction(db.supabase, USER))?.confirmToken).toBe('XOM');
+    expect(db.rows.find((r) => r.confirm_token === 'GOOG')?.status).toBe('cancelled');
+  });
+
+  it('never builds a DB client when the rejected text carries no markers', async () => {
+    const db = fakeDb();
+    await stageBuy(db.supabase, 'GOOG');
+    let clientCalls = 0;
+    const res = await blockShareClassTickets(
+      () => {
+        clientCalls += 1;
+        return db.supabase;
+      },
+      USER,
+      'Validation failed — no markers here.',
+      ['GOOGL'],
+    );
+    expect(clientCalls).toBe(0);
+    expect(res.cancelled).toEqual([]);
+    expect(db.rows[0].status).toBe('pending');
+  });
+
+  it('is a no-op for an anonymous user (no userId) on the rejected branch', async () => {
+    const db = fakeDb();
+    await stageBuy(db.supabase, 'GOOG');
+    const res = await blockShareClassTickets(() => db.supabase, 'anonymous', RESPONSE, ['GOOGL']);
+    expect(res.cancelled).toEqual([]);
+    expect(res.text).not.toContain('[RECOMMEND:GOOG');
+    expect(db.rows[0].status).toBe('pending');
   });
 });
