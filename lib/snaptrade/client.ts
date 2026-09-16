@@ -11,7 +11,7 @@
 //   listConnections(userId, userSecret) → [{ id, brokerage, ... }]
 //   listAccounts(connectionId, userId, userSecret) → [{ id, name, ... }]
 
-import { snapTradeFetch } from './auth';
+import { snapTradeFetch, snapTradeFetchSafe } from './auth';
 import { decryptDataCompat, encryptData, deriveUserKey } from '@/lib/vault';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -158,6 +158,9 @@ export async function getConnection(
 
 /**
  * Delete a connection (disconnect brokerage).
+ *
+ * Throws on failure. Use `revokeConnection` when the caller needs the raw
+ * HTTP outcome (status + error detail) rather than a throw.
  */
 export async function deleteConnection(
   connectionId: string,
@@ -170,6 +173,28 @@ export async function deleteConnection(
     { userId, userSecret },
     { method: 'DELETE' },
   );
+}
+
+/**
+ * Delete a connection and REPORT the call outcome instead of throwing.
+ *
+ * The disconnect path needs evidence that the authorization was really
+ * revoked at the aggregator — not merely that the row disappeared locally.
+ * Returns the true HTTP status + error detail so a caller (and its HTTP
+ * response) can assert on it.
+ */
+export async function revokeConnection(
+  connectionId: string,
+  userId: string,
+  userSecret: string,
+): Promise<{ ok: boolean; status: number; error: string | null }> {
+  const res = await snapTradeFetchSafe(
+    `/authorizations/${connectionId}`,
+    null,
+    { userId, userSecret },
+    { method: 'DELETE' },
+  );
+  return { ok: res.ok, status: res.status, error: res.error };
 }
 
 // ─── Accounts ────────────────────────────────────────────────

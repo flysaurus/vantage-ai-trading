@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createClient } from '@supabase/supabase-js';
 import { purgeConnectionDerivedData } from '@/lib/broker/purge-connection-data';
-import { deleteConnection, getOrCreateSnapTradeUser } from '@/lib/snaptrade/client';
+import { revokeConnection, getOrCreateSnapTradeUser } from '@/lib/snaptrade/client';
 
 export async function POST(_req: NextRequest) {
   const { authUser, authError } = await requireAuth();
@@ -35,6 +35,7 @@ export async function POST(_req: NextRequest) {
     // "disconnected" broker reappeared on the next load — the same
     // half-deleted state the account route used to aggregate into a total.
     let snaptradeDisconnected = 0;
+    const snaptradeRevoke: Array<{ id: string; ok: boolean; status: number; error: string | null }> = [];
     for (const c of rows) {
       if (
         c.connection_type !== 'snaptrade' ||
@@ -50,13 +51,18 @@ export async function POST(_req: NextRequest) {
           c.snaptrade_user_id,
           c.snaptrade_user_secret_encrypted,
         );
-        await deleteConnection(c.snaptrade_connection_id, snapUser.userId, snapUser.userSecret);
-        snaptradeDisconnected += 1;
+        const rev = await revokeConnection(c.snaptrade_connection_id, snapUser.userId, snapUser.userSecret);
+        snaptradeRevoke.push({ id: c.snaptrade_connection_id, ok: rev.ok, status: rev.status, error: rev.error });
+        if (rev.ok) {
+          snaptradeDisconnected += 1;
+          console.log(`[Disconnect] SnapTrade revoked authorization ${c.snaptrade_connection_id} → ${rev.status}`);
+        } else {
+          console.warn(`[Disconnect] SnapTrade revoke FAILED for ${c.snaptrade_connection_id}: ${rev.error}`);
+        }
       } catch (err) {
-        console.warn(
-          '[Disconnect] SnapTrade deletion failed (non-fatal):',
-          err instanceof Error ? err.message : 'Unknown',
-        );
+        const msg = err instanceof Error ? err.message : 'Unknown';
+        snaptradeRevoke.push({ id: c.snaptrade_connection_id, ok: false, status: 0, error: msg });
+        console.warn('[Disconnect] SnapTrade deletion failed (non-fatal):', msg);
       }
     }
 
@@ -79,7 +85,7 @@ export async function POST(_req: NextRequest) {
       })
       .eq('id', authUser.id);
 
-    return NextResponse.json({ success: true, snaptradeDisconnected });
+    return NextResponse.json({ success: true, snaptradeDisconnected, snaptradeRevoke });
   } catch (err) {
     console.error('[Disconnect] Error:', err);
     return NextResponse.json({ error: 'Failed to disconnect' }, { status: 500 });

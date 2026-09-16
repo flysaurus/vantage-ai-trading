@@ -5,7 +5,7 @@
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { deleteConnection, getOrCreateSnapTradeUser } from '@/lib/snaptrade/client';
+import { revokeConnection, getOrCreateSnapTradeUser } from '@/lib/snaptrade/client';
 import { purgeConnectionDerivedData } from '@/lib/broker/purge-connection-data';
 
 export async function DELETE(
@@ -41,29 +41,47 @@ export async function DELETE(
   // ── Delete from SnapTrade if applicable ──
   // This is the REAL disconnect: removes the authorization at the broker
   // aggregator, so the login stops returning its accounts entirely.
+  // The API outcome is captured (not just a boolean) so the response can prove
+  // the revoke really happened at SnapTrade, not merely that our row is gone.
   let snaptradeDisconnected = false;
+  let snaptradeRevoke: { attempted: boolean; ok: boolean; status: number | null; error: string | null } =
+    { attempted: false, ok: false, status: null, error: null };
   if (
     conn.connection_type === 'snaptrade' &&
     conn.snaptrade_user_id &&
     conn.snaptrade_user_secret_encrypted &&
     conn.snaptrade_connection_id
   ) {
+    snaptradeRevoke.attempted = true;
     try {
       const snapUser = await getOrCreateSnapTradeUser(
         authUser.id,
         conn.snaptrade_user_id,
         conn.snaptrade_user_secret_encrypted,
       );
-      await deleteConnection(
+      const rev = await revokeConnection(
         conn.snaptrade_connection_id,
         snapUser.userId,
         snapUser.userSecret,
       );
-      snaptradeDisconnected = true;
+      snaptradeRevoke.ok = rev.ok;
+      snaptradeRevoke.status = rev.status;
+      snaptradeRevoke.error = rev.error;
+      if (rev.ok) {
+        snaptradeDisconnected = true;
+        console.log(
+          `[connections/delete] SnapTrade revoked authorization ${conn.snaptrade_connection_id} → ${rev.status}`,
+        );
+      } else {
+        console.warn(
+          `[connections/delete] SnapTrade revoke FAILED for ${conn.snaptrade_connection_id}: ${rev.error}`,
+        );
+      }
     } catch (err) {
+      snaptradeRevoke.error = err instanceof Error ? err.message : 'Unknown';
       console.warn(
         '[connections/delete] SnapTrade deletion failed (non-fatal):',
-        err instanceof Error ? err.message : 'Unknown',
+        snaptradeRevoke.error,
       );
       // Continue with local deletion even if SnapTrade deletion fails
     }
@@ -112,6 +130,8 @@ export async function DELETE(
     // Surfaced so the UI/acceptance test can assert the authorization is
     // actually gone, not merely hidden from Vantage's list.
     snaptradeDisconnected,
+    // Raw SnapTrade revoke outcome (attempted / HTTP status / error detail).
+    snaptradeRevoke,
     purgedRows: purge.purgedDeletes,
   });
 }
