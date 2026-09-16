@@ -27,7 +27,8 @@ export interface LiveAccountEntry {
   brokerageSlug?: string;
   isDemo: boolean;
   tradingEnabled: boolean;
-  totalValue: number;
+  /** null = unknown (the server refuses to fabricate a 0). */
+  totalValue: number | null;
   environment?: 'demo' | 'paper' | 'live';
   /** broker_connections UUID — present on live entries only. */
   connectionId?: string;
@@ -46,7 +47,7 @@ export interface ConnectionCardGroup {
   /** Any sub-account on this connection can trade. */
   tradingEnabled: boolean;
   /** One row per sub-account — standalone values, never summed. */
-  subAccounts: { id: string; name: string; totalValue: number }[];
+  subAccounts: { id: string; name: string; totalValue: number | null }[];
 }
 
 /**

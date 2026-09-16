@@ -13,6 +13,8 @@ import { createClient } from '@supabase/supabase-js';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { getOrCreateSnapTradeUser } from '@/lib/snaptrade/client';
 import { withTimeout } from '@/lib/async-guards';
+import { enumerateConnectionAccounts, type RegisteredAccountRow } from '@/lib/broker/account-enumeration';
+import { deriveTradingCapability, type TradingCapability } from '@/lib/broker/trading-capability';
 
 // ── Bounded live fetch + short TTL cache ────────────────────
 // The live SnapTrade round-trip (accounts list + one balances call per
@@ -35,12 +37,18 @@ export interface AccountEntry {
   brokerageSlug?: string; // e.g. 'ALPACA-PAPER' — for logo lookups
   isDemo: boolean;
   tradingEnabled: boolean;
-  totalValue: number;
+  /** Per-account trading capability, derived from this entry's own metadata. */
+  tradingCapability: TradingCapability;
+  totalValue: number | null; // null = unknown (never a fabricated 0)
   buyingPower: number | null;
-  cash: number;
+  cash: number | null; // null = unknown (never a fabricated 0)
   environment: 'demo' | 'paper' | 'live';
   connectionId?: string; // broker_connections UUID, only for live accounts
   snapAccountId?: string; // SnapTrade sub-account id (3-part id form), when known
+  /** `broker_accounts.id` — the registry row this entry was enumerated from. */
+  brokerAccountId?: string | null;
+  /** Where the money values came from — 'unknown' prints as a dash. */
+  valueSource?: 'live' | 'snapshot' | 'unknown';
 }
 
 export async function GET(_req: NextRequest): Promise<NextResponse> {
@@ -82,10 +90,12 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
       broker: 'Vantage Demo',
       isDemo: true,
       tradingEnabled: true,
+      tradingCapability: 'full', // demo is always tradable
       totalValue: demoEquity,
       buyingPower: demoCash, // Demo: buying power = cash (no margin)
       cash: demoCash,
       environment: 'demo',
+      valueSource: 'live' as const,
     });
 
     // ── 2. SnapTrade broker connections ──
@@ -95,6 +105,24 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
       .eq('user_id', userId)
       .eq('connection_type', 'snaptrade')
       .eq('status', 'connected');
+
+    // ── 2b. The per-account registry (`broker_accounts`, step 2) ──
+    // Enumeration source of truth. One bulk read for all of the user's
+    // connections; ownership is established through `broker_connections`
+    // (`broker_accounts` has no user_id column), so we scope by connection id.
+    const connectionIds = (connections ?? []).map((c: any) => c.id as string);
+    let registryRows: RegisteredAccountRow[] = [];
+    if (connectionIds.length > 0) {
+      const { data: acctRows, error: acctErr } = await supabaseAdmin
+        .from('broker_accounts')
+        .select('id, connection_id, snaptrade_account_id, name, status')
+        .in('connection_id', connectionIds);
+      if (acctErr) {
+        console.warn('[accounts] broker_accounts registry read failed — falling back to connection-level enumeration:', acctErr.message);
+      } else {
+        registryRows = (acctRows ?? []) as RegisteredAccountRow[];
+      }
+    }
 
     if (connections) {
       for (const conn of connections) {
@@ -140,39 +168,49 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
         }
 
         if (!subs || subs.length === 0) {
-          // Fall back to the stored snapshot — one entry per stored sub-account
-          // when it carries an id, else a single connection-level entry. A slow
-          // or hung broker fetch must never turn into a failed first load.
-          subs = snapAccounts.length > 0
-            ? snapAccounts.map((a: any) => ({
-                id: a.id || null,
-                name: a.name || brokerName,
-                totalValue: a.totalValue ?? a.total_value ?? 0,
-                cash: a.cash ?? 0,
-                buyingPower: a.buyingPower ?? a.buying_power ?? null,
-              }))
-            : [{ id: null, name: brokerName, totalValue: 0, cash: 0, buyingPower: null }];
+          // Live fetch failed or returned nothing. The stored snapshot is NOT an
+          // enumeration source when the registry has rows — it is only a value
+          // fallback inside `enumerateConnectionAccounts`.
+          subs = [];
         }
 
-        const multi = subs.length > 1;
-        for (const sub of subs) {
+        // Registry = enumeration. A connection with registered sub-accounts
+        // emits exactly those (never a widened, connection-level entry); a
+        // connection without registry rows keeps the legacy connection-level
+        // behaviour.
+        const registered = registryRows.filter((r) => r.connection_id === conn.id);
+        const enumerated = enumerateConnectionAccounts({
+          registered,
+          live: subs,
+          snapshot: snapAccounts,
+          brokerName,
+        });
+
+        const multi = enumerated.length > 1;
+        for (const sub of enumerated) {
+          const tradingEnabled = conn.trading_enabled ?? false;
           accounts.push({
-            id: sub.id ? `snaptrade:${conn.id}:${sub.id}` : `snaptrade:${conn.id}`,
+            id: sub.snapAccountId ? `snaptrade:${conn.id}:${sub.snapAccountId}` : `snaptrade:${conn.id}`,
             name: sub.name || brokerName,
             broker: brokerName,
             brokerageSlug: conn.brokerage_slug,
             isDemo: false,
-            tradingEnabled: conn.trading_enabled ?? false,
+            tradingEnabled,
+            // Per-account: the capability is a function of THIS entry's own
+            // metadata (never a connection-wide assumption read from a sibling).
+            tradingCapability: deriveTradingCapability({ isDemo: false, tradingEnabled }),
             totalValue: sub.totalValue,
             buyingPower: sub.buyingPower,
             cash: sub.cash,
             environment,
             connectionId: conn.id,
-            snapAccountId: sub.id || undefined,
+            snapAccountId: sub.snapAccountId || undefined,
+            brokerAccountId: sub.brokerAccountId,
+            valueSource: sub.valueSource,
           });
-          if (multi && !sub.id) {
-            // Stored snapshot had no per-account id: the entries are not
-            // individually addressable, so label them so the UI can tell them apart.
+          if (multi && !sub.snapAccountId) {
+            // Entries are not individually addressable — label them so the UI
+            // can tell them apart.
             accounts[accounts.length - 1].name = `${brokerName} · ${sub.name}`;
           }
         }

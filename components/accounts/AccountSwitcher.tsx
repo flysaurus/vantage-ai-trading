@@ -235,7 +235,9 @@ function AccountOption({
   );
 }
 
-function formatCurrency(value: number): string {
+function formatCurrency(value: number | null): string {
+  // Unknown (null) prints as a dash — never as $0.
+  if (value === null || !Number.isFinite(value)) return '\u2014';
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
   return `$${value.toFixed(0)}`;

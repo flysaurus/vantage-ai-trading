@@ -653,7 +653,9 @@ function AccountCard({
 
 // ─── Helpers ──────────────────────────────────────────────────
 
-function formatCurrency(value: number): string {
+function formatCurrency(value: number | null): string {
+  // Unknown (null) prints as a dash — never as $0.00.
+  if (value === null || !Number.isFinite(value)) return '\u2014';
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
   if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
   return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

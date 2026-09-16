@@ -44,7 +44,7 @@ interface ConnectionCard {
   environment: string | null;
   tradingEnabled: boolean;
   holdingsAvailable: boolean | null;
-  subAccounts: { id: string; name: string; totalValue: number }[];
+  subAccounts: { id: string; name: string; totalValue: number | null }[];
 }
 
 interface BrokerRow {
@@ -124,7 +124,7 @@ function ConnectedCard({
    * account/positions routes enforce — so a multi-sub-account login (Fidelity:
    * "Taxable SMA" + "ANIKET - YOUTH") lists both rows and no total.
    */
-  subAccounts?: { id: string; name: string; totalValue: number }[];
+  subAccounts?: { id: string; name: string; totalValue: number | null }[];
   /** True when the broker reports holdings unavailable for this connection. */
   holdingsUnavailable?: boolean;
   connectedAt?: string;
@@ -692,8 +692,8 @@ function actionBtnStyle(): React.CSSProperties {
   };
 }
 
-function fmtMoney(n: number): string {
-  if (!Number.isFinite(n)) return '—';
+function fmtMoney(n: number | null): string {
+  if (n === null || !Number.isFinite(n)) return '—';
   return n.toLocaleString('en-US', {
     style: 'currency',
     currency: 'USD',
