@@ -152,6 +152,10 @@ function ConnectedCard({
         border: '1px solid var(--v-card-border)',
         position: 'relative',
         overflow: 'hidden',
+        // The page shell is a scrolling flex column; without this the card is
+        // flex-shrunk to a sliver once the full broker list pushes the page
+        // past the viewport height (same guard the other sections use).
+        flexShrink: 0,
       }}
     >
       {/* Left accent bar */}
@@ -806,8 +810,8 @@ export function BrokerConnectionsPage({
         );
 
         if (!cancelled) setConnectionCards(cards);
-      } catch {
-        /* non-fatal — fall back to the legacy single card */
+      } catch (e) {
+        console.error('[conn-cards] enumerate failed', e);
       }
     })();
     return () => {
