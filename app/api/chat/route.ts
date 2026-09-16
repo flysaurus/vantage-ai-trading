@@ -64,6 +64,7 @@ import { logClassifierAudit } from '@/lib/ai/classifier-audit'
 import { validateResponse } from '@/lib/ai/validator'
 import { detectProjectedScoreClaim, suppressProjectedScores, enforceTierLimits, shouldAttachHealthChart } from '@/lib/ai/response-guards'
 import { stripConflictingRecommendMarkers } from '@/lib/ai/share-class'
+import { stripDuplicateBreakdownProse } from '@/lib/ai/response-dedupe'
 
 /** Fetch the user's DCA schedules + open/queued orders and render the answer. */
 async function fetchScheduledActivityAnswer(userId: string, accountId?: string | null): Promise<string> {
@@ -2393,7 +2394,11 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // gets rendered and persisted.
         const finalizeGuardedText = (text: string, baseline: string = text): string => {
           const guarded = applyChartAndTierGuards(applyProjectedScoreSuppression(text));
-          const finalText = applyShareClassBlock(guarded);
+          // Cut any inline prose list/table that duplicates the position cards
+          // (the breakdown renders once, as cards — see response-dedupe.ts).
+          const { text: deduped, removed } = stripDuplicateBreakdownProse(guarded);
+          if (removed > 0) console.log(`[chat] 🧹 removed ${removed} duplicate breakdown line(s)`);
+          const finalText = applyShareClassBlock(deduped);
           if (finalText !== baseline) {
             console.log('[chat] 🛡️ post-generation guards changed the text — emitting correctedText');
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ correctedText: finalText })}\n\n`));
