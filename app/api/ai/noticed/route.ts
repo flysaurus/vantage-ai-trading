@@ -36,10 +36,13 @@ const NOTICED_FEED_LIMIT = 50;
  *    exposes 2+ sub-accounts (e.g. Fidelity → "Taxable SMA" + "ANIKET - YOUTH"),
  *    connection-level rows cannot be attributed to either, so they are treated
  *    as ambiguous and hidden rather than shown under the wrong account.
- *  - The legacy connection form ('snaptrade:<conn>') sees only its own rows.
+ *  - The legacy connection form ('snaptrade:<conn>') sees only its own rows —
+ *    and for a SHARED login (2+ sub-accounts) it sees NOTHING: a
+ *    connection-level row cannot be attributed to either sub-account, so
+ *    serving it under the ambiguous scope would attribute data by guess.
  *  - Demo sees only 'demo'.
  */
-async function resolveNoticedAccountIds(
+export async function resolveNoticedAccountIds(
   supabase: any,
   userId: string,
   accountId: string,
@@ -50,13 +53,11 @@ async function resolveNoticedAccountIds(
   const connId = scope.connectionId as string;
   const legacy = `snaptrade:${connId}`;
 
-  // Legacy/connection-level active account: only its own rows.
-  if (!scope.snapAccountId) return [legacy];
-
-  const own = `snaptrade:${connId}:${scope.snapAccountId}`;
-  // Determine whether the connection is unambiguous (0 or 1 sub-account) so we
-  // know whether legacy connection-level rows can be attributed to this account.
-  let unambiguous = true;
+  // How many sub-accounts does this connection expose? 2+ means a stored
+  // connection-level row cannot be attributed to any single sub-account.
+  // `null` = the lookup failed → keep the old single-account default so a DB
+  // hiccup cannot blank the feed.
+  let snapCount: number | null = null;
   try {
     const { data: conn } = await supabase
       .from('broker_connections')
@@ -64,10 +65,26 @@ async function resolveNoticedAccountIds(
       .eq('id', connId)
       .eq('user_id', userId)
       .maybeSingle();
-    const snapAccounts = (conn?.snaptrade_accounts as any[]) || [];
-    unambiguous = snapAccounts.length <= 1;
-  } catch { /* unknown → keep legacy visible (single-account default) */ }
+    const snapAccounts = conn?.snaptrade_accounts;
+    if (Array.isArray(snapAccounts)) snapCount = snapAccounts.length;
+  } catch { /* unknown → single-account default */ }
 
+  const unambiguous = snapCount == null || snapCount <= 1;
+
+  // Legacy/connection-level active account.
+  if (!scope.snapAccountId) {
+    // A shared login has no unambiguous account: report NOTHING rather than
+    // attribute a legacy row to a guessed sub-account.
+    if (!unambiguous) {
+      console.warn(
+        `[noticed] connection ${connId} exposes ${snapCount} accounts — connection-level feed scope is ambiguous, returning no items`,
+      );
+      return [];
+    }
+    return [legacy];
+  }
+
+  const own = `snaptrade:${connId}:${scope.snapAccountId}`;
   return unambiguous ? [own, legacy] : [own];
 }
 
