@@ -6,7 +6,8 @@
  *
  * Account-scoped: each user's portfolio is analysed PER ACCOUNT ('demo' +
  * each connected SnapTrade broker) so triggers fire on the real per-account
- * book, never a blended user-level merge.
+ * book, never a blended user-level merge. A shared login (2+ registered
+ * sub-accounts) is enumerated as its sub-accounts — see Part B step 4.
  *
  * Throttled: processes users in batches with pacing between batches to
  * avoid flooding the Claude API.
@@ -21,6 +22,7 @@ import { createServerClient } from '@/lib/supabase';
 import type { NoticedRuleInput } from '@/lib/noticed/engine';
 import { runNoticedPipeline } from '@/lib/noticed/engine';
 import { parseAccountScope, applyAccountScopeFilter } from '@/lib/account-scope';
+import { resolveBrokerAccountReadFilter } from '@/lib/broker/account-id';
 
 // ── Auth ──
 const ALLOWED_SECRETS = [
@@ -180,7 +182,30 @@ async function processUser(
       .eq('connection_type', 'snaptrade')
       .eq('status', 'connected');
     for (const conn of (connections || [])) {
-      if (conn.id) accountIds.push(`snaptrade:${conn.id}`);
+      if (!conn.id) continue;
+      // Part B step 4 — a shared login must be enumerated as its registered
+      // sub-accounts, never as one blended connection-level account. The
+      // registry (broker_accounts) is the same source the read/write resolvers
+      // use, so this is enumeration, not inference. No rows → the connection has
+      // a single account → keep the legacy 2-part id.
+      let subAccounts: any[] = [];
+      try {
+        const { data } = await supabase
+          .from('broker_accounts')
+          .select('snaptrade_account_id')
+          .eq('connection_id', conn.id);
+        subAccounts = Array.isArray(data) ? data : [];
+      } catch { /* fall through to the connection-level id */ }
+
+      if (subAccounts.length > 0) {
+        for (const a of subAccounts) {
+          if (a?.snaptrade_account_id) {
+            accountIds.push(`snaptrade:${conn.id}:${a.snaptrade_account_id}`);
+          }
+        }
+      } else {
+        accountIds.push(`snaptrade:${conn.id}`);
+      }
     }
   } catch { /* ignore */ }
 
@@ -229,6 +254,23 @@ async function processAccount(
 ): Promise<{ triggers: number; haikuGenerated: number; skippedBudget: boolean }> {
   const scope = parseAccountScope(accountId);
 
+  // Part B step 4 — standing dual-read rule (same shape as
+  // `lib/ai/account-positions.ts`): 2+ registered accounts → strict
+  // `account_id` filter, never widened; 0–1 accounts → unchanged
+  // connection-level query; shared login with no resolvable sub-account scope →
+  // report unavailable (skip) rather than blend two accounts into one trigger.
+  const readFilter = await resolveBrokerAccountReadFilter(supabase, {
+    userId,
+    connectionId: scope?.connectionId ?? null,
+    snapAccountId: scope?.snapAccountId ?? null,
+  });
+  if (readFilter.reason === 'shared_login_no_scope') {
+    console.warn(
+      `[portfolio-agent] shared login ${String(accountId).slice(0, 12)} without a sub-account scope — skipping (not merging)`,
+    );
+    return { triggers: 0, haikuGenerated: 0, skippedBudget: false };
+  }
+
   // ── Fetch positions scoped to this account ──
   let positionsQuery = supabase
     .from('positions')
@@ -236,6 +278,9 @@ async function processAccount(
     .eq('user_id', userId)
     .neq('qty', 0);
   if (scope) positionsQuery = applyAccountScopeFilter(positionsQuery, scope);
+  if (readFilter.filterAccountId) {
+    positionsQuery = positionsQuery.eq('account_id', readFilter.filterAccountId);
+  }
   const { data: positions } = await positionsQuery;
 
   if (!positions || positions.length === 0) {
@@ -300,6 +345,9 @@ async function processAccount(
       .select('filled_at')
       .eq('user_id', userId);
     if (scope) lastTradeQuery = applyAccountScopeFilter(lastTradeQuery, scope);
+    if (readFilter.filterAccountId) {
+      lastTradeQuery = lastTradeQuery.eq('account_id', readFilter.filterAccountId);
+    }
     const { data: lastTrade } = await lastTradeQuery
       .order('filled_at', { ascending: false })
       .limit(1)

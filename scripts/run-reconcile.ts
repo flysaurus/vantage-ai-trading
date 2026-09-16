@@ -3,7 +3,8 @@
 // Requires the following env vars (sourced from a temp env file, never committed):
 //   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
 //   SNAPTRADE_CLIENT_ID, SNAPTRADE_CONSUMER_KEY, VAULT_ENCRYPTION_KEY
-// Optional: RECONCILE_USER_ID, RECONCILE_CONNECTION_ID (broker_connections.id)
+// Optional: RECONCILE_USER_ID, RECONCILE_CONNECTION_ID (broker_connections.id),
+//           RECONCILE_SNAP_ACCOUNT_ID (required when the login exposes 2+ accounts)
 //
 // Usage:  npx tsx scripts/run-reconcile.ts
 import 'dotenv/config';
@@ -33,6 +34,7 @@ async function main() {
     brokerSlug: creds.brokerSlug,
     snaptradeUserId: creds.snaptradeUserId,
     snaptradeUserSecret: creds.snaptradeUserSecret,
+    snapAccountId: process.env.RECONCILE_SNAP_ACCOUNT_ID || null,
   });
 
   console.log(JSON.stringify(report, null, 2));

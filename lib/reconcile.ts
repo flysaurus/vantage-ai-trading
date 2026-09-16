@@ -22,6 +22,7 @@ import { snapTradeFetch } from '@/lib/snaptrade/auth';
 import { listAccounts, getAccountBalances } from '@/lib/snaptrade/client';
 import { extractOrderSymbol, extractPositionTicker } from '@/lib/snaptrade/mapping';
 import { sumOpenReservedAmount, availableCash } from '@/lib/available-cash';
+import { resolveBrokerAccountReadFilter } from '@/lib/broker/account-id';
 import { formatBrokerName } from '@/lib/broker-name';
 
 // ─── Constants ────────────────────────────────────────────────
@@ -45,6 +46,24 @@ export interface ReconcileInput {
   brokerSlug: string;
   snaptradeUserId: string;
   snaptradeUserSecret: string;
+  /**
+   * SnapTrade sub-account to reconcile (Part B step 4). Required when the
+   * authorization exposes 2+ accounts; omitted on a single-account login.
+   */
+  snapAccountId?: string | null;
+}
+
+/**
+ * Thrown when a reconciliation cannot be scoped to exactly one account.
+ * Refusing is deliberate: merging two sub-accounts of one login produces a
+ * report that is wrong on every axis (Part B step 4 rule).
+ */
+export class ReconcileAccountScopeError extends Error {
+  status = 422;
+  constructor(message: string) {
+    super(message);
+    this.name = 'ReconcileAccountScopeError';
+  }
 }
 
 export interface CashReconciliation {
@@ -134,6 +153,13 @@ export interface PositionReconciliation {
   qtyMismatches: number;
   costMismatches: number;
   lotMismatches: number;
+  /**
+   * False when the FIFO-lot axis could not be attributed to one account
+   * (`position_lots` has no per-account stamp yet) and was therefore
+   * SUPPRESSED rather than compared against a merged lot set.
+   */
+  lotsReconciled: boolean;
+  note?: string;
   /** Symbols present in broker but missing from the DB snapshot. */
   missingFromDb: string[];
   /** Symbols present in DB but missing from broker. */
@@ -181,18 +207,45 @@ export async function runReconciliation(input: ReconcileInput): Promise<Reconcil
   const ep = { userId: snaptradeUserId, userSecret: snaptradeUserSecret };
   const brokerName = formatBrokerName(brokerSlug);
 
+  // ── 0. Account scope (Part B step 4 — standing dual-read rule) ──
+  // 2+ registered accounts → reconcile exactly ONE of them, never a merged
+  // login; 0–1 accounts → unchanged connection-level behaviour; shared login
+  // with no resolvable sub-account scope → refuse (a merged report is wrong on
+  // every axis, so "unavailable" beats a plausible-looking diff).
+  const readFilter = await resolveBrokerAccountReadFilter(supabase, {
+    userId,
+    connectionId: brokerConnectionId,
+    snapAccountId: input.snapAccountId ?? null,
+  });
+  if (readFilter.reason === 'shared_login_no_scope') {
+    throw new ReconcileAccountScopeError(
+      'This brokerage login exposes multiple accounts, so a connection-level reconciliation would merge them. Re-run with accountId=snaptrade:<connectionId>:<snapAccountId> to reconcile one account.',
+    );
+  }
+  const scopedAccountRowId = readFilter.filterAccountId;
+
   // ── 1. Broker: accounts → cash / buying power / total value ──
   // total_value is authoritative from the accounts endpoint; cash + buying
   // power are authoritative from the per-account BALANCES endpoint (the
   // accounts payload does not reliably surface them at the top level).
   const accounts = await listAccounts(connectionId, snaptradeUserId, snaptradeUserSecret);
+  // Narrow the broker side to the scoped sub-account too — otherwise the broker
+  // half of the diff is merged while the DB half is scoped.
+  const scopedAccounts = scopedAccountRowId
+    ? accounts.filter((a) => a.id === input.snapAccountId)
+    : accounts;
+  if (scopedAccountRowId && scopedAccounts.length === 0) {
+    throw new ReconcileAccountScopeError(
+      'The requested sub-account is not present at the broker — refusing to reconcile a different account.',
+    );
+  }
   let brokerCash = 0;
   let brokerBuyingPower = 0;
   let brokerTotalValue = 0;
-  for (const a of accounts) {
+  for (const a of scopedAccounts) {
     brokerTotalValue += a.total_value ?? 0;
   }
-  for (const a of accounts) {
+  for (const a of scopedAccounts) {
     try {
       const balances = await getAccountBalances(a.id, snaptradeUserId, snaptradeUserSecret);
       for (const b of balances) {
@@ -206,7 +259,7 @@ export async function runReconciliation(input: ReconcileInput): Promise<Reconcil
 
   // ── 2. Broker: positions (per account) ──
   const brokerPositions = new Map<string, { qty: number; avgCost: number }>();
-  const accountIds = accounts.map((a) => a.id);
+  const accountIds = scopedAccounts.map((a) => a.id);
   for (const acctId of accountIds) {
     try {
       const raw = await snapTradeFetch<unknown>(`/accounts/${acctId}/positions`, null, ep);
@@ -254,16 +307,28 @@ export async function runReconciliation(input: ReconcileInput): Promise<Reconcil
   }
 
   // ── 4. DB: orders / positions / lots ──
-  const { data: dbOrders } = await supabase
+  // Scoped to the same single account as the broker side above. On a shared
+  // login `account_id` is the discriminator; on a single-account connection the
+  // filter is absent and this stays the legacy connection-level read.
+  let dbOrdersQuery = supabase
     .from('orders')
     .select('*')
     .eq('user_id', userId)
     .eq('connection_id', brokerConnectionId);
-  const { data: dbPositions } = await supabase
+  let dbPositionsQuery = supabase
     .from('positions')
     .select('*')
     .eq('user_id', userId)
     .eq('connection_id', brokerConnectionId);
+  if (scopedAccountRowId) {
+    dbOrdersQuery = dbOrdersQuery.eq('account_id', scopedAccountRowId);
+    dbPositionsQuery = dbPositionsQuery.eq('account_id', scopedAccountRowId);
+  }
+  const { data: dbOrders } = await dbOrdersQuery;
+  const { data: dbPositions } = await dbPositionsQuery;
+  // FIFO lots still carry no per-account stamp (`position_lots.broker_account_id`
+  // is NULL on every legacy row), so on a scoped account the lot axis CANNOT be
+  // attributed — see `lotsReconciled` below.
   const { data: dbLots } = await supabase
     .from('position_lots')
     .select('*')
@@ -406,9 +471,12 @@ export async function runReconciliation(input: ReconcileInput): Promise<Reconcil
   for (const p of positions) dbPosMap.set(String(p.symbol || '').toUpperCase(), p);
 
   const lotsRemainingBySymbol = new Map<string, number>();
-  for (const l of lots) {
-    const s = String(l.ticker || '').toUpperCase();
-    lotsRemainingBySymbol.set(s, (lotsRemainingBySymbol.get(s) || 0) + Number(l.remaining_qty || 0));
+  const lotsReconciled = !scopedAccountRowId;
+  if (lotsReconciled) {
+    for (const l of lots) {
+      const s = String(l.ticker || '').toUpperCase();
+      lotsRemainingBySymbol.set(s, (lotsRemainingBySymbol.get(s) || 0) + Number(l.remaining_qty || 0));
+    }
   }
 
   const allSymbols = new Set<string>([...brokerPositions.keys(), ...dbPosMap.keys()]);
@@ -428,10 +496,10 @@ export async function runReconciliation(input: ReconcileInput): Promise<Reconcil
     const dbQty = Number(d?.qty ?? 0);
     const brokerAvgCost = b?.avgCost ?? 0;
     const dbAvgCost = Number(d?.avg_cost ?? 0);
-    const lotsRemaining = lotsRemainingBySymbol.get(sym) || 0;
+    const lotsRemaining = lotsReconciled ? lotsRemainingBySymbol.get(sym) || 0 : 0;
     const qtyMismatch = Math.abs(brokerQty - dbQty) > 1e-4;
     const costMismatch = Math.abs(brokerAvgCost - dbAvgCost) > COST_TOLERANCE_PER_SHARE;
-    const lotMismatch = Math.abs(dbQty - lotsRemaining) > 1e-4;
+    const lotMismatch = lotsReconciled && Math.abs(dbQty - lotsRemaining) > 1e-4;
     if (qtyMismatch) qtyMismatches++;
     if (costMismatch) costMismatches++;
     if (lotMismatch) lotMismatches++;
@@ -455,6 +523,12 @@ export async function runReconciliation(input: ReconcileInput): Promise<Reconcil
     qtyMismatches,
     costMismatches,
     lotMismatches,
+    lotsReconciled,
+    ...(lotsReconciled
+      ? {}
+      : {
+          note: 'FIFO-lot reconciliation is not available for a per-account view yet: position_lots rows carry no account stamp, so the lot axis was suppressed rather than compared against a merged lot set.',
+        }),
     missingFromDb,
     missingFromBroker,
     details,
