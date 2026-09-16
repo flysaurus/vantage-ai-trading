@@ -52,6 +52,178 @@ jobs:
         continue-on-error: true
         run: npx playwright test
 
+      - name: Report TC results to GitHub Issues
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Reports pass/fail for specs whose titles carry a TC number back
+            // to their GitHub issues (`tc:TC-###` label). Owns every
+            // TC-linked issue; the "File issues for new failures" step below
+            // deliberately skips these so they aren't double-filed.
+            const fs = require('fs');
+
+            try {
+              // Playwright's JSON reporter writes to qa-agent/results/results.json
+              // (see qa-agent/playwright.config.ts). Support that plus a fallback.
+              const candidates = [
+                'qa-agent/results/results.json',
+                'playwright-report/results.json',
+              ];
+              const path = candidates.find((p) => fs.existsSync(p));
+              if (!path) {
+                core.info('No Playwright JSON results found — nothing to report.');
+                return;
+              }
+              const results = JSON.parse(fs.readFileSync(path, 'utf8'));
+
+              // Recurse nested describe() suites and collect TC-titled specs.
+              const specs = [];
+              function collect(suites) {
+                for (const suite of suites || []) {
+                  if (suite.suites) collect(suite.suites);
+                  for (const spec of suite.specs || []) {
+                    const m = (spec.title || '').match(/TC-\d+/i);
+                    const failed = (spec.tests || []).some((t) =>
+                      (t.results || []).some((r) => r.status !== 'passed')
+                    );
+                    specs.push({
+                      tc: m ? m[0].toUpperCase() : null,
+                      title: spec.title,
+                      passed: !failed,
+                    });
+                  }
+                }
+              }
+              collect(results.suites);
+
+              const tcSpecs = specs.filter((s) => s.tc);
+
+              const owner = context.repo.owner;
+              const repo = context.repo.repo;
+              const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+              // Ensure the source label exists so the general/TC split is visible.
+              try {
+                await github.rest.issues.createLabel({
+                  owner, repo, name: 'source:test-case', color: '1d76db',
+                });
+              } catch (e) {
+                if (e.status !== 422) core.warning(`Label ensure failed: ${e.message}`);
+              }
+
+              // Dedupe by TC number — first match wins.
+              const byTc = new Map();
+              for (const s of tcSpecs) {
+                if (!byTc.has(s.tc)) byTc.set(s.tc, s);
+              }
+
+              const affected = [];
+
+              for (const [tc, spec] of byTc) {
+                const label = `tc:${tc}`;
+                const q = `repo:${owner}/${repo} is:issue label:"${label}"`;
+                const found = await github.rest.search.issuesAndPullRequests({ q });
+                if (found.data.total_count === 0 || !found.data.items.length) {
+                  continue; // No tracked issue for this TC — nothing to do.
+                }
+                const issue = found.data.items[0];
+                affected.push({ tc, passed: spec.passed, issue });
+              }
+
+              if (affected.length === 0) {
+                core.info('No TC-linked issues affected by this run.');
+              } else if (affected.length > 3) {
+                // Rollup: more than 3 affected → ONE summary comment on the
+                // first affected issue, no individual comments.
+                const first = affected[0].issue;
+                const lines = affected.map((a) =>
+                  `- ${a.passed ? '✅' : '❌'} ${a.tc} — ${a.passed ? 'passing' : 'failing'}`
+                );
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: first.number,
+                  body:
+                    `📋 Automated run summary — ${affected.length} TC-linked issues affected.\n\n` +
+                    lines.join('\n') +
+                    `\n\nRun: ${runUrl} (see 'playwright-report' artifact)`,
+                });
+              } else {
+                for (const a of affected) {
+                  const n = a.issue.number;
+                  if (a.passed) {
+                    // Check for a prior ❌ comment to word the close precisely.
+                    let priorFail = false;
+                    try {
+                      const comments = await github.rest.issues.listComments({
+                        owner, repo, issue_number: n, per_page: 100,
+                      });
+                      priorFail = comments.data.some((c) => (c.body || '').includes('❌'));
+                    } catch (e) {
+                      core.warning(`Could not read comments on #${n}: ${e.message}`);
+                    }
+                    const wording = priorFail
+                      ? `✅ Verified by automated run — ${runUrl}. ${a.tc} regression fixed (see 'playwright-report' artifact).`
+                      : `✅ Verified by automated run — ${runUrl}. ${a.tc} now passing (see 'playwright-report' artifact).`;
+                    await github.rest.issues.createComment({
+                      owner, repo, issue_number: n, body: wording,
+                    });
+                    if (a.issue.state !== 'closed') {
+                      await github.rest.issues.update({
+                        owner, repo, issue_number: n, state: 'closed', state_reason: 'completed',
+                      });
+                    }
+                  } else {
+                    await github.rest.issues.createComment({
+                      owner, repo, issue_number: n,
+                      body: `❌ Still failing in automated run — ${runUrl} (see 'playwright-report' artifact).`,
+                    });
+                    if (a.issue.state === 'closed') {
+                      await github.rest.issues.update({
+                        owner, repo, issue_number: n, state: 'open',
+                      });
+                    }
+                  }
+                }
+              }
+
+              // ── Fix-verification for NON-TC issues (BugPin / exploratory) ──
+              // Only meaningful on push runs: look for `fixes #N` / `closes #N`
+              // (+ `fixed #N`) in the head commit message.
+              if (context.eventName === 'push') {
+                const msg = (context.payload.head_commit && context.payload.head_commit.message) || '';
+                const refs = new Set();
+                const re = /(?:fixes|closes|fixed)\s+#(\d+)/gi;
+                let m;
+                while ((m = re.exec(msg)) !== null) refs.add(parseInt(m[1], 10));
+
+                const anyFailed = specs.some((s) => !s.passed);
+
+                for (const n of refs) {
+                  try {
+                    const issue = await github.rest.issues.get({ owner, repo, issue_number: n });
+                    const labels = (issue.data.labels || []).map((l) => l.name || '');
+                    if (labels.some((l) => l.startsWith('tc:'))) continue; // TC step owns these
+                    if (!anyFailed) {
+                      await github.rest.issues.createComment({
+                        owner, repo, issue_number: n,
+                        body: `✅ Fix verified — ${runUrl} passed (see 'playwright-report' artifact).`,
+                      });
+                    } else {
+                      await github.rest.issues.createComment({
+                        owner, repo, issue_number: n,
+                        body: `⚠️ Automated tests still failing after this fix attempt — ${runUrl} (see 'playwright-report' artifact).`,
+                      });
+                    }
+                  } catch (e) {
+                    core.warning(`Fix-verification for #${n} failed: ${e.message}`);
+                  }
+                }
+              }
+            } catch (e) {
+              // Never fail the job over reporting.
+              core.warning(`TC reporting step failed (non-fatal): ${e.message}`);
+            }
+
       - name: Upload HTML report
         if: always()
         uses: actions/upload-artifact@v4
@@ -79,6 +251,9 @@ jobs:
               for (const suite of suites || []) {
                 if (suite.suites) collect(suite.suites);
                 for (const spec of suite.specs || []) {
+                  // TC-titled failures are owned by the "Report TC results to
+                  // GitHub Issues" step above — skip them here.
+                  if (/TC-\d+/i.test(spec.title || '')) continue;
                   for (const test of spec.tests || []) {
                     const bad = test.results.some(r => r.status !== 'passed');
                     if (bad) failed.push({ title: spec.title, file: suite.file });
@@ -91,7 +266,7 @@ jobs:
             if (failed.length === 0) return;
 
             // Ensure labels exist so issues.create never 422s on a missing label.
-            const LABELS = ['qa', 'automated'];
+            const LABELS = ['qa', 'automated', 'source:playwright'];
             for (const label of LABELS) {
               try {
                 await github.rest.issues.createLabel({
