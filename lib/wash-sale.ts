@@ -226,6 +226,15 @@ export async function checkWashSale(
 
   // 2. Recent BUY orders — same ticker, BUY side, filled. The 30-day window
   //    is applied in the pure findRecentBuys (single source of truth).
+  //
+  //    CROSS-ACCOUNT SCOPE: for a live/paper account we look at BUY fills
+  //    across ALL of the user's broker connections — a repurchase made in a
+  //    *different* connected account also triggers the wash-sale rule, so
+  //    scoping the repurchase window to one connection under-reported it.
+  //    Cost basis (the lots above) stays scoped to the selling account: the
+  //    loss is account-specific; only the repurchase window widens. Demo
+  //    stays demo — a demo fill cannot create a real wash sale.
+  //    Coverage is Vantage-connected accounts only (see disclosure copy).
   let ordersQuery = supabase
     .from('orders')
     .select('symbol, side, status, filled_at, created_at, filled_qty, qty, filled_price')
@@ -236,7 +245,7 @@ export async function checkWashSale(
 
   ordersQuery = isDemo
     ? ordersQuery.eq('is_demo', true)
-    : ordersQuery.eq('connection_id', accountId);
+    : ordersQuery.not('connection_id', 'is', null);
 
   const { data: orderRows, error: orderError } = await ordersQuery;
   if (orderError) {

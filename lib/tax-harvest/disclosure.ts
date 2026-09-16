@@ -21,7 +21,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 /** Bump when the disclosure copy changes → every stored acceptance re-fires. */
-export const TLH_DISCLOSURE_VERSION = 'v1';
+export const TLH_DISCLOSURE_VERSION = 'v2';
 
 /** The single localStorage key holding the per-account acceptance map. */
 export const TLH_STORAGE_KEY = 'vantage:tlh-disclosure:v1';
@@ -30,7 +30,7 @@ export const TLH_DISCLOSURE_TITLE = 'Before you continue';
 
 export const TLH_DISCLOSURE_PARAGRAPHS: string[] = [
   'Vantage is not a tax advisor. This page is an estimate, not tax advice.',
-  'Wash-sale warnings reflect this connected account only. If you hold or trade the same security in another account, your wash-sale outcome may differ — verify across all your accounts.',
+  'Wash-sale warnings now check across all of your Vantage-connected broker accounts, not just this one. Accounts held elsewhere (a spouse\u2019s account, another broker you have not connected) are still invisible to us, so the outcome can differ — verify across every account you control.',
   'You are responsible for your own tax positions and for confirming results with a qualified tax professional.',
 ];
 
@@ -38,7 +38,7 @@ export const TLH_DISCLOSURE_ACCEPT_LABEL = 'Accept and continue';
 export const TLH_DISCLOSURE_CANCEL_LABEL = 'Cancel';
 
 export const TLH_DISCLOSURE_BANNER_TEXT =
-  'Estimates are illustrative, not tax advice. Wash-sale checks cover this account only — verify across all your accounts.';
+  'Estimates are illustrative, not tax advice. Wash-sale checks cover your Vantage-connected accounts; accounts held elsewhere are not visible — verify across all your accounts.';
 
 export const TLH_DISCLOSURE_CANCEL_NOTICE =
   'Tax Loss Harvesting requires accepting the disclosure to continue.';
