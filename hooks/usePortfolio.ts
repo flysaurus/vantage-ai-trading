@@ -262,7 +262,7 @@ export function usePortfolio() {
   const { account, setAccount, clearAccount, setLoading, updatePosition } = store;
   const { broker, isConnected, isInitialized: isBrokerInitialized } = useBroker();
   const { user } = useAuth();
-  const { activeAccountId } = useAccounts();
+  const { activeAccountId, isAccountResolved } = useAccounts();
   const [error, setError] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
@@ -375,6 +375,21 @@ export function usePortfolio() {
     // Both watchdogs live in refs as well so unmount can always clear them.
     let bailTimeout: ReturnType<typeof setTimeout> | undefined;
     const scope = activeAccountId ?? null;
+
+    // ── BOOT GATE (item 1) ───────────────────────────────────────────────
+    // Do NOT issue any broker read before the active account resolves. The
+    // selection is still the localStorage value or the 'demo' placeholder at
+    // that point, so a read would go out UNSCOPED (refused by the server's
+    // ambiguity guard — 409), and the demo placeholder would render a
+    // DIFFERENT account's numbers. Hold the skeleton instead; this callback is
+    // re-created when `isAccountResolved` flips, so the initial-load effect
+    // re-runs and the real fetch goes out scoped.
+    if (!isAccountResolved) {
+      console.error('[usePortfolio] refresh gated — active account not resolved yet (scope:', scope, ') — holding skeleton');
+      if (usePortfolioStore.getState().accountScope !== scope) clearAccount();
+      if (!usePortfolioStore.getState().loading) setLoading(true);
+      return;
+    }
 
     // PART 4 — TERMINAL GUARANTEE ON THE BAIL-OUT PATH.
     // This used to return silently. But the account-switch guard (`clearAccount()`
@@ -722,7 +737,7 @@ export function usePortfolio() {
     } finally {
       clearTimeout(loadTimeout);
     }
-  }, [broker, isConnected, clearAccount, setAccount, setLoading, user?.id, activeAccountId]);
+  }, [broker, isConnected, clearAccount, setAccount, setLoading, user?.id, activeAccountId, isAccountResolved]);
 
   // Initial load
   useEffect(() => {

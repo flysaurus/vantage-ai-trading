@@ -97,7 +97,7 @@ export function InsightsTab() {
   const { account: brokerAccount, accountScope: brokerScope, loading: brokerLoading, error: brokerError, refresh: brokerRefresh } = usePortfolio();
   const { account: liveAccount, accountScope: liveScope, loading: liveLoading, brokerMeta, refresh: liveRefresh } = useLivePortfolio();
   const { isConnected, isInitialized: isBrokerInitialized } = useBroker();
-  const { activeAccount, activeAccountId } = useAccounts();
+  const { activeAccount, activeAccountId, isAccountResolved } = useAccounts();
   const { user } = useAuth();
   // Self-reported during onboarding; null when the question was skipped.
   const isNewInvestor = (user as any)?.investment_experience === 'new';
@@ -147,6 +147,10 @@ export function InsightsTab() {
   // ── Active noticed items (unchanged pipeline) ──
   const [noticedItems, setNoticedItems] = useState<any[]>([]);
   const fetchNoticed = useCallback(async () => {
+    // BOOT GATE (item 1): the 'demo' fallback here used to fire before the active
+    // account resolved, painting the DEMO feed's $100k "IDLE CASH" card onto a
+    // live broker screen. Wait for a resolved account instead.
+    if (!isAccountResolved) return;
     try {
       const res = await apiGet(`/api/ai/noticed?accountId=${encodeURIComponent(activeAccountId || 'demo')}`);
       if (res.ok) {
@@ -154,7 +158,7 @@ export function InsightsTab() {
         setNoticedItems(data.items || []);
       }
     } catch { /* ignore */ }
-  }, [activeAccountId]);
+  }, [activeAccountId, isAccountResolved]);
   useEffect(() => { fetchNoticed(); }, [fetchNoticed]);
 
   const handleDismiss = useCallback(async (itemId: string, dismissType: string) => {
@@ -167,6 +171,7 @@ export function InsightsTab() {
   const [weeklyTeaser, setWeeklyTeaser] = useState<DeckTeaser | null>(null);
 
   useEffect(() => {
+    if (!isAccountResolved) return; // BOOT GATE (item 1) — never brief the demo placeholder
     let cancelled = false;
     (async () => {
       try {
@@ -180,9 +185,10 @@ export function InsightsTab() {
       } catch { /* ignore */ }
     })();
     return () => { cancelled = true; };
-  }, [activeAccountId]);
+  }, [activeAccountId, isAccountResolved]);
 
   useEffect(() => {
+    if (!isAccountResolved) return; // BOOT GATE (item 1)
     let cancelled = false;
     (async () => {
       try {
@@ -197,7 +203,7 @@ export function InsightsTab() {
       } catch { /* ignore */ }
     })();
     return () => { cancelled = true; };
-  }, [activeAccountId]);
+  }, [activeAccountId, isAccountResolved]);
 
   const deck = useMemo(
     () => buildDeck({ items: noticedItems, dailyBrief: dailyTeaser, weeklySnapshot: weeklyTeaser }),

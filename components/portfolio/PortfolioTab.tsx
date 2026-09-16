@@ -227,7 +227,7 @@ export function PortfolioTab() {
   const { account: brokerAccount, accountScope: brokerScope, loading: brokerLoading, error: brokerError } = usePortfolio();
   const { account: liveAccount, accountScope: liveScope, loading: liveLoading, baskets, executeTrade, sellBasketPositions, refresh: refreshContext, brokerMeta } = useLivePortfolio();
   const { isConnected } = useBroker();
-  const { activeAccount, activeAccountId } = useAccounts();
+  const { activeAccount, activeAccountId, isAccountResolved } = useAccounts();
   const { user } = useAuth();
   const { focusPosition, setFocusPosition, openPositionDetail, tradeRequest, clearTradeRequest, setTab, setPendingPrompt, setChatOpen } = useTabStore();
 
@@ -274,6 +274,9 @@ export function PortfolioTab() {
   // ALL active notices — used for the inline threshold badges below.
   const [noticedAll, setNoticedAll] = useState<any[]>([]);
   const fetchTopNoticed = useCallback(async () => {
+    // BOOT GATE (item 1): don't fetch the 'demo' feed before the active account
+    // resolves — it painted a phantom $100k "IDLE CASH" card on live screens.
+    if (!isAccountResolved) return;
     try {
       const res = await apiGet(`/api/ai/noticed?accountId=${encodeURIComponent(activeAccountId || 'demo')}`);
       if (res.ok) {
@@ -281,7 +284,7 @@ export function PortfolioTab() {
         setNoticedAll(data.items || []);
       }
     } catch { /* ignore */ }
-  }, [activeAccountId]);
+  }, [activeAccountId, isAccountResolved]);
   useEffect(() => { fetchTopNoticed(); }, [fetchTopNoticed]);
 
   // User's own target-return/-loss thresholds — the badge ladder honours them

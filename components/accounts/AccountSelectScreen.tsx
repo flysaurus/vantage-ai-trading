@@ -205,7 +205,7 @@ export default function AccountSelectScreen({
             anytime from Settings.
           </p>
 
-        {/* ─── Multi-account disclosure — documented limitation (one account per connection) ─── */}
+        {/* ─── Multi-account disclosure — every sub-account is independent ─── */}
         <p
           style={{
             fontFamily: 'inherit',
@@ -219,9 +219,9 @@ export default function AccountSelectScreen({
             border: '1px solid var(--v-card-border)',
           }}
         >
-          One account per broker connection for now: if your brokerage login has several
-          sub-accounts (brokerage, IRA, 401k…), Vantage shows the first one your broker
-          returns. Full multi-account support is on the roadmap.
+          Each sub-account connects and displays independently — balances are never
+          combined. If your brokerage login has several sub-accounts (brokerage, IRA,
+          401k…), every one of them appears here with its own figures.
         </p>
         </div>
 

@@ -29,7 +29,7 @@ export function useOrders() {
   const { orders, setOrders, addOrder, updateOrder, activeFilter } =
     useOrderStore();
   const { broker, isConnected } = useBroker();
-  const { activeAccount, activeAccountId } = useAccounts();
+  const { activeAccount, activeAccountId, isAccountResolved } = useAccounts();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +103,16 @@ export function useOrders() {
     // Hard boundary: NEVER fetch broker orders when Demo is the active account
     if (!broker || !isConnected || isShowingDemo) {
       console.error('[useOrders] refresh BLOCKED — broker:', !!broker, 'connected:', isConnected, 'isDemo:', isShowingDemo);
+      return;
+    }
+
+    // ── BOOT GATE (item 1) ───────────────────────────────────────────────
+    // Never read orders before the active account resolves: the read would go
+    // out UNSCOPED (refused by the ambiguity guard — 409) and the 'demo'
+    // placeholder would surface a DIFFERENT account's orders. `refresh` is
+    // re-created when `isAccountResolved` flips, so the effect below re-runs.
+    if (!isAccountResolved) {
+      console.error('[useOrders] refresh gated — active account not resolved yet');
       return;
     }
 
@@ -387,7 +397,7 @@ export function useOrders() {
         if (mountedRef.current) refresh();
       }, RETRY_DELAY);
     }
-  }, [broker, isConnected, isShowingDemo, liveConnectionId, setOrders, user]);
+  }, [broker, isConnected, isShowingDemo, liveConnectionId, setOrders, user, isAccountResolved]);
 
   const placeOrder = useCallback(
     async (

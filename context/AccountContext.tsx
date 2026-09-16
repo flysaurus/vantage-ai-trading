@@ -20,6 +20,15 @@ interface AccountContextValue {
   activeAccount: AccountEntry | null;
   setActiveAccount: (accountId: string) => void;
   isLoading: boolean;
+  /**
+   * True once the active account is genuinely RESOLVED against the server's
+   * account list. Data consumers MUST NOT fetch while this is false: the
+   * selection is still the localStorage value or the 'demo' placeholder, so an
+   * unscoped account/orders read would be refused by the server's ambiguity
+   * guard (409) and the 'demo' placeholder would render a DIFFERENT account's
+   * numbers (the phantom $100k idle-cash Noticed card on a live broker screen).
+   */
+  isAccountResolved: boolean;
 }
 
 const AccountContext = createContext<AccountContextValue>({
@@ -28,6 +37,8 @@ const AccountContext = createContext<AccountContextValue>({
   activeAccount: null,
   setActiveAccount: () => {},
   isLoading: true,
+  // Outside the provider there is no list to resolve against, so never gate.
+  isAccountResolved: true,
 });
 
 function loadActiveAccount(): string {
@@ -138,6 +149,24 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     }
   }, [accounts, isLoading, activeAccountId]);
 
+  // ── Is the active account actually RESOLVED yet? ─────────────────────────
+  // `activeAccountId` boots as the stored value, or the 'demo' placeholder when
+  // nothing was ever chosen — while `/api/accounts` is still in flight. Until a
+  // selection genuinely resolves against that list, data consumers must not
+  // fetch (see the interface docs above). A choice that was explicitly STORED
+  // counts as resolved even if it is 'demo' (a real demo user), and a settled
+  // fetch that returned no accounts at all falls through to legacy behaviour
+  // (nothing to gate on; that path has its own error/retry handling).
+  const storedChoiceValue =
+    typeof window === 'undefined' ? null : localStorage.getItem(STORAGE_KEY);
+  const selectionResolves = accounts.some((a) => a.id === activeAccountId);
+  const hasNonDemoAccount = accounts.some((a) => !a.isDemo);
+  const isAccountResolved =
+    !isLoading &&
+    (accounts.length === 0 ||
+      (selectionResolves &&
+        (activeAccountId !== 'demo' || !hasNonDemoAccount || storedChoiceValue !== null)));
+
   const activeAccount = useMemo(
     () => accounts.find(a => a.id === activeAccountId) || null,
     [accounts, activeAccountId]
@@ -151,6 +180,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
         activeAccount,
         setActiveAccount,
         isLoading,
+        isAccountResolved,
       }}
     >
       {children}
