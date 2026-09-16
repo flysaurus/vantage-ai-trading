@@ -14,7 +14,7 @@ import {
 } from '@/lib/snaptrade/client';
 import { canonicalizeSymbol } from '@/lib/sector-resolver';
 import { resolvePositionSectors } from '@/lib/portfolio/position-sectors-server';
-import { resolveBrokerAccountIdForWrite } from '@/lib/broker/account-id';
+import { accountIdWritesEnabled, resolveBrokerAccountIdForWrite } from '@/lib/broker/account-id';
 
 export async function POST(req: NextRequest) {
   try {
@@ -61,6 +61,9 @@ export async function POST(req: NextRequest) {
       connectionId: resolvedConnectionId,
       snapAccountId: typeof snapAccountId === 'string' ? snapAccountId : null,
     });
+    const stampingOn = accountIdWritesEnabled();
+    const scopeRequested =
+      typeof snapAccountId === 'string' && snapAccountId.length > 0;
 
     // Enrich positions with sectors before persisting. Single authority:
     // lib/portfolio/position-sectors-server.ts — static symbol map → live
@@ -100,8 +103,14 @@ export async function POST(req: NextRequest) {
     //
     // ⚠️ Once rows are account-stamped, the delete MUST narrow with them. A
     // connection-wide delete on a shared login (Fidelity: 2 accounts) would wipe
-    // the sibling account's rows on every sync of the active one. Scoped by the
-    // same account id that the inserts carry — and only when that id resolved.
+    // the sibling account's rows on every sync of the active one.
+    //
+    // The stamped delete therefore keeps (a) this account's own rows' slot and
+    // (b) the connection's UNSTAMPED legacy rows — those were produced by the old
+    // connection-wide sync, i.e. exactly the mis-scoped row set stamping exists to
+    // replace. Without (b) the first stamped sync would leave the legacy NULL rows
+    // in place alongside the new ones and every reader would double-count.
+    // Legacy rows for a *sibling* account are only cleared once that account syncs.
     let deleteQuery = (supabase as any)
       .from('positions')
       .delete()
@@ -109,14 +118,36 @@ export async function POST(req: NextRequest) {
       .eq('is_demo', false)
       .eq('connection_id', resolvedConnectionId);
     if (writeAccountId) {
-      deleteQuery = deleteQuery.eq('account_id', writeAccountId);
+      deleteQuery = deleteQuery.or(
+        `account_id.eq.${writeAccountId},account_id.is.null`,
+      );
+    } else if (stampingOn && scopeRequested) {
+      // Stamping is on and a sub-account WAS named, but it has no broker_accounts
+      // row (never registered). Do NOT fall back to a connection-wide delete — on
+      // a shared login that would wipe a sibling account's already-stamped rows.
+      // Supersede only this connection's unattributed rows and leave the new ones
+      // unstamped; the connection is reported rather than guessed.
+      console.warn(
+        '[positions/sync] no broker_accounts row for requested sub-account — restricting delete to unattributed rows',
+      );
+      deleteQuery = deleteQuery.is('account_id', null);
     }
-    await deleteQuery;
+    const { error: deleteError } = await deleteQuery;
+    if (deleteError) {
+      // Never swallow this: a failed delete leaves the previous sync's rows in
+      // place and the subsequent insert silently double-counts them.
+      console.error('[positions/sync] delete failed:', deleteError.message);
+      return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    }
 
     if (rows.length > 0) {
-      await (supabase as any)
+      const { error: insertError } = await (supabase as any)
         .from('positions')
         .insert(rows.map(r => ({ ...r, is_demo: false })));
+      if (insertError) {
+        console.error('[positions/sync] insert failed:', insertError.message);
+        return NextResponse.json({ error: insertError.message }, { status: 500 });
+      }
     }
 
     console.log(`[positions/sync] Synced ${rows.length} broker positions for user ${userId.slice(0, 8)} connection ${resolvedConnectionId.slice(0, 8)}`);
