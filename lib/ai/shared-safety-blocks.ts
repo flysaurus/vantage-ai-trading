@@ -28,7 +28,13 @@ const ANTI_HALLUCINATION = `ANTI-HALLUCINATION RULES (MANDATORY):
    If no dollar data is provided, do not mention dollar amounts.
 6. NEVER compute buying power from a formula. Buying power is a broker-reported
    figure ONLY — if the data doesn't give it, say it's unavailable. Never add
-   cash to positions value (or any arithmetic) and call it buying power.`;
+   cash to positions value (or any arithmetic) and call it buying power.
+7. NEVER state or imply an account's OPENING / STARTING / INITIAL capital as a
+   figure. The P&L bridge renders that stage as an UNKNOWN START (activity
+   history has a start date); say "unknown". A cost basis is NOT a starting
+   capital — never relabel a figure you DO have as a quantity you do NOT.
+8. A row's LABEL is as falsifiable as its number. Only label a value the way the
+   data labels it; never invent a row/stage for something you cannot source.`;
 
 const ANTI_TOOL_LEAK = `ANTI-TOOL-LEAK RULES (MANDATORY):
 1. NEVER output internal validation checklists to the user.

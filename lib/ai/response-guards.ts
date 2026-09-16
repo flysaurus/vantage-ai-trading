@@ -8,6 +8,7 @@
 //   c. suppressProjectedScores      — deterministic strip of a projection phrase
 //   d. enforceTierLimits            — literacy-tier word/section budget
 //   e. shouldAttachHealthChart      — deterministic health-subscores chart gate
+//   f. suppressWithheldValueClaims  — prose that states a withheld/unknown value as fact
 // ────────────────────────────────────────────────────────────────────────────
 
 const NUMBERISH_RE = /[\d$%]/
@@ -389,4 +390,153 @@ export function shouldAttachHealthChart(userMessage: string, responseText: strin
   return /health score|sub-?scores|what.?s driving (my|the) (score|health)|which (sub-?score|component)/i.test(
     userMessage || '',
   )
+}
+
+// ── (f) Withheld-value claims ───────────────────────────────────────────────
+// A fabrication class the projected-score guard does not cover: the prose
+// restates a quantity the app's OWN view renders as unknown/withheld, as if it
+// were a known number. First instance found live on prod (2026-09-16): the P&L
+// bridge chart declares the start UNKNOWN ("Activity history on file starts
+// 2024-09-16 — the first bar is the unknown start"), while the prose above it
+// printed "Opening Position ~$97,580" — the aggregate cost basis (value − P&L),
+// a figure the model DOES have, relabeled as the account's starting capital.
+//
+// Detection is deliberately narrow: a withheld-value LABEL and a CURRENCY figure
+// must appear on the same line. That keeps ordinary prose (and legitimate rows
+// like "Cost Basis") untouched. It is table-driven, so a new withheld-value
+// shape is one entry — not a new function.
+//
+// Scope limit (documented, not a bug): this suppresses the CLAIM, it does not give
+// the model general consistency with what its own charts will render. A different
+// prose/chart mismatch stays structurally possible until the prose is reconciled
+// against the resolved chart (tracked follow-up).
+export interface WithheldValueClaim {
+  id: string
+  /** Vocabulary naming a quantity the app withholds/renders as unknown. */
+  label: RegExp
+  /** Honest replacement line, injected when a claim is removed. */
+  note: string
+  /** When true, the claim only counts if the response ships a [CHART:] marker. */
+  requiresChartMarker: boolean
+}
+
+const MONEY_RE = /(?:\$\s?\d[\d,]*(?:\.\d+)?\s*[KMB]?\b|\b\d[\d,]*(?:\.\d+)?\s*(?:USD|dollars?)\b)/i
+
+export const WITHHELD_VALUE_CLAIMS: WithheldValueClaim[] = [
+  {
+    id: 'unknown_start',
+    label: new RegExp(
+      String.raw`\b(?:(?:opening|starting|start-of-period|initial|original|inception|beginning|entry)\s+(?:position|balance|capital|value|investment|equity|principal|amount)|capital\s+(?:at|from)\s+(?:the\s+)?(?:start|inception|beginning)|money\s+you\s+(?:started|began)\s+with|what\s+you\s+(?:started|began)\s+(?:with|in))\b`,
+      'i',
+    ),
+    note:
+      'Starting value: **unknown** — the chart shows the opening stage as an unknown start ' +
+      '(the activity history on file does not reach inception), not a figure.',
+    requiresChartMarker: true,
+  },
+]
+
+const rgHasChartMarker = (text: string) => /\[CHART:[^\]\n]*\]/.test(text)
+const rgIsTableRow = (l: string) => /^\s*\|/.test(l)
+const rgIsMarkerLine = (l: string) => /^\s*\[[^\]]*\]\s*$/.test(l)
+const rgIsClaimLine = (line: string, c: WithheldValueClaim) => c.label.test(line) && MONEY_RE.test(line)
+
+/**
+ * Returns the first withheld-value claim found (label + a currency figure on the
+ * same line), else null. `only` restricts the check to specific claim ids.
+ */
+export function detectWithheldValueClaim(
+  text: string,
+  only?: string[],
+): { id: string; match: string } | null {
+  if (!text) return null
+  const charted = rgHasChartMarker(text)
+  for (const c of WITHHELD_VALUE_CLAIMS) {
+    if (only && !only.includes(c.id)) continue
+    if (c.requiresChartMarker && !charted) continue
+    const g = new RegExp(c.label.source, 'gi')
+    let m: RegExpExecArray | null
+    while ((m = g.exec(text)) !== null) {
+      if (m[0].length === 0) {
+        g.lastIndex++
+        continue
+      }
+      const lineEnd = text.indexOf('\n', m.index)
+      const line = text.slice(m.index, lineEnd === -1 ? text.length : lineEnd)
+      if (MONEY_RE.test(line)) return { id: c.id, match: m[0].trim() }
+    }
+  }
+  return null
+}
+
+/** Claim-specific convenience wrapper (the first withheld-value shape found). */
+export function detectUnknownStartClaim(text: string): string | null {
+  const hit = detectWithheldValueClaim(text, ['unknown_start'])
+  return hit ? hit.match : null
+}
+
+/**
+ * Strip withheld-value claims: a table row carrying the label+figure is dropped
+ * whole; a prose sentence carrying it is dropped whole (sibling sentences and
+ * their figures are kept). Each removal injects the claim's honest note, placed
+ * after the prose/table body but BEFORE any trailing marker-only lines. Counts
+ * removals and reports the claim ids touched.
+ */
+export function suppressWithheldValueClaims(
+  text: string,
+  only?: string[],
+): { text: string; removed: number; ids: string[] } {
+  if (!text) return { text, removed: 0, ids: [] }
+  const charted = rgHasChartMarker(text)
+  const active = WITHHELD_VALUE_CLAIMS.filter(
+    (c) => (!only || only.includes(c.id)) && (!c.requiresChartMarker || charted),
+  )
+  if (active.length === 0) return { text, removed: 0, ids: [] }
+
+  const ids = new Set<string>()
+  const notes: string[] = []
+  let removed = 0
+  const out: string[] = []
+
+  for (const line of text.split('\n')) {
+    const hit = active.find((c) => rgIsClaimLine(line, c))
+    if (!hit) {
+      out.push(line)
+      continue
+    }
+    if (rgIsTableRow(line)) {
+      removed++
+      ids.add(hit.id)
+      notes.push(hit.note)
+      continue
+    }
+    const kept = line
+      .split(/(?<=[.!?])\s+/)
+      .filter((s) => {
+        if (!rgIsClaimLine(s, hit)) return true
+        removed++
+        ids.add(hit.id)
+        notes.push(hit.note)
+        return false
+      })
+    const rejoined = kept.join(' ').trim()
+    if (rejoined) out.push(rejoined)
+  }
+
+  let result = out.join('\n').replace(/\n{3,}/g, '\n\n')
+  if (notes.length > 0) {
+    const noteBlock = Array.from(new Set(notes)).join('\n')
+    const rl = result.split('\n')
+    let insertAt = rl.length
+    while (insertAt > 0 && (rgIsMarkerLine(rl[insertAt - 1]) || rl[insertAt - 1].trim() === '')) insertAt--
+    result = [...rl.slice(0, insertAt), '', noteBlock, ...rl.slice(insertAt)]
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+  }
+  return { text: result, removed, ids: [...ids] }
+}
+
+/** The first withheld-value shape (opening/starting capital), named explicitly. */
+export function suppressUnknownStartClaims(text: string): { text: string; removed: number; ids: string[] } {
+  return suppressWithheldValueClaims(text, ['unknown_start'])
 }

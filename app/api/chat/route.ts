@@ -62,7 +62,7 @@ import {
 import { classify, detectVisualRequestIntent, type ClassifierResult } from '@/lib/ai/classifier'
 import { logClassifierAudit } from '@/lib/ai/classifier-audit'
 import { validateResponse } from '@/lib/ai/validator'
-import { detectProjectedScoreClaim, suppressProjectedScores, enforceTierLimits, shouldAttachHealthChart } from '@/lib/ai/response-guards'
+import { detectProjectedScoreClaim, suppressProjectedScores, enforceTierLimits, shouldAttachHealthChart, detectWithheldValueClaim, suppressWithheldValueClaims } from '@/lib/ai/response-guards'
 import { stripConflictingRecommendMarkers } from '@/lib/ai/share-class'
 import { stripDuplicateBreakdownProse } from '@/lib/ai/response-dedupe'
 
@@ -2401,6 +2401,19 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           console.warn(`[chat] ✂️ Suppressed ${s.removed} projected-score phrase(s)`);
           return s.text;
         };
+        // WITHHELD-VALUE CLAIMS: the prose states a quantity the app's OWN view
+        // renders as unknown — the class behind the live "Opening Position
+        // ~$97,580" in the prose above a bridge chart whose start is UNKNOWN
+        // (the figure was the aggregate cost basis, relabeled as starting
+        // capital). The app owns those numbers; the prose must not supply one.
+        const applyWithheldValueSuppression = (text: string): string => {
+          const claim = detectWithheldValueClaim(text);
+          if (!claim) return text;
+          console.warn('[chat] ⚠️ Withheld-value claim detected:', claim.id, claim.match);
+          const s = suppressWithheldValueClaims(text);
+          console.warn(`[chat] ✂️ Suppressed ${s.removed} withheld-value claim(s): ${s.ids.join(', ')}`);
+          return s.text;
+        };
         const applyChartAndTierGuards = (text: string): string => {
           let out = text;
           // ITEM 5: user asked about the health score, model emitted no chart of
@@ -2429,7 +2442,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // correctedText event, or the stale streamed text (marker and all) is what
         // gets rendered and persisted.
         const finalizeGuardedText = (text: string, baseline: string = text): string => {
-          const guarded = applyChartAndTierGuards(applyProjectedScoreSuppression(text));
+          const guarded = applyChartAndTierGuards(applyWithheldValueSuppression(applyProjectedScoreSuppression(text)));
           // Cut any inline prose list/table that duplicates the position cards
           // (the breakdown renders once, as cards — see response-dedupe.ts).
           const { text: deduped, removed } = stripDuplicateBreakdownProse(guarded);
