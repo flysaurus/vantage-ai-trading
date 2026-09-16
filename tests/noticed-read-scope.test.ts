@@ -114,6 +114,74 @@ describe('resolveBrokerNoticedInput — shared login (2 registered accounts)', (
   });
 });
 
+describe('resolveBrokerNoticedInput — cash is never estimated (killed 25% fallback)', () => {
+  const NULL_CASH_CONN = {
+    one: {
+      snaptrade_accounts: [
+        { id: SMA, cash: null, totalValue: 0 },
+        { id: YOUTH, cash: null, totalValue: 22963.15 },
+      ],
+    },
+  };
+
+  it('reports UNKNOWN cash + null percentages when the broker gives no cash', async () => {
+    const { client } = makeSupabase({
+      broker_accounts: { many: TWO },
+      positions: { many: POSITIONS },
+      broker_connections: NULL_CASH_CONN,
+      users: { one: { day_pnl: 0 } },
+      orders: { one: null },
+    });
+    const out = await resolveBrokerNoticedInput(client, USER, `snaptrade:${CONN}:${YOUTH}`);
+    expect(out!.account.cash).toBeNull();
+    expect(out!.account.cash).not.toBe(Math.round(1000 * 0.25));
+    expect(out!.account.totalPnlPercent).toBeNull();
+    expect(out!.account.dayPnlPercent).toBeNull();
+  });
+
+  it('an unmatchable sub-account scope also yields unknown cash (never a sibling sum)', async () => {
+    const { client } = makeSupabase({
+      broker_accounts: { many: TWO },
+      positions: { many: POSITIONS },
+      broker_connections: { one: { snaptrade_accounts: [{ id: YOUTH, cash: 222.22 }] } },
+      users: { one: { day_pnl: 0 } },
+      orders: { one: null },
+    });
+    const out = await resolveBrokerNoticedInput(client, USER, `snaptrade:${CONN}:${SMA}`);
+    expect(out!.account.cash).toBeNull();
+  });
+});
+
+// ─── The engine must not compute anything on an unknown denominator ───────
+describe('noticed engine — unknown cash fails safe', () => {
+  const baseInput = (cash: number | null) => ({
+    account: { cash, equity: 1000, totalPnl: 100, totalPnlPercent: null, dayPnl: 10, dayPnlPercent: null },
+    positions: [{ symbol: 'AAPL', qty: 10, marketValue: 1000, avgCost: 50, totalPnl: 100, totalPnlPercent: 20, sector: 'Technology' }],
+    watchlistSymbols: [],
+    daysSinceLastTrade: 3,
+  }) as any;
+
+  it('buildPortfolioSummary says "unknown" instead of inventing a total', async () => {
+    const { buildPortfolioSummary } = await import('@/lib/noticed/engine');
+    const s = buildPortfolioSummary(baseInput(null));
+    expect(s).toContain('Cash: unknown');
+    expect(s).toContain('Total: unknown');
+    expect(s).not.toMatch(/Cash: \$250/); // the old 25% fabrication
+  });
+
+  it('findDriftTriggers skips entirely when cash is unknown, still works when known', async () => {
+    const { findDriftTriggers } = await import('@/lib/noticed/engine');
+    const spyInput = (cash: number | null) => ({
+      account: { cash, equity: 100000, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 },
+      positions: [{ symbol: 'SPY', qty: 1, marketValue: 100000, avgCost: 0, totalPnl: 0, totalPnlPercent: 0, sector: 'Broad Market' }],
+      watchlistSymbols: [],
+      daysSinceLastTrade: 3,
+    }) as any;
+    expect(findDriftTriggers(spyInput(null), new Set(), 'buffett')).toEqual([]);
+    expect(findDriftTriggers(spyInput(0), new Set(), 'buffett').length).toBeGreaterThan(0);
+  });
+});
+
 describe('resolveBrokerNoticedInput — single-account connection (unchanged)', () => {
   it('keeps the connection-scoped query, no account filter, cash still summed', async () => {
     const { client, calls } = makeSupabase({

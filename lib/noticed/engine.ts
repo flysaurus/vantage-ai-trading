@@ -42,12 +42,19 @@ export interface PortfolioPosition {
 }
 
 export interface PortfolioAccount {
-  cash: number;
+  /**
+   * Cash for THIS account. `null` = the broker did not report it. That is
+   * reported as UNKNOWN — never estimated (a guessed cash figure silently
+   * corrupts every percentage derived from it).
+   */
+  cash: number | null;
   equity: number;
   totalPnl: number;
-  totalPnlPercent: number;
+  /** `null` when it depends on an unknown total value (see `cash`). */
+  totalPnlPercent: number | null;
   dayPnl: number;
-  dayPnlPercent: number;
+  /** `null` when it depends on an unknown total value (see `cash`). */
+  dayPnlPercent: number | null;
 }
 
 export interface NoticedRuleInput {
@@ -83,11 +90,13 @@ export interface NoticedTrigger {
 // ── Build portfolio summary for Haiku ──
 export function buildPortfolioSummary(input: NoticedRuleInput): string {
   const { account, positions } = input;
-  const totalValue = account.equity + account.cash;
+  const totalValue = account.cash == null ? null : account.equity + account.cash;
+  const pct = (v: number | null) => (v == null ? 'n/a' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`);
+  const usd = (v: number | null) => (v == null ? 'unknown' : `$${v.toLocaleString()}`);
   const lines: string[] = [];
-  lines.push(`Equity: $${account.equity.toLocaleString()} | Cash: $${account.cash.toLocaleString()} | Total: $${totalValue.toLocaleString()}`);
-  lines.push(`Day P&L: ${account.dayPnl >= 0 ? '+' : ''}$${account.dayPnl.toFixed(2)} (${account.dayPnlPercent >= 0 ? '+' : ''}${account.dayPnlPercent.toFixed(2)}%)`);
-  lines.push(`Total P&L: ${account.totalPnl >= 0 ? '+' : ''}$${account.totalPnl.toFixed(2)} (${account.totalPnlPercent >= 0 ? '+' : ''}${account.totalPnlPercent.toFixed(2)}%)`);
+  lines.push(`Equity: $${account.equity.toLocaleString()} | Cash: ${usd(account.cash)} | Total: ${usd(totalValue)}`);
+  lines.push(`Day P&L: ${account.dayPnl >= 0 ? '+' : ''}$${account.dayPnl.toFixed(2)} (${pct(account.dayPnlPercent)})`);
+  lines.push(`Total P&L: ${account.totalPnl >= 0 ? '+' : ''}$${account.totalPnl.toFixed(2)} (${pct(account.totalPnlPercent)})`);
   if (positions.length > 0) {
     const posList = positions.map(p =>
       `${p.symbol}: $${p.marketValue.toLocaleString()} | ${p.totalPnlPercent >= 0 ? '+' : ''}${p.totalPnlPercent.toFixed(1)}%`
@@ -206,6 +215,14 @@ export function findDriftTriggers(
   // Do NOT use account.equity here: the client sends equity as TOTAL account
   // value (already includes cash), so `equity + cash` would double-count cash
   // and skew every sector weight down.
+  //
+  // Cash UNKNOWN (null) ⇒ there is no honest denominator ⇒ SKIP the rule
+  // rather than compute drift against a guessed total. Reporting "no drift" is
+  // acceptable; inventing a weight is not.
+  if (input.account.cash == null) {
+    console.warn('[noticed] drift rule skipped — account cash unknown (not estimated)');
+    return triggers;
+  }
   const investedValue = input.positions.reduce((sum, p) => sum + (p.marketValue || 0), 0);
   const totalValue = investedValue + input.account.cash;
 

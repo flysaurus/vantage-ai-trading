@@ -297,7 +297,9 @@ async function processAccount(
   }
 
   // ── Cash: demo → demo_portfolio_state.cash_balance; broker → snap account cash ──
-  let cash = 0;
+  // Reported ONLY when the broker actually provides a value; missing/null →
+  // UNKNOWN, never estimated (see the removed 25%-of-equity guess below).
+  let cash: number | null = null;
   try {
     if (scope?.isDemo) {
       const { data: demoState } = await supabase
@@ -305,7 +307,7 @@ async function processAccount(
         .select('cash_balance')
         .eq('user_id', userId)
         .maybeSingle();
-      cash = Number(demoState?.cash_balance ?? 0);
+      if (demoState?.cash_balance != null) cash = Number(demoState.cash_balance);
     } else if (scope?.connectionId) {
       const { data: conn } = await supabase
         .from('broker_connections')
@@ -314,9 +316,18 @@ async function processAccount(
         .eq('id', scope.connectionId)
         .maybeSingle();
       const snapAccounts = (conn?.snaptrade_accounts as any[]) || [];
-      cash = snapAccounts.reduce((sum: number, a: any) => sum + (Number(a?.cash) || 0), 0);
+      const cashAccounts = readFilter.filterAccountId
+        ? snapAccounts.filter((a: any) => a?.id === scope.snapAccountId)
+        : snapAccounts;
+      const values = cashAccounts.map((a: any) => (a?.cash == null ? null : Number(a.cash)));
+      if (values.length > 0 && values.every((v) => v != null)) {
+        cash = (values as number[]).reduce((sum, v) => sum + v, 0);
+      }
     }
-  } catch { /* ignore */ }
+  } catch { /* unknown */ }
+  if (cash == null) {
+    console.warn(`[portfolio-agent] cash unavailable for ${accountId} — reporting unknown (not estimated)`);
+  }
 
   let dayPnl = 0;
   try {
@@ -328,14 +339,15 @@ async function processAccount(
     if (portfolioSettings?.day_pnl) dayPnl = Number(portfolioSettings.day_pnl);
   } catch { /* ignore */ }
 
-  // Fallback: estimate cash as 25% of equity (no per-account cash available)
-  if (cash === 0 && equity > 0) {
-    cash = Math.round(equity * 0.25);
-  }
+  // ⚠️ Removed 2026-09-16 (Em): the old `cash === 0 → 25% × equity` estimate lived
+  // here and in `lib/noticed/resolve-input.ts`. It GUESSED cash and presented it as
+  // real, corrupting every percentage derived from it. Unknown beats a wrong number.
+  // Do not reintroduce it.
 
-  const totalValue = equity + cash;
-  const totalPnlPct = totalValue > 0 ? (totalPnl / (totalValue - totalPnl)) * 100 : 0;
-  const dayPnlPct = totalValue > 0 ? (dayPnl / totalValue) * 100 : 0;
+  // Any percentage dividing by the total value is UNKNOWN when cash is unknown.
+  const totalValue = cash == null ? null : equity + cash;
+  const totalPnlPct = totalValue != null && totalValue > 0 ? (totalPnl / (totalValue - totalPnl)) * 100 : null;
+  const dayPnlPct = totalValue != null && totalValue > 0 ? (dayPnl / totalValue) * 100 : null;
 
   // ── Days since last trade (scoped to account) ──
   let daysSinceLastTrade = 999;
@@ -365,9 +377,9 @@ async function processAccount(
       cash,
       equity,
       totalPnl,
-      totalPnlPercent: Math.round(totalPnlPct * 10) / 10,
+      totalPnlPercent: totalPnlPct == null ? null : Math.round(totalPnlPct * 10) / 10,
       dayPnl,
-      dayPnlPercent: Math.round(dayPnlPct * 10) / 10,
+      dayPnlPercent: dayPnlPct == null ? null : Math.round(dayPnlPct * 10) / 10,
     },
     positions: positions.map((p: any) => ({
       symbol: p.symbol,

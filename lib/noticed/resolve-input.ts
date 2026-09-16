@@ -95,10 +95,17 @@ export async function resolveBrokerNoticedInput(
     totalPnl += p.totalPnl;
   }
 
-  // Broker cash from the connection's snap accounts. On a shared login only
-  // the scoped sub-account's cash may be used — summing the siblings' cash is
-  // the same merge bug on the cash axis.
-  let cash = 0;
+  // Broker cash for THIS account. Reported ONLY when the broker actually
+  // provides a value; a missing/null cash is reported as UNKNOWN — never
+  // estimated. On a shared login only the scoped sub-account's cash may be
+  // used (summing the siblings' cash is the same merge bug on the cash axis).
+  //
+  // ⚠️ Removed 2026-09-16 (Em): the old `cash === 0 → 25% × equity` fallback
+  // GUESSED a number and presented it as real cash. It fired because Fidelity
+  // sub-accounts return `cash: null`. Same failure class as every other leak
+  // this migration closed — except it failed UNSAFE (real-looking wrong number)
+  // instead of safely ("unknown"). Do not reintroduce it.
+  let cash: number | null = null;
   try {
     const { data: conn } = await supabase
       .from('broker_connections')
@@ -110,10 +117,15 @@ export async function resolveBrokerNoticedInput(
     const cashAccounts = readFilter.filterAccountId
       ? snapAccounts.filter((a: any) => a?.id === scope.snapAccountId)
       : snapAccounts;
-    cash = cashAccounts.reduce((sum: number, a: any) => sum + (Number(a?.cash) || 0), 0);
-  } catch { /* ignore */ }
-
-  if (cash === 0 && equity > 0) cash = Math.round(equity * 0.25);
+    const values = cashAccounts.map((a: any) => (a?.cash == null ? null : Number(a.cash)));
+    // Every account in scope must report cash; one null makes the sum a guess.
+    if (values.length > 0 && values.every((v) => v != null)) {
+      cash = (values as number[]).reduce((sum, v) => sum + v, 0);
+    }
+  } catch { /* unknown */ }
+  if (cash == null) {
+    console.warn(`[noticed] cash unavailable for ${accountId} — reporting unknown (not estimated)`);
+  }
 
   let dayPnl = 0;
   try {
@@ -125,9 +137,12 @@ export async function resolveBrokerNoticedInput(
     if (ps?.day_pnl) dayPnl = Number(ps.day_pnl);
   } catch { /* ignore */ }
 
-  const totalValue = equity + cash;
-  const totalPnlPct = totalValue > 0 ? (totalPnl / (totalValue - totalPnl)) * 100 : 0;
-  const dayPnlPct = totalValue > 0 ? (dayPnl / totalValue) * 100 : 0;
+  // Any percentage that divides by the total value is UNKNOWN when cash is
+  // unknown — a percentage built on a guessed denominator is the same
+  // fabrication one step removed.
+  const totalValue = cash == null ? null : equity + cash;
+  const totalPnlPct = totalValue != null && totalValue > 0 ? (totalPnl / (totalValue - totalPnl)) * 100 : null;
+  const dayPnlPct = totalValue != null && totalValue > 0 ? (dayPnl / totalValue) * 100 : null;
 
   // Days since last trade, scoped to this account (orders.filled_at).
   // A shared login narrows to the sub-account too; `orders.account_id` is not
@@ -155,9 +170,9 @@ export async function resolveBrokerNoticedInput(
       cash,
       equity,
       totalPnl,
-      totalPnlPercent: Math.round(totalPnlPct * 10) / 10,
+      totalPnlPercent: totalPnlPct == null ? null : Math.round(totalPnlPct * 10) / 10,
       dayPnl,
-      dayPnlPercent: Math.round(dayPnlPct * 10) / 10,
+      dayPnlPercent: dayPnlPct == null ? null : Math.round(dayPnlPct * 10) / 10,
     },
     positions: mapped,
     watchlistSymbols,
