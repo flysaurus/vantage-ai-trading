@@ -12,7 +12,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useAccounts } from '@/context/AccountContext';
 import { syncFilledOrders, getTrades } from '@/lib/supabase/trades';
 import { isWorkingStatus } from '@/lib/order-format';
-import { connectionIdFromAccountId } from '@/lib/account-scope';
+import { connectionIdFromAccountId, parseAccountScope } from '@/lib/account-scope';
 import type { Order } from '@/types';
 import type { OrderStatus } from '@/types/broker';
 
@@ -381,6 +381,10 @@ export function useOrders() {
             createdAt: o.createdAt,
           })),
           liveConnectionId,
+          // Sub-account scope from the SAME resolved active-account context the
+          // read path uses (never re-derived): without it a shared login
+          // (2+ sub-accounts) writes trade_history rows with account_id NULL.
+          parseAccountScope(activeAccountId)?.snapAccountId ?? null,
         ).catch(() => {/* fire-and-forget: errors are logged in createTrade */});
       }
     } catch (err) {

@@ -8,12 +8,20 @@ export interface Trade {
   executedAt: string; createdAt: string;
 }
 
+// `${userId}:${brokerOrderId}` for every order the server already holds.
+const syncedOrderIds = new Set<string>();
+
+/** Test hook: clears the session dedup set. */
+export function __clearSyncedFilledOrderCache(): void {
+  syncedOrderIds.clear();
+}
+
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string>) };
   return fetch(path, { ...init, headers, credentials: 'include' as RequestCredentials });
 }
 
-export async function createTrade(params: { userId: string; symbol: string; action: 'buy' | 'sell'; quantity: number; price: number; commission?: number; notes?: string; alpacaOrderId?: string; executedAt?: string; connectionId?: string | null; isDemo?: boolean }): Promise<(Trade & { _existing?: boolean }) | null> {
+export async function createTrade(params: { userId: string; symbol: string; action: 'buy' | 'sell'; quantity: number; price: number; commission?: number; notes?: string; alpacaOrderId?: string; executedAt?: string; connectionId?: string | null; snapAccountId?: string | null; isDemo?: boolean }): Promise<(Trade & { _existing?: boolean }) | null> {
   const res = await apiFetch(`${API_BASE}/create`, { method: 'POST', body: JSON.stringify(params) });
   if (!res.ok) { console.warn('[trades] create failed:', res.status, await res.text()); return null; }
   return res.json();
@@ -27,10 +35,19 @@ export async function syncFilledOrders(
     filledQty: number; filledPrice: number; createdAt: string;
   }>,
   connectionId?: string | null,
+  snapAccountId?: string | null,
 ): Promise<number> {
   let synced = 0;
   for (const order of filledOrders) {
     if (!order.filledPrice || !order.filledQty) continue;
+    // Session-scoped dedup. The caller re-runs this after EVERY orders refresh
+    // (30s poll) with the full filled-order list, so unaffected orders were
+    // POSTed to /trade-history/create again on every tick — measured live: 129
+    // POSTs in 75s for a 150-order book. The server dedupes correctly, but the
+    // client still paid a round trip per order per poll. Mark an order once the
+    // server has a copy (whether it inserted or reported `_existing`).
+    const key = `${userId}:${order.id}`;
+    if (syncedOrderIds.has(key)) continue;
     const result = await createTrade({
       userId,
       symbol: order.symbol,
@@ -40,7 +57,11 @@ export async function syncFilledOrders(
       alpacaOrderId: order.id,
       executedAt: order.createdAt,
       connectionId,
+      // Same active-account context the read path uses — never re-derived.
+      // Without it, a shared login (2+ sub-accounts) leaves the row unattributed.
+      snapAccountId: snapAccountId ?? null,
     });
+    if (result) syncedOrderIds.add(key);
     if (result && !result._existing) synced++;
   }
   return synced;

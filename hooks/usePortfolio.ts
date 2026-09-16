@@ -256,6 +256,13 @@ const LOAD_TIMEOUT = 45000;
 // is not connected), so there is nothing to be "slow" about. The wait exists
 // only to let a transient status blip self-heal before we surface the error.
 const DISCONNECT_TIMEOUT = 12000;
+// BOOT-GATE WATCHDOG (flakiness fix). The item-1 gate holds the skeleton until
+// the active account resolves, but unlike the two paths below it had NO
+// watchdog: if `useAccounts()` never settles (a stalled /api/accounts fetch),
+// the hold was FOREVER — blank splash, no error, no retry. Bounded generously:
+// a healthy /api/accounts is 0.6-4.7s locally (8s server-side live-fetch cap),
+// so this only fires on a genuine stall.
+const ACCOUNT_RESOLVE_TIMEOUT = 15000;
 
 export function usePortfolio() {
   const store = usePortfolioStore();
@@ -388,6 +395,18 @@ export function usePortfolio() {
       console.error('[usePortfolio] refresh gated — active account not resolved yet (scope:', scope, ') — holding skeleton');
       if (usePortfolioStore.getState().accountScope !== scope) clearAccount();
       if (!usePortfolioStore.getState().loading) setLoading(true);
+      // BOUNDED HOLD (same terminal guarantee as the other two paths): the gate
+      // must not shimmer forever if the accounts fetch never settles.
+      if (bailTimerRef.current) { clearTimeout(bailTimerRef.current); bailTimerRef.current = null; }
+      bailTimeout = setTimeout(() => {
+        if (!mountedRef.current) return;
+        if (scopeRef.current !== scope) return; // a switch owns loading now
+        if (!usePortfolioStore.getState().loading) return; // settled already
+        console.error('[usePortfolio] TIMEOUT — active account never resolved for scope', scope);
+        setError('Could not load your accounts. Check your connection and try again.');
+        setLoading(false);
+      }, ACCOUNT_RESOLVE_TIMEOUT);
+      bailTimerRef.current = bailTimeout;
       return;
     }
 
@@ -419,8 +438,9 @@ export function usePortfolio() {
 
     try {
       // PART 4 — we are issuing a real request now, so any pending bail-out
-      // watchdog from a previous "not connected" attempt must not fire mid-flight
-      // (it would clear `loading` and show an error over a request in progress).
+      // watchdog from a previous "not connected"/gated attempt must not fire
+      // mid-flight (it would clear `loading` and show an error over a request
+      // in progress). This also cancels the boot-gate watchdog.
       if (bailTimerRef.current) {
         clearTimeout(bailTimerRef.current);
         bailTimerRef.current = null;
