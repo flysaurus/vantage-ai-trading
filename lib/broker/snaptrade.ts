@@ -207,7 +207,7 @@ export class SnapTradeAdapter implements BrokerAdapter {
       timeInForce: string;
       createdAt: string;
       updatedAt: string;
-    }>>('/api/broker/snaptrade/orders');
+    }>>(this.scopedUrl('/api/broker/snaptrade/orders'));
 
     console.error('[SnapTradeAdapter] ORDERS raw:', Array.isArray(raw) ? `${raw.length} orders` : `NOT an array, type=${typeof raw}`);
     if (!Array.isArray(raw)) return [];
