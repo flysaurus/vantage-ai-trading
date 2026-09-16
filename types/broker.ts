@@ -141,6 +141,13 @@ export interface BrokerAdapter {
   isConnected(): boolean;
   /** Scope subsequent API calls to a specific broker_connections.id (multi-broker). */
   setConnectionId?(connectionId: string | null): void;
+  /**
+   * Scope the adapter to ONE SnapTrade sub-account inside a shared connection.
+   * A broker login can expose several accounts (e.g. Fidelity → "Taxable SMA"
+   * + "ANIKET - YOUTH"); without this the server aggregates the whole
+   * connection and one account's balance leaks into another's display.
+   */
+  setSnapAccountId?(snapAccountId: string | null): void;
 
   // Account
   getAccount(fresh?: boolean): Promise<BrokerAccount>;

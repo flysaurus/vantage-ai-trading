@@ -172,8 +172,10 @@ export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => voi
             lineHeight: 1.5,
           }}
         >
-          One account per broker connection for now: multiple sub-accounts
-          (brokerage, IRA, 401k…) show their first account only.
+          Brokers often share one login across several sub-accounts (brokerage,
+          IRA, 401k…). Vantage lists each sub-account separately, and balances
+          and positions are always scoped to the account you've selected —
+          never combined across a connection.
         </p>
       </div>
 

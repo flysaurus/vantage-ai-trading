@@ -82,7 +82,11 @@ export async function GET(req: NextRequest) {
 
   const ep = { userId: snaptradeUserId, userSecret: snaptradeUserSecret };
   const fresh = req.nextUrl.searchParams.get('fresh') === '1';
-  const cacheKey = `${authUser.id}:${authorizationId}`;
+  // Scope to ONE sub-account when named — positions must never be the union of
+  // every account the connection happens to return (that leaked a deleted
+  // account's holdings into another account's Holdings/tax views).
+  const snapAccountId = req.nextUrl.searchParams.get('snapAccountId');
+  const cacheKey = `${authUser.id}:${authorizationId}:${snapAccountId ?? '*'}`;
 
   try {
     const payload = await positionsCache.getOrFetch(cacheKey, async () => {
@@ -94,12 +98,34 @@ export async function GET(req: NextRequest) {
       return [];
     }
 
+    // Scope to a single account — never union across the connection.
+    let scoped = accounts;
+    if (snapAccountId) {
+      scoped = accounts.filter((a) => a.id === snapAccountId);
+      if (scoped.length === 0) {
+        console.warn(
+          `[snaptrade/positions] requested sub-account ${snapAccountId} not present on authorization ${authorizationId} — returning [] (never another account's positions)`,
+        );
+        return [];
+      }
+    } else if (accounts.length > 1) {
+      const pool = accounts;
+      const primary =
+        pool.find((a) => (a.name || '').toUpperCase().includes('MARGIN')) ||
+        pool.find((a) => (a.name || '').toUpperCase().includes('CASH')) ||
+        pool[0];
+      console.warn(
+        `[snaptrade/positions] connection ${authorizationId} exposes ${accounts.length} accounts and no snapAccountId was given — scoping to "${primary.name}" (${primary.id})`,
+      );
+      scoped = [primary];
+    }
+
     const allPositions: SnapTradePosition[] = [];
 
     // Fetch positions for every account in parallel (removes sequential
     // SnapTrade round-trips that made multi-account portfolios load slowly).
     const perAccount = await Promise.allSettled(
-      accounts.map(async (acct) => {
+      scoped.map(async (acct) => {
         const raw = await snapTradeFetch<unknown>(
           `/accounts/${acct.id}/positions`, null, ep,
         );

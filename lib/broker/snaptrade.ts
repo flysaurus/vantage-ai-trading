@@ -62,6 +62,9 @@ export class SnapTradeAdapter implements BrokerAdapter {
   private _connected = false;
   private underlyingBroker: string = '';
   private connectionId: string | null = null;
+  // Specific SnapTrade sub-account within the connection (3-part id form).
+  // null → the server scopes to a single deterministic account (never sums).
+  private snapAccountId: string | null = null;
 
   // ─── Connection ──────────────────────────────────────────
 
@@ -77,6 +80,7 @@ export class SnapTradeAdapter implements BrokerAdapter {
     this.config = null;
     this.underlyingBroker = '';
     this.connectionId = null;
+    this.snapAccountId = null;
   }
 
   isConnected(): boolean {
@@ -87,10 +91,24 @@ export class SnapTradeAdapter implements BrokerAdapter {
     this.connectionId = id;
   }
 
+  setSnapAccountId(id: string | null): void {
+    this.snapAccountId = id;
+  }
+
+  /** Build a scoped route URL (connectionId + the specific sub-account). */
+  private scopedUrl(base: string, fresh?: boolean): string {
+    const p = new URLSearchParams();
+    if (fresh) p.set('fresh', '1');
+    if (this.connectionId) p.set('connectionId', this.connectionId);
+    if (this.snapAccountId) p.set('snapAccountId', this.snapAccountId);
+    const q = p.toString();
+    return q ? `${base}?${q}` : base;
+  }
+
   // ─── Account ─────────────────────────────────────────────
 
   async getAccount(fresh?: boolean): Promise<BrokerAccount> {
-    const url = fresh ? '/api/broker/snaptrade/account?fresh=1' : '/api/broker/snaptrade/account';
+    const url = this.scopedUrl('/api/broker/snaptrade/account', fresh);
     const data = await this.snaptradeFetch<{
       totalValue: number;
       cash: number;
@@ -134,7 +152,7 @@ export class SnapTradeAdapter implements BrokerAdapter {
   // ─── Positions ───────────────────────────────────────────
 
   async getPositions(fresh?: boolean): Promise<BrokerPosition[]> {
-    const url = fresh ? '/api/broker/snaptrade/positions?fresh=1' : '/api/broker/snaptrade/positions';
+    const url = this.scopedUrl('/api/broker/snaptrade/positions', fresh);
     const raw = await this.snaptradeFetch<RawPosition[]>(url);
     if (!Array.isArray(raw)) return [];
     return this.mapPositions(raw);

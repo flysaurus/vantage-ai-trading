@@ -81,7 +81,12 @@ export async function GET(req: NextRequest) {
 
   const ep = { userId: snaptradeUserId, userSecret: snaptradeUserSecret };
   const fresh = req.nextUrl.searchParams.get('fresh') === '1';
-  const cacheKey = `${authUser.id}:${authorizationId}`;
+  // Scope to ONE SnapTrade sub-account when the caller names one. This is the
+  // fix for the "deleted account's balance leaks into a shared connection" bug:
+  // a single Fidelity authorization returns BOTH "Taxable SMA" and "ANIKET -
+  // YOUTH", and the old code summed every account it got back.
+  const snapAccountId = req.nextUrl.searchParams.get('snapAccountId');
+  const cacheKey = `${authUser.id}:${authorizationId}:${snapAccountId ?? '*'}`;
 
   try {
     const payload = await accountCache.getOrFetch(cacheKey, async () => {
@@ -115,7 +120,47 @@ export async function GET(req: NextRequest) {
       };
     }
 
-    // ── Step B: Aggregate across all accounts ────────────
+    // ── Step B: scope to ONE account, then aggregate over that one only ──
+    // Never sum across the connection's accounts: a shared broker login keeps
+    // returning every sub-account (including ones the user removed from their
+    // Vantage list), so a connection-wide sum silently folds a deleted
+    // account's balance into the account being displayed.
+    let scoped = accounts;
+    if (snapAccountId) {
+      scoped = accounts.filter((a) => a.id === snapAccountId);
+      if (scoped.length === 0) {
+        console.warn(
+          `[snaptrade/account] requested sub-account ${snapAccountId} not present on authorization ${authorizationId} — returning empty (never another account's data)`,
+        );
+        return {
+          totalValue: 0, cash: 0, buyingPower: null,
+          invested: 0, marketValue: 0,
+          dayChange: 0, dayChangePct: 0,
+          totalPnl: 0, totalPnlPct: 0,
+          currency: 'USD',
+          accountStatus: null,
+          lastSynced: null,
+          holdingsUnavailable: false,
+          positions: [],
+          orders: [],
+        };
+      }
+    } else if (accounts.length > 1) {
+      // Legacy caller that only knows the connection. Do NOT sum: pick ONE
+      // deterministic account (prefer a tradable INVESTMENT account, then
+      // MARGIN/CASH) so no cross-account leakage is possible.
+      const tradable = accounts.filter((a) => (a as any).account_category == null || (a as any).account_category === 'INVESTMENT');
+      const pool = tradable.length > 0 ? tradable : accounts;
+      const primary =
+        pool.find((a) => (a.name || '').toUpperCase().includes('MARGIN')) ||
+        pool.find((a) => (a.name || '').toUpperCase().includes('CASH')) ||
+        pool[0];
+      console.warn(
+        `[snaptrade/account] connection ${authorizationId} exposes ${accounts.length} accounts and no snapAccountId was given — scoping to "${primary.name}" (${primary.id}); aggregating across accounts is disabled`,
+      );
+      scoped = [primary];
+    }
+
     let totalCash = 0;
     let totalBuyingPower: number | null = 0;
     let totalEquityFromSnap = 0;
@@ -125,7 +170,7 @@ export async function GET(req: NextRequest) {
     const allPositions: PositionInput[] = [];
 
     // ── Metadata pass (no network) — cheap aggregation across accounts ──
-    for (const acct of accounts) {
+    for (const acct of scoped) {
       totalEquityFromSnap += Number(acct.balance?.total?.amount || 0);
 
       const sync = acct.sync_status?.holdings?.last_successful_sync;
@@ -144,7 +189,7 @@ export async function GET(req: NextRequest) {
     // (removes the sequential per-account SnapTrade round-trips that made
     // multi-account portfolios load slowly).
     const perAccount = await Promise.allSettled(
-      accounts.map(async (acct) => {
+      scoped.map(async (acct) => {
         const [balances, rawPositions] = await Promise.all([
           snapTradeFetch<Array<{
             currency?: { code?: string };
