@@ -99,7 +99,7 @@ export default function AccountSelectScreen({
   onAddBroker,
   onDismiss,
 }: AccountSelectScreenProps) {
-  const { accounts, isLoading } = useAccounts();
+  const { accounts, isLoading, accountsError, retryAccounts } = useAccounts();
   const brokerLogos = useBrokerLogos();
   const [dontShow, setDontShow] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -149,6 +149,54 @@ export default function AccountSelectScreen({
         <p style={{ color: 'var(--v-text-muted)', fontSize: '13px', fontFamily: 'inherit' }}>
           Loading accounts…
         </p>
+      </div>
+    );
+  }
+
+  // ── Account list unavailable ──
+  // The fetch is bounded now (see AccountContext). Without this, a failed or
+  // stalled load left the splash on a spinner forever, indistinguishable from
+  // "still loading" — the reported blank splash. Offer the retry explicitly.
+  if (accountsError && accounts.length === 0) {
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 100,
+          background: bgRoot,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '14px',
+          padding: '0 32px',
+          textAlign: 'center',
+        }}
+      >
+        <p style={{ color: textPrimary, fontSize: '15px', fontWeight: 600, margin: 0 }}>
+          {accountsError}
+        </p>
+        <p style={{ color: 'var(--v-text-muted)', fontSize: '13px', margin: 0 }}>
+          Check your connection and try again.
+        </p>
+        <button
+          onClick={retryAccounts}
+          style={{
+            marginTop: '4px',
+            padding: '10px 18px',
+            borderRadius: '10px',
+            border: '1px solid var(--v-card-border)',
+            background: 'var(--v-accent)',
+            color: '#fff',
+            fontSize: '14px',
+            fontWeight: 600,
+            fontFamily: 'inherit',
+            cursor: 'pointer',
+          }}
+        >
+          Try again
+        </button>
       </div>
     );
   }

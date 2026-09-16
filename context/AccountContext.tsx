@@ -29,6 +29,15 @@ interface AccountContextValue {
    * numbers (the phantom $100k idle-cash Noticed card on a live broker screen).
    */
   isAccountResolved: boolean;
+  /**
+   * Set when the account list could not be loaded (stalled request, network
+   * failure, non-OK response). The list stays empty, so the app falls back to
+   * its legacy path — but the splash must offer a retry instead of spinning
+   * forever (the blank-splash failure).
+   */
+  accountsError: string | null;
+  /** Re-runs the account fetch (shown as "Try again" on the splash). */
+  retryAccounts: () => void;
 }
 
 const AccountContext = createContext<AccountContextValue>({
@@ -37,6 +46,8 @@ const AccountContext = createContext<AccountContextValue>({
   activeAccount: null,
   setActiveAccount: () => {},
   isLoading: true,
+  accountsError: null,
+  retryAccounts: () => {},
   // Outside the provider there is no list to resolve against, so never gate.
   isAccountResolved: true,
 });
@@ -61,30 +72,61 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   const [accounts, setAccounts] = useState<AccountEntry[]>([]);
   const [activeAccountId, setActiveAccountId] = useState<string>(loadActiveAccount);
   const [isLoading, setIsLoading] = useState(true);
+  const [accountsError, setAccountsError] = useState<string | null>(null);
 
-  // Fetch accounts on mount
+  // Fetch accounts on mount.
+  //
+  // A STALLED request used to leave `isLoading` true forever: the splash renders
+  // a full-screen "Loading accounts…" spinner while `isLoading`, so the app was
+  // simply blank with no error, no timeout and no retry — the reported
+  // blank-splash flakiness. The request is now bounded; on timeout (or failure)
+  // we settle the loading flag, surface an explicit error and let the splash
+  // offer a retry. The server's ambiguity refusal is untouched.
+  const ACCOUNTS_FETCH_TIMEOUT_MS = 10000;
+  const [attempt, setAttempt] = useState(0);
+
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort('timeout'), ACCOUNTS_FETCH_TIMEOUT_MS);
 
     async function fetchAccounts() {
       try {
-        const res = await apiGet('/api/accounts');
-        if (res.status === 401) return;
+        const res = await apiGet('/api/accounts', { signal: controller.signal });
+        if (cancelled) return;
+        if (res.status === 401) return; // session not ready — auth layer owns this
         if (res.ok) {
           const data = await res.json();
           if (!cancelled) {
             setAccounts(data.accounts || []);
+            setAccountsError(null);
           }
+          return;
         }
+        if (!cancelled) setAccountsError(`Account list unavailable (HTTP ${res.status}).`);
       } catch (err) {
-        console.error('[AccountContext] Failed to fetch accounts:', err);
+        if (cancelled) return;
+        const aborted = controller.signal.aborted;
+        console.error('[AccountContext] Failed to fetch accounts:', aborted ? 'timed out' : err);
+        setAccountsError(
+          aborted
+            ? 'Loading your accounts is taking longer than usual.'
+            : 'Could not load your accounts.',
+        );
       } finally {
+        clearTimeout(timer);
         if (!cancelled) setIsLoading(false);
       }
     }
 
     fetchAccounts();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(timer); controller.abort('unmount'); };
+  }, [attempt]);
+
+  const retryAccounts = useCallback(() => {
+    setIsLoading(true);
+    setAccountsError(null);
+    setAttempt((n) => n + 1);
   }, []);
 
   const setActiveAccount = useCallback((accountId: string) => {
@@ -181,6 +223,8 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
         setActiveAccount,
         isLoading,
         isAccountResolved,
+        accountsError,
+        retryAccounts,
       }}
     >
       {children}
