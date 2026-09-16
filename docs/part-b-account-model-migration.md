@@ -131,6 +131,31 @@ until the later swap step. What the other three tables need is genuinely new (`a
    flagged per the standing rule. Without 3b, step 4's dual-read has nothing new to read and no
    feature flip ever reaches `NOT NULL` coverage.
 
+   3b.0 **(NEW — found live on the first stamped sync, 2026-09-16 17:52Z) Legacy uniqueness
+   blocks per-account rows.** `idx_positions_live_unique` (migration `053_positions_dedupe.sql`)
+   is `UNIQUE (user_id, symbol, connection_id) WHERE is_demo = false` — **one live row per symbol
+   per *connection***, which was right when a connection meant one account. With two sub-accounts
+   on one login, the second account's insert hits
+   `duplicate key value violates unique constraint "idx_positions_live_unique"`.
+   The first stamped sync (SMA, 349 rows) succeeded; the sibling sync (ANIKET, 25 rows) failed —
+   **and the route swallowed the error and still returned 200** (delete + insert errors were
+   never checked; now surfaced → 500 + log).
+   Fix = migration `078_positions_account_unique.sql`: key becomes
+   `(user_id, connection_id, account_id, symbol) WHERE is_demo = false`. Unstamped legacy rows
+   keep `account_id NULL`; Postgres treats NULLs as distinct, so nothing about them changes.
+   No row is written or deleted by 078 — only the index is replaced. Rollback (drop + recreate the
+   connection-scoped index) requires that no stamped duplicate symbol exists, or it fails; the SQL
+   spells that out.
+
+   Two route-level consequences of stamping, both landed with 3b:
+   - **Supersede, don't duplicate:** a stamped sync deletes `account_id = <this account> OR
+     account_id IS NULL` for the connection — the NULL legacy rows ARE the mis-scoped set being
+     replaced. A plain account-scoped delete would leave them behind and every reader would
+     double-count.
+   - **Never widen on a miss:** stamping on + a *named* sub-account with no `broker_accounts`
+     row ⇒ the delete narrows to `account_id IS NULL` only. Falling back to a connection-wide
+     delete there would wipe a sibling account's already-stamped rows.
+
 4. **Dual-read.** Read paths resolve `account_id` when present, else fall back to the **current**
    connection-scoped behaviour. This is the long pole and is feature-by-feature.
    - 🔒 **Explicit contract (Em's point 1):** the fallback **calls the existing scoped functions
