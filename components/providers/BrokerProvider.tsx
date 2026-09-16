@@ -13,6 +13,7 @@ import type { BrokerAdapter, BrokerConfig, BrokerId } from '@/types/broker';
 import { brokerRegistry, setActiveBroker } from '@/lib/broker';
 import { apiGet } from '@/lib/api-client';
 import { useAccounts } from '@/context/AccountContext';
+import { connectionIdFromAccountId } from '@/lib/account-scope';
 
 interface BrokerContextValue {
   broker: BrokerAdapter | null;
@@ -60,10 +61,7 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
   // returns `ambiguous:true` (still `connected`, no preview) and the adapter's
   // setConnectionId() scopes the account/positions calls.
   const { activeAccountId } = useAccounts();
-  const activeConnectionId =
-    activeAccountId?.startsWith('snaptrade:')
-      ? activeAccountId.slice('snaptrade:'.length)
-      : null;
+  const activeConnectionId = connectionIdFromAccountId(activeAccountId);
 
   // Discover broker on mount: check /api/broker/status
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { listConnectedSnapTradeConnections } from '@/lib/snaptrade/client';
+import { connectionIdFromAccountId } from '@/lib/account-scope';
 
 /**
  * Account-scoped portfolio resolution for AI surfaces (daily brief,
@@ -22,7 +23,7 @@ export interface AccountPositions {
 }
 
 function extractConnectionId(accountId: string): string | null {
-  if (accountId.startsWith('snaptrade:')) return accountId.slice('snaptrade:'.length);
+  if (accountId.startsWith('snaptrade:')) return connectionIdFromAccountId(accountId);
   // Defensive: accept a bare UUID as the connection id
   if (/^[0-9a-fA-F-]{36}$/.test(accountId)) return accountId;
   return null;

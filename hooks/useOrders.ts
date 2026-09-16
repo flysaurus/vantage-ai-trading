@@ -12,6 +12,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useAccounts } from '@/context/AccountContext';
 import { syncFilledOrders, getTrades } from '@/lib/supabase/trades';
 import { isWorkingStatus } from '@/lib/order-format';
+import { connectionIdFromAccountId } from '@/lib/account-scope';
 import type { Order } from '@/types';
 import type { OrderStatus } from '@/types/broker';
 
@@ -42,9 +43,7 @@ export function useOrders() {
   const isShowingDemo = activeAccount?.isDemo ?? false;
 
   // broker_connections.id for the active live account ('' for demo)
-  const liveConnectionId = activeAccountId?.startsWith('snaptrade:')
-    ? activeAccountId.slice('snaptrade:'.length)
-    : null;
+  const liveConnectionId = connectionIdFromAccountId(activeAccountId);
 
   // Map broker OrderStatus to app OrderStatus
   const statusMap: Record<string, Order['status']> = {

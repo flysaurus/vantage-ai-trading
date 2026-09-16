@@ -1189,6 +1189,26 @@ export class SnapTradeBroker implements BrokerEngine {
     };
   }
 
+  // ── Sub-accounts (NO merging) ─────────────────────────────
+  // One broker connection can expose several SnapTrade sub-accounts. The
+  // account picker needs them enumerated separately, each with its OWN
+  // balances — never summed. Returns [] on a failed fetch so callers can fall
+  // back to the stored snapshot.
+  async listSubAccounts(): Promise<Array<{ id: string; name: string; totalValue: number; cash: number; buyingPower: number | null }>> {
+    try {
+      const accounts = await this._fetchAccounts();
+      return accounts.map((a) => ({
+        id: a.id,
+        name: a.name || 'Brokerage account',
+        totalValue: a.total_value ?? 0,
+        cash: a.cash ?? 0,
+        buyingPower: a.buying_power ?? null,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
   private async _fetchAccounts(): Promise<SnapAccount[]> {
     const raw = await snapTradeFetch<any[]>(
       `/authorizations/${this.connectionId}/accounts`,

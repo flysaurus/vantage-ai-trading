@@ -2,14 +2,23 @@
 // Shared helpers for threading account identity through data writes/reads.
 //
 // The app's canonical account id (AccountContext.activeAccountId) is one of:
-//   - 'demo'                          → the demo / paper portfolio
-//   - 'snaptrade:<broker_connections.id>' → a live/paper broker account
+//   - 'demo'                                     → the demo / paper portfolio
+//   - 'snaptrade:<connectionId>'                 → a live/paper broker connection
+//   - 'snaptrade:<connectionId>:<snapAccountId>' → ONE SnapTrade sub-account
+//
+// A single broker connection can expose SEVERAL sub-accounts (e.g. Fidelity
+// "Taxable SMA" + "ANIKET - YOUTH"). Those are distinct accounts and must be
+// enumerated/switched separately, with NO balance merging. The 3-part id is the
+// distinct-identity form; the 2-part form is the legacy connection-level id
+// (still accepted on read so stored values / older rows keep working).
 //
 // Data tables that represent account-specific state (positions, orders,
 // trade_history, position_lots, strategies, user_baskets, chat_messages,
 // daily_briefs, weekly_snapshots) must carry BOTH user_id AND one of:
 //   - connection_id (broker_connections.id) for live/paper rows, OR
 //   - is_demo = true for demo rows.
+// NOTE: those tables are still keyed at CONNECTION granularity; per-sub-account
+// data separation (a `snaptrade_account_id` column) is a follow-up migration.
 //
 // This module is the single place that converts between the human-facing
 // account id and the DB scope tuple, so the mapping can never drift.
@@ -20,6 +29,8 @@ export interface AccountScope {
   isDemo: boolean;
   /** broker_connections.id when !isDemo, otherwise null. */
   connectionId: string | null;
+  /** SnapTrade sub-account id when the account id named a specific one, else null/absent. */
+  snapAccountId?: string | null;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -32,19 +43,42 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export function parseAccountScope(accountId: string | null | undefined): AccountScope | null {
   if (!accountId || typeof accountId !== 'string') return null;
   const id = accountId.trim();
-  if (id === 'demo') return { isDemo: true, connectionId: null };
+  if (id === 'demo') return { isDemo: true, connectionId: null, snapAccountId: null };
   if (id.toLowerCase().startsWith('snaptrade:')) {
-    const connId = id.slice('snaptrade:'.length);
-    return UUID_RE.test(connId) ? { isDemo: false, connectionId: connId } : null;
+    const rest = id.slice('snaptrade:'.length);
+    // 3-part form names one sub-account: <connectionId>:<snapAccountId>.
+    const [connId, snapAcctId] = rest.split(':');
+    if (!UUID_RE.test(connId)) return null;
+    return {
+      isDemo: false,
+      connectionId: connId,
+      snapAccountId: snapAcctId && snapAcctId.length > 0 ? snapAcctId : null,
+    };
   }
   // Accept a bare connection UUID (some callers pass connectionId directly).
-  if (UUID_RE.test(id)) return { isDemo: false, connectionId: id };
+  if (UUID_RE.test(id)) return { isDemo: false, connectionId: id, snapAccountId: null };
   return null;
+}
+
+/**
+ * Extract just the broker_connections.id from any canonical account id form
+ * ('demo' → null, 'snaptrade:<conn>' → conn, 'snaptrade:<conn>:<acct>' → conn,
+ * bare UUID → UUID). Use this instead of `id.slice('snaptrade:'.length)`, which
+ * silently returns '<conn>:<acct>' for the 3-part sub-account form.
+ */
+export function connectionIdFromAccountId(accountId: string | null | undefined): string | null {
+  return parseAccountScope(accountId)?.connectionId ?? null;
+}
+
+/** Build a distinct per-sub-account canonical id for a broker connection. */
+export function subAccountId(connectionId: string, snapAccountId: string | null | undefined): string {
+  return snapAccountId ? `snaptrade:${connectionId}:${snapAccountId}` : `snaptrade:${connectionId}`;
 }
 
 /** Inverse of parseAccountScope — build the canonical account id string. */
 export function accountIdFromScope(scope: AccountScope): string {
-  return scope.isDemo ? 'demo' : `snaptrade:${scope.connectionId}`;
+  if (scope.isDemo) return 'demo';
+  return subAccountId(scope.connectionId as string, scope.snapAccountId);
 }
 
 /**

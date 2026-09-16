@@ -25,6 +25,7 @@ import { useAccounts } from '@/context/AccountContext';
 import { useOrderStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
+import { connectionIdFromAccountId, parseAccountScope } from '@/lib/account-scope';
 import { availableCash, sumOpenReservedAmount } from '@/lib/available-cash';
 import { selectWorkingBasketLegs } from '@/lib/basket-cancel';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
@@ -606,10 +607,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         const fresh = !silent;
 
         // Scope the adapter to the ACTIVE connection (2+ SnapTrade brokers).
-        const connectionId = activeAccountId?.startsWith('snaptrade:')
-          ? activeAccountId.slice('snaptrade:'.length)
-          : null;
+        const connectionId = connectionIdFromAccountId(activeAccountId);
         broker.setConnectionId?.(connectionId);
+        // …and to the specific SUB-ACCOUNT inside that connection. A shared
+        // broker login (e.g. Fidelity → "Taxable SMA" + "ANIKET - YOUTH")
+        // returns several accounts; without this the server can only guess,
+        // and it previously summed all of them into one displayed balance.
+        broker.setSnapAccountId?.(parseAccountScope(activeAccountId)?.snapAccountId ?? null);
 
         const ba = await broker.getAccount(fresh);
         const positions =

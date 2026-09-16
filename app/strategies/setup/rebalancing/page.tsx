@@ -9,6 +9,7 @@ import { usePortfolioStore, useTabStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getStyleContent } from '@/lib/content/investor-styles';
 import { getDemoSymbols, getDemoAccount, DEMO_PORTFOLIOS } from '@/lib/demo-data';
+import { connectionIdFromAccountId } from '@/lib/account-scope';
 import type { AccountSummary, Position } from '@/types';
 import { SymbolSearch } from '@/components/trade/SymbolSearch';
 import { returnToApp } from '@/lib/nav-back';
@@ -170,7 +171,7 @@ export default function RebalancingPage() {
       let activeConnId = '';
       try {
         const stored = localStorage.getItem('vantage:activeAccount') || '';
-        activeConnId = stored.startsWith('snaptrade:') ? stored.slice('snaptrade:'.length) : '';
+        activeConnId = connectionIdFromAccountId(stored) || '';
       } catch { /* ignore — unscoped fallback */ }
 apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(activeConnId)}` : '/api/broker/status')
         .then(r => r.ok ? r.json() : null)
@@ -213,9 +214,8 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
             list.find((a) => a && !a.isDemo);
           if (live) {
             const connId = live.connectionId
-              || (typeof live.id === 'string' && live.id.startsWith('snaptrade:')
-                ? live.id.slice('snaptrade:'.length)
-                : '');
+              || connectionIdFromAccountId(live.id)
+              || '';
             const res = await apiGet(
               connId
                 ? `/api/broker/snaptrade/account?connectionId=${encodeURIComponent(connId)}`
@@ -858,7 +858,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
     // later write can't change which account this plan belongs to.
     let stored = '';
     try { stored = localStorage.getItem('vantage:activeAccount') || ''; } catch { /* ignore */ }
-    const stripped = stored.startsWith('snaptrade:') ? stored.slice('snaptrade:'.length) : stored;
+    const stripped = connectionIdFromAccountId(stored) || stored;
     const p = apiGet('/api/accounts')
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
@@ -866,7 +866,7 @@ apiGet(activeConnId ? `/api/broker/status?connectionId=${encodeURIComponent(acti
         if (list.length === 0) return null;
         const match =
           (stored ? list.find(a => a.id === stored) : null) ||
-          list.find(a => a.id === `snaptrade:${stripped}`) ||
+          list.find(a => a.connectionId === stripped) ||
           list.find(a => a.connectionId && a.connectionId === stripped) ||
           (stripped && stripped !== 'demo' ? list.find(a => !a.isDemo) : null) ||
           list.find(a => a.isDemo) ||

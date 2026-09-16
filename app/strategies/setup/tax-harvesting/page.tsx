@@ -9,6 +9,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { getDemoAccount } from '@/lib/demo-data';
 import { returnToApp } from '@/lib/nav-back';
 import { AccountProvider } from '@/context/AccountContext';
+import { connectionIdFromAccountId } from '@/lib/account-scope';
 import TradeTicket from '@/components/portfolio/TradeTicket';
 import TaxHarvestDisclosureGate from '@/components/disclosure/TaxHarvestDisclosureGate';
 import { ExpandableRow } from '@/components/shared/ExpandableRow';
@@ -305,7 +306,7 @@ function TaxHarvestingPageInner() {
                 ? live.environment
                 : 'live';
               if (typeof live.id === 'string' && live.id.startsWith('snaptrade:')) {
-                connectionId = live.id.slice('snaptrade:'.length);
+                connectionId = connectionIdFromAccountId(live.id) || '';
               }
             }
           }
