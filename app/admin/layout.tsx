@@ -76,6 +76,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         }}>
           Users
         </a>
+        <a href="/admin/test-cases" style={{
+          color: '#58a6ff',
+          textDecoration: 'none',
+          fontSize: '0.875rem',
+          padding: '0.25rem 0.5rem',
+          borderRadius: 4,
+        }}>
+          Test Cases
+        </a>
+        <a href="/admin/coverage" style={{
+          color: '#58a6ff',
+          textDecoration: 'none',
+          fontSize: '0.875rem',
+          padding: '0.25rem 0.5rem',
+          borderRadius: 4,
+        }}>
+          Coverage
+        </a>
       </nav>
       {/* Scrollable content area */}
       <main style={{
