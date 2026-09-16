@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createClient } from '@supabase/supabase-js';
+import { purgeConnectionDerivedData } from '@/lib/broker/purge-connection-data';
 
 export async function POST(_req: NextRequest) {
   const { authUser, authError } = await requireAuth();
@@ -16,6 +17,18 @@ export async function POST(_req: NextRequest) {
   );
 
   try {
+    // Read the connection ids BEFORE deleting, then purge every derived row
+    // tied to them (noticed cards, cached insights, positions, orders, lots,
+    // briefs, chat history…). Previously only the broker_connections row was
+    // removed and all of this lingered — the source of "stale card from a
+    // deleted account".
+    const { data: conns } = await supabase
+      .from('broker_connections')
+      .select('id')
+      .eq('user_id', authUser.id);
+    const connectionIds = (conns || []).map((c: any) => c.id);
+    await purgeConnectionDerivedData(supabase, authUser.id, connectionIds);
+
     // Clear broker_connections
     await supabase
       .from('broker_connections')
