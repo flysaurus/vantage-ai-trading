@@ -48,6 +48,13 @@ export async function syncFilledOrders(
     // server has a copy (whether it inserted or reported `_existing`).
     const key = `${userId}:${order.id}`;
     if (syncedOrderIds.has(key)) continue;
+    // Claim the key BEFORE awaiting. Two refresh passes can overlap (the hook is
+    // mounted by more than one component and a poll can land mid-refresh); when
+    // the mark was added after the await, both passes saw "not synced" and
+    // POSTed the same order — measured live: 36 of 64 orders were posted twice
+    // per burst. Claiming first makes the check-then-act atomic (single-threaded
+    // JS); a failed create releases the claim so a later attempt can retry.
+    syncedOrderIds.add(key);
     const result = await createTrade({
       userId,
       symbol: order.symbol,
@@ -61,8 +68,8 @@ export async function syncFilledOrders(
       // Without it, a shared login (2+ sub-accounts) leaves the row unattributed.
       snapAccountId: snapAccountId ?? null,
     });
-    if (result) syncedOrderIds.add(key);
-    if (result && !result._existing) synced++;
+    if (!result) { syncedOrderIds.delete(key); continue; }
+    if (!result._existing) synced++;
   }
   return synced;
 }

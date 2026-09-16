@@ -66,6 +66,32 @@ describe('syncFilledOrders', () => {
     expect(bodies.length).toBe(1);
   });
 
+  it('two overlapping sync passes post each order once (claim-before-await)', async () => {
+    const list = [filled('c1'), filled('c2', 'MSFT'), filled('c3', 'SPY')];
+    // Slow responses so both passes are in flight simultaneously — this is the
+    // race that double-posted every order on prod.
+    vi.stubGlobal('fetch', async (_url: string, init: any) => {
+      if (init?.body) bodies.push(JSON.parse(init.body));
+      await new Promise((r) => setTimeout(r, 25));
+      return { ok: true, json: async () => ({ id: 'th-1', _existing: false }) } as any;
+    });
+    await Promise.all([syncFilledOrders('u1', list), syncFilledOrders('u1', list)]);
+    expect(bodies.length).toBe(3);
+  });
+
+  it('releases the claim when a create fails so a later poll can retry', async () => {
+    let fail = true;
+    vi.stubGlobal('fetch', async (_url: string, init: any) => {
+      if (init?.body) bodies.push(JSON.parse(init.body));
+      if (fail) return { ok: false, status: 500, text: async () => 'boom' } as any;
+      return { ok: true, json: async () => ({ id: 'th-1', _existing: false }) } as any;
+    });
+    expect(await syncFilledOrders('u1', [filled('r1')])).toBe(0);
+    fail = false;
+    expect(await syncFilledOrders('u1', [filled('r1')])).toBe(1);
+    expect(bodies.length).toBe(2);
+  });
+
   it('createTrade surfaces a failed create as null', async () => {
     vi.stubGlobal('fetch', async () => ({ ok: false, status: 500, text: async () => 'boom' }) as any);
     const r = await createTrade({ userId: 'u1', symbol: 'KO', action: 'buy', quantity: 1, price: 1 });
