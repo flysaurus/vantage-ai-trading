@@ -117,9 +117,12 @@ export async function buildChartCtx(input: ChartCtxInput): Promise<ChartCtx> {
     };
   });
 
-  const cash = Math.max(0, num(snapshot?.cash));
+  // Cash is a measurement, not a default: absent/non-numeric ⇒ unknown (null),
+  // never 0. `cashKnown` rides along so cash-derived percentages can go unknown.
+  const cashKnown = typeof snapshot?.cash === 'number' && Number.isFinite(snapshot.cash);
+  const cash = cashKnown ? Math.max(0, num(snapshot?.cash)) : null;
   const invested = positions.reduce((s, p) => s + (p.marketValue || 0), 0);
-  const equity = num(snapshot?.equity) > 0 ? num(snapshot?.equity) : invested + cash;
+  const equity = num(snapshot?.equity) > 0 ? num(snapshot?.equity) : invested + (cash ?? 0);
 
   const connectionId =
     input.isDemo || !input.userId
@@ -129,6 +132,7 @@ export async function buildChartCtx(input: ChartCtxInput): Promise<ChartCtx> {
   return {
     positions,
     cash,
+    cashKnown,
     equity,
     totalPnl: positions.reduce((s, p) => s + (typeof p.unrealizedPnl === 'number' ? p.unrealizedPnl : 0), 0),
     totalPnlPercent: deriveTotalPnlPercent(positions),

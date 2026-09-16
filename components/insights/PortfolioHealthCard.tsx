@@ -12,8 +12,10 @@ import { computePortfolioHealth } from '@/lib/insights/health-score';
 
 interface Props {
   positions: Position[];
-  cash: number;
-  totalPnlPercent: number;
+  /** `null` = the broker did not report cash. Never treated as 0. */
+  cash: number | null;
+  /** `null` = return unknown. Never treated as 0%. */
+  totalPnlPercent: number | null;
   riskTolerance?: string | null;
   /** Account data has not resolved yet — render a skeleton rather than a
    *  score computed from an EMPTY portfolio (which would read as a real
@@ -57,6 +59,7 @@ export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTole
       data-health-score={pending || failed ? undefined : health.score}
       data-pending={pending ? 'true' : undefined}
       data-failed={failed ? 'true' : undefined}
+      data-partial={!pending && !failed && health.partial ? 'true' : undefined}
       style={{
         margin: '24px 20px 0',
         background: 'var(--v-card)',
@@ -156,22 +159,45 @@ export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTole
         >
           {health.grade.toUpperCase()}
         </span>
+        {health.partial && (
+          <span
+            data-testid="health-partial"
+            title={`Computed without ${health.unknownInputs.join(' and ')} — that data was unavailable.`}
+            style={{
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: '0.06em',
+              color: 'var(--v-text-muted)',
+              border: '1px solid var(--v-card-border)',
+              borderRadius: 6,
+              padding: '1px 5px',
+            }}
+          >
+            PARTIAL
+          </span>
+        )}
       </div>
 
       {/* three sub-scores */}
       <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {SUB_LABELS.map(({ key, label }) => {
           const v = health.subScores[key];
+          // Unknown sub-score renders as "—" with an empty bar. It is never
+          // drawn as a mid-range 50 that would read as a measured value.
           return (
             <div key={key}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <span style={{ fontSize: 12.5, color: 'var(--v-text-secondary)' }}>{label}</span>
                 <span
                   data-testid={`health-subscore-${key}`}
-                  data-value={v}
-                  style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--v-text-primary)' }}
+                  data-value={v ?? 'unknown'}
+                  style={{
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    color: v === null ? 'var(--v-text-muted)' : 'var(--v-text-primary)',
+                  }}
                 >
-                  {v}
+                  {v === null ? '—' : v}
                 </span>
               </div>
               <div
@@ -183,14 +209,16 @@ export function PortfolioHealthCard({ positions, cash, totalPnlPercent, riskTole
                   overflow: 'hidden',
                 }}
               >
-                <div
-                  style={{
-                    width: `${v}%`,
-                    height: '100%',
-                    borderRadius: 999,
-                    background: v >= 70 ? 'var(--v-gain)' : v >= 45 ? 'var(--v-accent)' : 'var(--v-loss)',
-                  }}
-                />
+                {v !== null && (
+                  <div
+                    style={{
+                      width: `${v}%`,
+                      height: '100%',
+                      borderRadius: 999,
+                      background: v >= 70 ? 'var(--v-gain)' : v >= 45 ? 'var(--v-accent)' : 'var(--v-loss)',
+                    }}
+                  />
+                )}
               </div>
             </div>
           );

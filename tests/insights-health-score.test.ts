@@ -49,7 +49,10 @@ describe('portfolio health — documented weighting', () => {
       riskTolerance: 'Aggressive',
     });
     const { diversification, riskBalance, returns } = r.subScores;
-    expect(r.score).toBe(Math.round(0.4 * diversification + 0.35 * riskBalance + 0.25 * returns));
+    expect(returns).not.toBeNull();
+    expect(r.score).toBe(
+      Math.round(0.4 * diversification + 0.35 * riskBalance + 0.25 * (returns as number)),
+    );
   });
 
   it('returns sub-score maps 0% → 50, +20% → 100, −20% → 0', () => {
@@ -172,5 +175,55 @@ describe('portfolio health — guards', () => {
     expect(sectorBeta('Financial Services')).toBe(1.1);
     expect(sectorBeta('Consumer Staples')).toBe(0.6);
     expect(sectorBeta('Information Technology')).toBe(1.25);
+  });
+});
+
+describe('portfolio health — unknown inputs are reported, never fabricated', () => {
+  const positions = [pos('AAPL', 60000, 'technology'), pos('XOM', 40000, 'energy')];
+
+  it('null cash ⇒ no cash penalty, cashWeightPct null, flagged partial', () => {
+    const unknown = computePortfolioHealth({ positions, cash: null, totalPnlPercent: 10, riskTolerance: 'moderate' });
+    const zero = computePortfolioHealth({ positions, cash: 0, totalPnlPercent: 10, riskTolerance: 'moderate' });
+    // 0 cash and UNKNOWN cash must not be interchangeable.
+    expect(unknown.breakdown.cashWeightPct).toBeNull();
+    expect(zero.breakdown.cashWeightPct).toBe(0);
+    // Cash 0 carries no penalty either, so risk balance matches — but only the
+    // known case is allowed to claim it measured a cash weight.
+    expect(unknown.subScores.riskBalance).toBe(zero.subScores.riskBalance);
+    expect(unknown.partial).toBe(true);
+    expect(unknown.unknownInputs).toEqual(['cash']);
+    expect(unknown.explainPrompt).toContain('cash unknown');
+    expect(unknown.supportingLine).toContain('Cash data was unavailable');
+  });
+
+  it('null return ⇒ returns sub-score null and weights renormalise over the rest', () => {
+    const r = computePortfolioHealth({ positions, cash: 5000, totalPnlPercent: null, riskTolerance: 'moderate' });
+    expect(r.subScores.returns).toBeNull();
+    expect(r.partial).toBe(true);
+    expect(r.unknownInputs).toEqual(['return']);
+    const { diversification, riskBalance } = r.subScores;
+    const renorm = Math.round((0.4 * diversification + 0.35 * riskBalance) / 0.75);
+    expect(r.score).toBe(renorm);
+    // Never the fabricated neutral 50 that the old default would have produced.
+    expect(r.explainPrompt).toContain('Returns unknown');
+    expect(r.supportingLine).not.toContain('returns is the weakest');
+  });
+
+  it('both unknown ⇒ still scores what it can, and says so', () => {
+    const r = computePortfolioHealth({ positions, cash: null, totalPnlPercent: null, riskTolerance: 'moderate' });
+    expect(r.partial).toBe(true);
+    expect(r.unknownInputs).toEqual(['cash', 'return']);
+    expect(r.subScores.returns).toBeNull();
+    expect(r.score).toBe(
+      Math.round((0.4 * r.subScores.diversification + 0.35 * r.subScores.riskBalance) / 0.75),
+    );
+    expect(r.explainPrompt).toContain('this score is partial');
+  });
+
+  it('a fully-known portfolio is NOT flagged partial (no regression on the normal path)', () => {
+    const r = computePortfolioHealth({ positions, cash: 5000, totalPnlPercent: 12, riskTolerance: 'moderate' });
+    expect(r.partial).toBe(false);
+    expect(r.unknownInputs).toEqual([]);
+    expect(r.subScores.returns).not.toBeNull();
   });
 });

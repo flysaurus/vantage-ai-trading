@@ -91,7 +91,14 @@ describe('PostgREST schema guard', () => {
       const src = readFileSync(f, 'utf8');
       for (const chain of chainsFor(src, 'broker_accounts')) {
         if (chain.includes('insert(') || chain.includes('upsert(') || chain.includes('delete(')) continue;
-        if (!/\.eq\(\s*'connection_id'/.test(chain) && !/\.eq\(\s*'id'/.test(chain) && !/\.in\(\s*'id'/.test(chain)) {
+        const scoped =
+          /\.eq\(\s*'connection_id'/.test(chain) ||
+          // A bulk read scoped to the caller's OWN connection ids (already
+          // filtered by user_id on broker_connections) is equally safe.
+          /\.in\(\s*'connection_id'/.test(chain) ||
+          /\.eq\(\s*'id'/.test(chain) ||
+          /\.in\(\s*'id'/.test(chain);
+        if (!scoped) {
           unscoped.push(f);
         }
       }

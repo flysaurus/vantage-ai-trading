@@ -628,8 +628,10 @@ export function InsightsTab() {
           exactly the same reason the balance used to flash $0.00. */}
       <PortfolioHealthCard
         positions={positions}
-        cash={accountData.cash || 0}
-        totalPnlPercent={accountData.totalPnlPercent || 0}
+        // Pass through whatever we have — null propagates as "unknown" and the
+        // scorer flags the result partial instead of scoring a fabricated 0.
+        cash={typeof accountData.cash === 'number' ? accountData.cash : null}
+        totalPnlPercent={typeof accountData.totalPnlPercent === 'number' ? accountData.totalPnlPercent : null}
         riskTolerance={riskTolerance}
         pending={accountState === 'pending'}
         failed={accountState === 'unavailable'}

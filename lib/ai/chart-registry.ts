@@ -58,7 +58,14 @@ export interface ChartPosition {
  */
 export interface ChartCtx {
   positions: ChartPosition[];
-  cash: number;
+  /** Settled cash. `null` = the payload carried no cash figure (unknown). */
+  cash: number | null;
+  /**
+   * False when `snapshot.cash` was absent/non-numeric. Charts that divide by a
+   * cash-derived total must then report unknown instead of assuming 0 — a
+   * fabricated 0 reads as "no cash" and, worse, "100% invested".
+   */
+  cashKnown?: boolean;
   equity: number;
   /** Total unrealised P&L; derived from positions when omitted. */
   totalPnl?: number;
@@ -167,8 +174,12 @@ function healthFor(ctx: ChartCtx) {
       marketValue: p.marketValue,
       sector: p.sector ?? null,
     })),
-    cash: ctx.cash || 0,
-    totalPnlPercent: ctx.totalPnlPercent || 0,
+    // Pass unknowns through as unknown; the scorer flags the result partial
+    // rather than scoring a fabricated "cash 0 / return 0".
+    cash: ctx.cashKnown === false ? null : ctx.cash,
+    totalPnlPercent: typeof ctx.totalPnlPercent === 'number' && Number.isFinite(ctx.totalPnlPercent)
+      ? ctx.totalPnlPercent
+      : null,
     riskTolerance: ctx.riskTolerance,
   });
 }
@@ -225,12 +236,14 @@ export const CHART_KEYS: Record<string, ChartKeyEntry> = {
               display: fmtPctLabel(h.subScores.riskBalance),
               note: `beta ${h.breakdown.beta.toFixed(2)}`,
             },
-            {
-              label: 'Returns',
-              value: h.subScores.returns,
-              display: fmtPctLabel(h.subScores.returns),
-              note: fmtPct(ctx.totalPnlPercent || 0),
-            },
+            ...(h.subScores.returns === null
+              ? []
+              : [{
+                  label: 'Returns',
+                  value: h.subScores.returns,
+                  display: fmtPctLabel(h.subScores.returns),
+                  note: fmtPct(ctx.totalPnlPercent ?? 0),
+                }]),
           ],
         },
         subtitle: `Overall ${h.score}/100 — ${h.grade}`,
@@ -637,10 +650,11 @@ export const CHART_KEYS: Record<string, ChartKeyEntry> = {
     resolve: async (ctx) => {
       if (ctx.holdingsUnavailable || investable(ctx).length === 0) return null;
       const h = healthFor(ctx);
+      // A component we could not measure is not a candidate for "weakest".
       const entries: Array<[string, number]> = [
         ['Diversification', h.subScores.diversification],
         ['Risk balance', h.subScores.riskBalance],
-        ['Returns', h.subScores.returns],
+        ...(h.subScores.returns === null ? [] : ([['Returns', h.subScores.returns]] as Array<[string, number]>)),
       ];
       const [name, score] = entries.reduce((worst, cur) => (cur[1] < worst[1] ? cur : worst));
       return stat(name, `${score}/100`, 'weakest health component');
