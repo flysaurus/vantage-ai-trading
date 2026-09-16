@@ -1,4 +1,5 @@
 import { parseAccountScope, applyAccountScopeFilter } from '@/lib/account-scope';
+import { resolveLiveAccountCash } from '@/lib/broker/live-account-cash';
 import { resolveBrokerAccountReadFilter } from '@/lib/broker/account-id';
 import type { NoticedRuleInput, PortfolioPosition } from './engine';
 
@@ -105,24 +106,14 @@ export async function resolveBrokerNoticedInput(
   // sub-accounts return `cash: null`. Same failure class as every other leak
   // this migration closed — except it failed UNSAFE (real-looking wrong number)
   // instead of safely ("unknown"). Do not reintroduce it.
-  let cash: number | null = null;
-  try {
-    const { data: conn } = await supabase
-      .from('broker_connections')
-      .select('snaptrade_accounts')
-      .eq('user_id', userId)
-      .eq('id', scope.connectionId)
-      .maybeSingle();
-    const snapAccounts = (conn?.snaptrade_accounts as any[]) || [];
-    const cashAccounts = readFilter.filterAccountId
-      ? snapAccounts.filter((a: any) => a?.id === scope.snapAccountId)
-      : snapAccounts;
-    const values = cashAccounts.map((a: any) => (a?.cash == null ? null : Number(a.cash)));
-    // Every account in scope must report cash; one null makes the sum a guess.
-    if (values.length > 0 && values.every((v) => v != null)) {
-      cash = (values as number[]).reduce((sum, v) => sum + v, 0);
-    }
-  } catch { /* unknown */ }
+  // ⚠️ Source changed 2026-09-16: `broker_connections.snaptrade_accounts` is a
+  // CONNECT-TIME snapshot (written once in app/api/connections/callback) and it
+  // was never refreshed — it fed Alpaca's July cash ($100,865.95) to this
+  // pipeline as "today" while the account held $468.81. A stale number rendered
+  // as current fails the same way a guessed one does, so cash now comes from
+  // the live balances endpoint and is otherwise UNKNOWN (never merged, never
+  // estimated). See lib/broker/live-account-cash.ts.
+  const cash = await resolveLiveAccountCash(userId, scope.connectionId, scope.snapAccountId ?? null);
   if (cash == null) {
     console.warn(`[noticed] cash unavailable for ${accountId} — reporting unknown (not estimated)`);
   }

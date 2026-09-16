@@ -23,6 +23,7 @@ import type { NoticedRuleInput } from '@/lib/noticed/engine';
 import { runNoticedPipeline } from '@/lib/noticed/engine';
 import { parseAccountScope, applyAccountScopeFilter } from '@/lib/account-scope';
 import { resolveBrokerAccountReadFilter } from '@/lib/broker/account-id';
+import { resolveLiveAccountCash } from '@/lib/broker/live-account-cash';
 
 // ── Auth ──
 const ALLOWED_SECRETS = [
@@ -309,20 +310,11 @@ async function processAccount(
         .maybeSingle();
       if (demoState?.cash_balance != null) cash = Number(demoState.cash_balance);
     } else if (scope?.connectionId) {
-      const { data: conn } = await supabase
-        .from('broker_connections')
-        .select('snaptrade_accounts')
-        .eq('user_id', userId)
-        .eq('id', scope.connectionId)
-        .maybeSingle();
-      const snapAccounts = (conn?.snaptrade_accounts as any[]) || [];
-      const cashAccounts = readFilter.filterAccountId
-        ? snapAccounts.filter((a: any) => a?.id === scope.snapAccountId)
-        : snapAccounts;
-      const values = cashAccounts.map((a: any) => (a?.cash == null ? null : Number(a.cash)));
-      if (values.length > 0 && values.every((v) => v != null)) {
-        cash = (values as number[]).reduce((sum, v) => sum + v, 0);
-      }
+      // Live balances, not the connect-time `snaptrade_accounts` snapshot — the
+      // snapshot was months stale (it still held Alpaca's July cash). Unknown
+      // when it cannot be established; never merged across sub-accounts.
+      // See lib/broker/live-account-cash.ts.
+      cash = await resolveLiveAccountCash(userId, scope.connectionId, scope.snapAccountId ?? null);
     }
   } catch { /* unknown */ }
   if (cash == null) {

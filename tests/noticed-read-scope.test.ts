@@ -7,8 +7,20 @@
 //   • shared login with no resolvable sub-account scope → null (quiet), never
 //     a merged card
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Cash is now resolved from the LIVE balances endpoint
+// (`lib/broker/live-account-cash.ts`), not from the connect-time
+// `snaptrade_accounts` snapshot — the snapshot carried Alpaca's July cash
+// ($100,865.95) as if it were today's. Stub the live resolver here and drive it
+// per test; anything it cannot establish is UNKNOWN, never a sibling sum.
+vi.mock('@/lib/broker/live-account-cash', () => ({ resolveLiveAccountCash: vi.fn() }));
+
 import { resolveBrokerNoticedInput } from '@/lib/noticed/resolve-input';
+import { resolveLiveAccountCash } from '@/lib/broker/live-account-cash';
+
+const liveCash = resolveLiveAccountCash as unknown as ReturnType<typeof vi.fn>;
+beforeEach(() => { liveCash.mockReset(); });
 
 const CONN = '0bf72384-7d1c-4fcb-b5bd-7ca6fe21debc';
 const SMA = '47b6f4e3-419e-43fc-ae3d-b67ea579f57d';
@@ -72,6 +84,8 @@ describe('resolveBrokerNoticedInput — shared login (2 registered accounts)', (
   });
 
   it('uses ONLY the scoped sub-account cash (never sums siblings)', async () => {
+    liveCash.mockImplementation(async (_u: string, _c: string, snap: string | null) =>
+      snap === SMA ? 111.11 : snap === YOUTH ? 222.22 : null);
     const mk = (scope: string) => makeSupabase({
       broker_accounts: { many: TWO },
       positions: { many: POSITIONS },
@@ -85,6 +99,24 @@ describe('resolveBrokerNoticedInput — shared login (2 registered accounts)', (
     const youth = await resolveBrokerNoticedInput(b.client, USER, `snaptrade:${CONN}:${YOUTH}`);
     expect(sma!.account.cash).toBeCloseTo(111.11, 2);
     expect(youth!.account.cash).toBeCloseTo(222.22, 2);
+    // …and the resolver was asked for exactly one account each time.
+    expect(liveCash).toHaveBeenCalledWith(USER, CONN, SMA);
+    expect(liveCash).toHaveBeenCalledWith(USER, CONN, YOUTH);
+  });
+
+  it('IGNORES the connect-time snapshot cash (it is months stale)', async () => {
+    // Snapshot claims 111.11 / 222.22; live says something else entirely.
+    liveCash.mockResolvedValue(4.99);
+    const { client } = makeSupabase({
+      broker_accounts: { many: TWO },
+      positions: { many: POSITIONS },
+      broker_connections: FIDELITY_CONN,
+      users: { one: { day_pnl: 0 } },
+      orders: { one: null },
+    });
+    const out = await resolveBrokerNoticedInput(client, USER, `snaptrade:${CONN}:${SMA}`);
+    expect(out!.account.cash).toBeCloseTo(4.99, 2);
+    expect(out!.account.cash).not.toBeCloseTo(111.11, 2);
   });
 
   it('scopes the "days since last trade" orders read to the sub-account', async () => {
@@ -132,6 +164,7 @@ describe('resolveBrokerNoticedInput — cash is never estimated (killed 25% fall
       users: { one: { day_pnl: 0 } },
       orders: { one: null },
     });
+    liveCash.mockResolvedValue(null);
     const out = await resolveBrokerNoticedInput(client, USER, `snaptrade:${CONN}:${YOUTH}`);
     expect(out!.account.cash).toBeNull();
     expect(out!.account.cash).not.toBe(Math.round(1000 * 0.25));
@@ -140,6 +173,7 @@ describe('resolveBrokerNoticedInput — cash is never estimated (killed 25% fall
   });
 
   it('an unmatchable sub-account scope also yields unknown cash (never a sibling sum)', async () => {
+    liveCash.mockResolvedValue(null);
     const { client } = makeSupabase({
       broker_accounts: { many: TWO },
       positions: { many: POSITIONS },
@@ -183,7 +217,9 @@ describe('noticed engine — unknown cash fails safe', () => {
 });
 
 describe('resolveBrokerNoticedInput — single-account connection (unchanged)', () => {
-  it('keeps the connection-scoped query, no account filter, cash still summed', async () => {
+  it('keeps the connection-scoped query, no account filter, and does NOT use the stale snapshot cash', async () => {
+    // The snapshot's 100865.95 is Alpaca's cash from connection time. Live is 468.81.
+    liveCash.mockResolvedValue(468.81);
     const { client, calls } = makeSupabase({
       broker_accounts: { many: [{ id: 'alpaca-row', snaptrade_account_id: 'alp' }] },
       positions: { many: POSITIONS },
@@ -196,6 +232,7 @@ describe('resolveBrokerNoticedInput — single-account connection (unchanged)', 
     );
     expect(out).not.toBeNull();
     expect(filtersFor(calls, 'positions').some((f) => f[0] === 'account_id')).toBe(false);
-    expect(out!.account.cash).toBeCloseTo(100865.95, 2);
+    expect(out!.account.cash).toBeCloseTo(468.81, 2);
+    expect(out!.account.cash).not.toBeCloseTo(100865.95, 2); // stale snapshot value
   });
 });
