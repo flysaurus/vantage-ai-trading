@@ -108,6 +108,156 @@ export interface ShareClassStrip {
   held: boolean
 }
 
+const COUNT_WORDS = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
+const countWord = (n: number): string => (n >= 1 && n <= 10 ? COUNT_WORDS[n] : String(n))
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const money = (n: number): string => `$${Math.round(n).toLocaleString('en-US')}`
+
+/** Does this text name `symbol` as a standalone ticker token? */
+function namesSymbol(text: string, symbol: string): boolean {
+  const s = escapeRe(symbol).replace(/\\[.\-]/g, '[.\\-]')
+  return new RegExp(`(^|[^A-Za-z0-9])${s}([^A-Za-z0-9]|$)`, 'i').test(text)
+}
+
+/** Sum of the `$` amounts still carried by `[RECOMMEND:...]` markers (null when none). */
+export function recommendTotal(text: string): number | null {
+  const re = /\[RECOMMEND:[A-Z]{1,5}(?:[.\-][A-Z]{1,2})?:(?:BUY|SELL)(?::\$?([\d,]+(?:\.\d+)?))?\]/g
+  let total = 0
+  let n = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    if (m[1]) {
+      total += Number(m[1].replace(/,/g, ''))
+      n++
+    }
+  }
+  return n ? total : null
+}
+
+/** End index (exclusive) of a `[PREFIX:{...}]` marker using brace counting. */
+function endOfJsonMarker(text: string, start: number, open: string): number {
+  let depth = 0
+  for (let j = start + open.length - 1; j < text.length; j++) {
+    const ch = text[j]
+    if (ch === '{' || ch === '[') depth++
+    else if (ch === '}' || ch === ']') {
+      depth--
+      if (depth === 0) {
+        // The marker is `[PREFIX:{...}]`: counting starts at the `{`, so the
+        // wrapper's closing `]` is one char past the balanced JSON.
+        return text[j + 1] === ']' ? j + 2 : j + 1
+      }
+    }
+  }
+  return -1
+}
+
+function portfolioSpans(text: string): { start: number; end: number }[] {
+  const spans: { start: number; end: number }[] = []
+  let from = 0
+  while (from < text.length) {
+    const i = text.indexOf('[PORTFOLIO:{', from)
+    if (i < 0) break
+    const end = endOfJsonMarker(text, i, '[PORTFOLIO:{')
+    if (end < 0) break
+    spans.push({ start: i, end })
+    from = end
+  }
+  return spans
+}
+
+/**
+ * Drop blocked tickers from every `[PORTFOLIO:{...}]` allocation block so the
+ * downloaded plan matches the buttons that actually render. The block is removed
+ * entirely when nothing tradable is left in it.
+ */
+function prunePortfolioBlocks(text: string, blocked: Set<string>): string {
+  const spans = portfolioSpans(text)
+  let out = text
+  for (let i = spans.length - 1; i >= 0; i--) {
+    const { start, end } = spans[i]
+    const raw = out.slice(start, end)
+    const json = raw.slice('[PORTFOLIO:'.length, raw.length - 1)
+    let obj: any
+    try {
+      obj = JSON.parse(json)
+    } catch {
+      continue
+    }
+    const positions = Array.isArray(obj?.positions) ? obj.positions : null
+    if (!positions) continue
+    const kept = positions.filter((p: any) => !blocked.has(norm(String(p?.symbol ?? ''))))
+    if (kept.length === positions.length) continue
+    if (kept.length === 0) {
+      out = out.slice(0, start) + out.slice(end)
+      continue
+    }
+    obj.positions = kept
+    if (typeof obj.total === 'number') {
+      const sum = kept.reduce((a: number, p: any) => a + (Number(p?.amount) || 0), 0)
+      if (sum > 0) obj.total = sum
+    }
+    out = out.slice(0, start) + `[PORTFOLIO:${JSON.stringify(obj)}]` + out.slice(end)
+  }
+  return out
+}
+
+/**
+ * Drop blocked tickers from the `[SUMMARY_TLDR:...]` card (the "3 positions"
+ * summary / download line) and re-state the count + total from what survives.
+ */
+function pruneSummaryTldr(text: string, blocked: Set<string>, total: number | null): string {
+  if (!blocked.size) return text
+  const mentionsBlocked = (fragment: string) => [...blocked].some((s) => namesSymbol(fragment, s))
+  return text.replace(/\[SUMMARY_TLDR:([^\]]*)\]/g, (match, inner: string) => {
+    const dashSplit = inner.split(/\s+[—–]\s+/)
+    const head = dashSplit[0]
+    const detail = dashSplit.slice(1).join(' — ')
+    if (!detail) return mentionsBlocked(inner) ? '' : match
+    const segs = detail.split(/,\s*/)
+    const kept = segs.filter((s) => !mentionsBlocked(s))
+    if (kept.length === segs.length) return match
+    if (kept.length === 0) return ''
+    let newHead = head.replace(
+      /\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(positions?|bets?|names?|stocks?|tickers?|holdings?)/i,
+      (_m: string, _n: string, noun: string) => `${countWord(kept.length)} ${noun}`,
+    )
+    if (total != null) newHead = newHead.replace(/\$[\d,]+(?:\.\d+)?/, money(total))
+    return `[SUMMARY_TLDR:${newHead} — ${kept.join(', ')}]`
+  })
+}
+
+/**
+ * Remove the model's typed-confirm instructions for a blocked ticker
+ * ("Reply **\"confirm GOOG\"** to execute") — a button the guard just removed
+ * must not be advertised in prose. Instructions for surviving symbols stay.
+ */
+function dropConfirmInstructions(text: string, blocked: Set<string>): string {
+  if (!blocked.size) return text
+  const alts = [...blocked].map(escapeRe).join('|')
+  const blockedRe = new RegExp(`confirm\\s+(?:${alts})\\b`, 'i')
+  const anyConfirmRe = /confirm\s+([A-Z]{1,5}(?:[.\-][A-Z]{1,2})?)/gi
+  const kept: string[] = []
+  for (const line of text.split('\n')) {
+    if (!blockedRe.test(line)) {
+      kept.push(line)
+      continue
+    }
+    // Keep the line only if it ALSO instructs a confirm for a non-blocked symbol.
+    let surviving = false
+    let m: RegExpExecArray | null
+    anyConfirmRe.lastIndex = 0
+    while ((m = anyConfirmRe.exec(line)) !== null) {
+      if (!blocked.has(norm(m[1]))) { surviving = true; break }
+    }
+    if (!surviving) continue
+    const sentences = line.split(/(?<=[.!?])\s+/).filter((s) => !blockedRe.test(s))
+    const out = sentences.join(' ').trim()
+    if (out) kept.push(out)
+  }
+  return kept.join('\n')
+}
+
 /** Collapse the whitespace left behind by removing a marker. */
 function tidyAfterStrip(text: string): string {
   const lines = text.split('\n').map((l) => l.replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+$/, ''))
@@ -153,7 +303,14 @@ export function stripConflictingRecommendMarkers(
     return ''
   })
   if (!stripped.length) return { text, stripped: [] }
-  return { text: tidyAfterStrip(replaced), stripped }
+  const blocked = new Set(stripped.map((s) => s.symbol))
+  // The marker is gone, but the same response still carries three other places
+  // that mention it: the summary card line, the downloadable plan block, and the
+  // model's typed-confirm instruction. All three must agree with what renders.
+  let out = prunePortfolioBlocks(replaced, blocked)
+  out = pruneSummaryTldr(out, blocked, recommendTotal(out))
+  out = dropConfirmInstructions(out, blocked)
+  return { text: tidyAfterStrip(out), stripped }
 }
 
 /**
