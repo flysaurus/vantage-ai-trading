@@ -37,6 +37,7 @@ import { useTabStore } from '@/store';
 import type { Position, AccountSummary } from '@/types';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { useThresholdCrossings } from '@/lib/insights/use-threshold-crossings';
+import type { ThresholdCrossing } from '@/lib/insights/threshold-badge';
 import { fmt, pctStr, splitCents } from '@/lib/insights/format';
 import { buildDeck, buildEarningsRows, type DeckTeaser } from '@/lib/insights/deck';
 import { briefAskPrompt } from '@/lib/insights/brief';
@@ -47,6 +48,42 @@ import { MoreFromRufus } from './MoreFromRufus';
 import { PortfolioHealthCard } from './PortfolioHealthCard';
 import { QuickLinks } from './QuickLinks';
 import { BriefModal, type BriefKind } from './BriefModal';
+
+/**
+ * Rollup copy for the Insights threshold line.
+ *
+ * A bare count conveys no signal (mostly noise on large accounts), and the old
+ * "today" wording was factually wrong: crossings are evaluated against the
+ * thresholds configured in Settings (lib/insights/threshold-badge.ts →
+ * crossedBand) and may have been crossed at any point — nothing resets daily.
+ * So: lead with the single move when one clearly dominates, otherwise show the
+ * up/down composition.
+ */
+export function thresholdRollupText(
+  bySymbol: Record<string, ThresholdCrossing> | null | undefined,
+): string {
+  const rows = Object.values(bySymbol || {});
+  if (rows.length === 0) return '';
+
+  const mag = (c: ThresholdCrossing) => Math.abs(c.currentPnlPct ?? c.threshold);
+  const sorted = [...rows].sort((a, b) => mag(b) - mag(a));
+  const top = sorted[0];
+  const next = sorted[1];
+
+  // "Clearly dominates": single crossing, or the runner-up is ≥50% smaller.
+  const dominant = rows.length === 1 || !next || mag(top) >= mag(next) * 1.5;
+  if (dominant) {
+    const sign = top.threshold > 0 ? '+' : '';
+    return `${top.symbol} crossed ${sign}${top.threshold}%`;
+  }
+
+  const up = rows.filter((r) => r.tone === 'gain').length;
+  const down = rows.length - up;
+  const parts: string[] = [];
+  if (up) parts.push(`${up} up`);
+  if (down) parts.push(`${down} down`);
+  return `${rows.length} positions crossed their threshold — ${parts.join(', ')}`;
+}
 
 function firstLine(content: string): string {
   const line = (content || '')
@@ -88,7 +125,7 @@ export function InsightsTab() {
   // ── Threshold crossings (item: one-line rollup on Insights) ──
   // SAME source as the Holdings row badges, so the two screens agree on who
   // crossed. The noticed feed is a log and can lag; this is the live set.
-  const { symbols: crossedSymbols, count: crossedCount } = useThresholdCrossings(positions);
+  const { bySymbol: crossedBySymbol, symbols: crossedSymbols, count: crossedCount } = useThresholdCrossings(positions);
 
   const accountName = isShowingDemo ? 'Demo' : brokerMeta?.name || activeAccount?.name || 'Broker';
 
@@ -486,7 +523,7 @@ export function InsightsTab() {
               data-testid="threshold-rollup-text"
               style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--v-text-primary)' }}
             >
-              {crossedCount} {crossedCount === 1 ? 'position' : 'positions'} crossed a threshold today
+              {thresholdRollupText(crossedBySymbol)}
             </span>
             <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--v-accent-label)', whiteSpace: 'nowrap' }}>
               Review →
