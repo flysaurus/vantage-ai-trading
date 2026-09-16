@@ -43,18 +43,22 @@ export function ExportControls({ onDownload, onShare, canShare, caption }: Expor
     whiteSpace: 'nowrap',
   };
 
+  // Theme-driven tokens (not literals): the pills render on BOTH the light and
+  // dark chat panels. The old literals (#22d3ee / #cbd5e1 / rgba(255,255,255,.4))
+  // were dark-panel-only and fell to ~1.4:1 on the light panel. These reuse the
+  // same accent-label / chat registers already validated for AA.
   const downloadStyle: React.CSSProperties = {
     ...pill,
-    background: 'rgba(34,211,238,0.14)',
-    border: '1px solid rgba(34,211,238,0.45)',
-    color: '#22d3ee',
+    background: 'var(--v-chat-accent-soft)',
+    border: '1px solid var(--v-chat-accent-border)',
+    color: 'var(--v-accent-label)',
   };
 
   const shareStyle: React.CSSProperties = {
     ...pill,
-    background: 'rgba(148,163,184,0.10)',
-    border: '1px solid rgba(148,163,184,0.28)',
-    color: '#cbd5e1',
+    background: 'var(--v-chat-fill)',
+    border: '1px solid var(--v-chat-border)',
+    color: 'var(--v-chat-text-2)',
   };
 
   return (
@@ -72,7 +76,7 @@ export function ExportControls({ onDownload, onShare, canShare, caption }: Expor
         )}
       </div>
       {caption && (
-        <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: '6px' }}>{caption}</div>
+        <div style={{ fontSize: '11px', color: 'var(--v-chat-text-3)', marginTop: '6px' }}>{caption}</div>
       )}
     </div>
   );
