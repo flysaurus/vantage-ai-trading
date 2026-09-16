@@ -185,3 +185,52 @@ export async function markPendingAction(
     return null;
   }
 }
+
+/**
+ * ⚠️ PRODUCTION WRITE — cancels the user's pending action(s) whose `confirm_token`
+ * is one of `symbols`.
+ *
+ * WHY (Em, 2026-09-16): the share-class hard block strips a conflicting
+ * `[RECOMMEND:]` marker from the response text, but the model stages its trade
+ * preview through the `previewBuyStock` money tool — a REAL `pending_actions`
+ * row that lives independently of the marker. Stripping the marker therefore
+ * removed the button while leaving a live, executable ticket behind: a typed
+ * `confirm <SYM>` runs the stored payload via the deterministic confirm gate
+ * (no symbol re-derivation), so the wrong share class could still be bought.
+ *
+ * Cancelling here closes that path: with no pending row, a typed confirm falls
+ * through to the normal LLM turn and cannot execute the blocked symbol.
+ *
+ * ⚠️ The share-class block only cancels tokens it BLOCKED. Pending actions for
+ * surviving symbols (e.g. XOM in the same response) are left untouched.
+ *
+ * Returns the confirm tokens that were actually cancelled (for logging).
+ */
+export async function cancelPendingActionsForSymbols(
+  supabase: any,
+  userId: string,
+  symbols: readonly string[],
+): Promise<string[]> {
+  const wanted = [...new Set(symbols.map((s) => (s || '').trim().toUpperCase()).filter(Boolean))];
+  if (!wanted.length || !userId) return [];
+  try {
+    const { data, error } = await (supabase as any)
+      .from('pending_actions')
+      .update({ status: 'cancelled' })
+      .eq('user_id', userId)
+      .eq('status', 'pending')
+      .in('confirm_token', wanted)
+      .select('id, confirm_token');
+
+    if (error) {
+      console.error('[pending-actions] cancelBySymbols failed:', error.message);
+      return [];
+    }
+    return ((data as { confirm_token: string | null }[]) || [])
+      .map((r) => r.confirm_token || '')
+      .filter(Boolean);
+  } catch (e) {
+    console.error('[pending-actions] cancelBySymbols threw:', e);
+    return [];
+  }
+}

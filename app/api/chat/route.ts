@@ -29,7 +29,7 @@ import { MONEY_TOOLS, executeMoneyTool } from '@/lib/ai/money-tools'
 import type { MoneyToolContext } from '@/lib/ai/money-tools'
 import { detectConfirmIntent, actionRequiresSymbolEcho, symbolEchoMatches, findParamConflict } from '@/lib/ai/confirm'
 import { isQuestionLike, isHesitant } from '@/lib/ai/question-guard'
-import { getPendingAction, markPendingAction, createPendingAction } from '@/lib/ai/pending-actions'
+import { getPendingAction, markPendingAction, createPendingAction, cancelPendingActionsForSymbols } from '@/lib/ai/pending-actions'
 import { executePendingAction } from '@/lib/ai/executors'
 import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
@@ -2385,14 +2385,57 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // The client streams text as it arrives, so a post-generation edit is only
         // user-visible through the existing `correctedText` channel (the same one
         // marker validation uses). Without this the guards would be cosmetic.
-        const finalizeGuardedText = (text: string): string => {
+        //
+        // `baseline` is the text the CLIENT already streamed. It differs from
+        // `text` when an earlier guard call (the pre-event share-class block) has
+        // already rewritten the response — in that case we still owe the client a
+        // correctedText event, or the stale streamed text (marker and all) is what
+        // gets rendered and persisted.
+        const finalizeGuardedText = (text: string, baseline: string = text): string => {
           const guarded = applyChartAndTierGuards(applyProjectedScoreSuppression(text));
           const finalText = applyShareClassBlock(guarded);
-          if (finalText !== text) {
+          if (finalText !== baseline) {
             console.log('[chat] 🛡️ post-generation guards changed the text — emitting correctedText');
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ correctedText: finalText })}\n\n`));
           }
           return finalText;
+        };
+
+        // ── Share-class hard block: text pruning + the staged-ticket cancel ──
+        // MUST run before the `confirm_pending` event and before the downloadable
+        // plan is built from the markers, otherwise the client is handed ✓/✕
+        // confirm buttons (and a download) for a symbol we are about to block.
+        // Cancelling the pending row is what actually closes the gap: the marker
+        // strip removes the BUTTON, but the model's `previewBuyStock` ticket is a
+        // real DB row that a typed `confirm <SYM>` would execute.
+        const shareClassBlockWithCancel = async (text: string): Promise<string> => {
+          if (!text.includes('[RECOMMEND:')) return text;
+          const { text: pruned, stripped: strippedMarkers } = stripConflictingRecommendMarkers(text, heldSymbols);
+          if (!strippedMarkers.length) return text;
+          for (const h of strippedMarkers) {
+            console.warn(
+              `[chat] 🚫 Share-class block: stripped [RECOMMEND:${h.symbol}...] — sibling ${h.sibling}` +
+                ` (held=${h.held}) — no trade button will render`,
+            );
+          }
+          if (userId && userId !== 'anonymous') {
+            try {
+              const cancelled = await cancelPendingActionsForSymbols(
+                createServerClient(),
+                userId,
+                strippedMarkers.map((s) => s.symbol),
+              );
+              if (cancelled.length) {
+                console.warn(
+                  `[chat] 🚫 Share-class block: cancelled pending action(s) ${cancelled.join(', ')} —` +
+                    ` a typed "confirm <symbol>" can no longer execute`,
+                );
+              }
+            } catch (e) {
+              console.error('[chat] Share-class pending-cancel error:', e);
+            }
+          }
+          return pruned;
         };
 
         if (!isFullPipeline) {
@@ -2732,6 +2775,19 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         }
         }
 
+        // ── Share-class hard block (pre-event) ──
+        // Runs BEFORE the confirm/cancel event and the downloadable export below,
+        // so a blocked ticker leaves neither a live pending ticket (executable by a
+        // typed confirm) nor a stale row in the summary card / downloaded plan.
+        const streamedBaseline = responseText;
+        if (!validationRejected) {
+          try {
+            responseText = await shareClassBlockWithCancel(responseText);
+          } catch (e) {
+            console.error('[chat] Share-class block error:', e);
+          }
+        }
+
         // ── Pending-action confirm/cancel buttons ──
         // If a preview* money tool staged a pending action this turn, tag the
         // response so the client renders ✓ Confirm / ✕ Cancel buttons (same
@@ -2776,7 +2832,9 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         if (!validationRejected) {
           // Deterministic guards on the MAIN generated response (shared helper).
           // Regeneration was already attempted above; this is the backstop.
-          responseText = finalizeGuardedText(responseText);
+          // Baseline = what the client streamed, so the pre-event share-class
+          // prune above still reaches the client as a correctedText edit.
+          responseText = finalizeGuardedText(responseText, streamedBaseline);
           await emitResolvedCharts(responseText);
         }
 
