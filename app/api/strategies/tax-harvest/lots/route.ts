@@ -47,6 +47,7 @@ import {
 } from '@/lib/tax-harvest/lot-reconstruction';
 import { loadPurchaseLots } from '@/lib/tax-harvest/purchase-dates';
 import { createServerClient } from '@/lib/supabase';
+import { parseAccountScope } from '@/lib/account-scope';
 import { createTtlCache } from '@/lib/ttl-cache';
 
 export interface TaxHarvestLotsResponse {
@@ -65,6 +66,14 @@ export interface TaxHarvestLotsResponse {
   accounts: Array<{ id: string; name: string | null; activities: number; truncated: boolean }>;
   /** Present when we fell back from activities (degraded, not silent). */
   fallbackReason?: string;
+  /**
+   * Ledger-fallback disclosure (Part B §6, item 6): which scope the local
+   * ledger was read at ('account' | 'connection' | 'unavailable'). Absent on
+   * the activities path.
+   */
+  lotsScope?: 'account' | 'connection' | 'unavailable';
+  /** Legacy connection lots excluded from a scoped ledger read; disclosed, never blended. */
+  unattributedLots?: number;
 }
 
 const CACHE_TTL_MS = 5 * 60_000;
@@ -100,12 +109,14 @@ async function loadFallbackLots(
   isDemo: boolean,
   reason: string | undefined,
   activityCount = 0,
+  snapAccountId: string | null = null,
 ): Promise<TaxHarvestLotsResponse> {
   const supabase = createServerClient();
-  const { lotsByTicker, source } = await loadPurchaseLots(supabase, {
+  const { lotsByTicker, source, scope, unattributedLots } = await loadPurchaseLots(supabase, {
     userId,
     connectionId,
     isDemo,
+    snapAccountId,
   });
   const lotCount = Object.values(lotsByTicker).reduce((n, lots) => n + lots.length, 0);
 
@@ -122,6 +133,8 @@ async function loadFallbackLots(
     windowEndDate: null,
     positionQtyByTicker: {},
     accounts: [],
+    lotsScope: scope,
+    unattributedLots,
     ...(reason ? { fallbackReason: reason } : {}),
   };
 }
@@ -135,6 +148,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const connectionId = searchParams.get('connectionId') || null;
   const isDemo = searchParams.get('demo') === '1';
   const fresh = searchParams.get('fresh') === '1';
+  // The active sub-account, forwarded to the ledger fallback so a shared login
+  // is never read connection-wide. Accepts the canonical `accountId=` form or
+  // a bare `snapAccountId=`. Absent ⇒ unchanged behaviour.
+  const snapAccountId =
+    parseAccountScope(searchParams.get('accountId'))?.snapAccountId ??
+    searchParams.get('snapAccountId') ??
+    null;
 
   if (!connectionId && !isDemo) {
     return NextResponse.json({ error: 'connectionId required' }, { status: 400 });
@@ -143,7 +163,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   // Demo accounts have no broker activities at all — go straight to the ledger.
   if (isDemo || !process.env.SNAPTRADE_CLIENT_ID) {
     return NextResponse.json(
-      await loadFallbackLots(userId, connectionId, isDemo, 'demo account'),
+      await loadFallbackLots(userId, connectionId, isDemo, 'demo account', 0, snapAccountId),
     );
   }
 
@@ -167,7 +187,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           .filter((a) => a.id);
 
         if (accounts.length === 0) {
-          return loadFallbackLots(userId, connectionId, false, 'no brokerage accounts on connection');
+          return loadFallbackLots(userId, connectionId, false, 'no brokerage accounts on connection', 0, snapAccountId);
         }
 
         // Live share counts per symbol drive the unknown-start reconciliation.
@@ -200,6 +220,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
             connectionId,
             false,
             'broker returned no activity history',
+            0,
+            snapAccountId,
           );
         }
 
@@ -241,7 +263,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     console.error('[tax-harvest/lots] activities failed, falling back to ledger:', message);
     // Never fail the page over a broker hiccup — degrade and SAY so.
-    const fallback = await loadFallbackLots(userId, connectionId, false, message);
+    const fallback = await loadFallbackLots(userId, connectionId, false, message, 0, snapAccountId);
     return NextResponse.json(fallback);
   }
 }
