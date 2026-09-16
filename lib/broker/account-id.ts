@@ -134,6 +134,65 @@ export async function resolveBrokerAccountReadFilter(
 }
 
 /**
+ * Pure decision for the FIFO lot-ledger write scope (Part B).
+ *
+ * Shared by the sync-orders cron so "which account may a lot fill touch?" is
+ * decided in ONE place, from the order row's own stamped `account_id`:
+ *   • no connection (legacy/demo) or a failed lookup (`null`) → connection scope
+ *   • 0–1 registered accounts → connection scope (single account IS the scope;
+ *     protects legacy lots that predate stamping)
+ *   • 2+ registered accounts + the order's account IS registered → that account
+ *   • 2+ registered accounts + no usable account → `unavailable`: the caller
+ *     must SKIP the lot write and warn, never post into the merged pool.
+ */
+export type LotScopeDecision =
+  | { mode: 'account'; brokerAccountId: string }
+  | { mode: 'connection' }
+  | { mode: 'unavailable' };
+
+export function decideLotScope(
+  registeredAccountIds: string[] | null,
+  orderAccountId: string | null,
+  connectionId: string | null,
+): LotScopeDecision {
+  if (!connectionId) return { mode: 'connection' };
+  if (!registeredAccountIds || registeredAccountIds.length <= 1) {
+    return { mode: 'connection' };
+  }
+  if (orderAccountId && registeredAccountIds.includes(orderAccountId)) {
+    return { mode: 'account', brokerAccountId: orderAccountId };
+  }
+  return { mode: 'unavailable' };
+}
+
+/**
+ * Resolve `broker_accounts.id` for an ORDER row (Part B stamping).
+ *
+ * Same contract as `resolveBrokerAccountIdForWrite` — a thin, self-documenting
+ * wrapper for the order-insert paths. `snapAccountId` MUST be the sub-account
+ * the broker actually placed the order on (e.g. `OrderResult.accountId`), i.e.
+ * part of the 1:1 request, never re-derived from the payload or the symbol.
+ *
+ * Returns null when the flag is off, the scope is incomplete, or no row
+ * matches — the insert then omits `account_id` (NULL = not yet attributed).
+ */
+export async function resolveOrderAccountIdForWrite(
+  supabase: SupabaseClient,
+  scope: WriteAccountScope,
+  env: Record<string, string | undefined> = process.env,
+): Promise<string | null> {
+  const id = await resolveBrokerAccountIdForWrite(supabase, scope, env);
+  // Flag on + a named sub-account that has no registry row = a real data gap
+  // (the order WOULD have been attributable). Surface it, never guess a sibling.
+  if (!id && accountIdWritesEnabled(env) && scope.snapAccountId) {
+    console.warn(
+      `[account-id] no broker_accounts row for connection ${scope.connectionId} / account ${scope.snapAccountId} — order left unattributed`,
+    );
+  }
+  return id;
+}
+
+/**
  * Resolve `broker_accounts.id` for a write.
  *
  * Returns null — and issues no query — when:

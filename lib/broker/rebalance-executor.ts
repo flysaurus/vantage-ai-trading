@@ -9,6 +9,7 @@
 // ──────────────────────────────────────────────────────────────
 
 import type { OrderRequest, OrderResult } from '@/lib/broker/types';
+import { resolveOrderAccountIdForWrite } from '@/lib/broker/account-id';
 
 export interface RebalanceTrade {
   symbol: string;
@@ -60,8 +61,10 @@ export function buildRebalanceInsertRow(params: {
   result: OrderResult;
   now: string;
   source?: string;
+  /** Part B: broker_accounts.id of the sub-account the leg was placed on. */
+  accountId?: string | null;
 }): Record<string, unknown> {
-  const { orderId, userId, brokerConnectionId, trade, result, now, source = 'rebalance' } = params;
+  const { orderId, userId, brokerConnectionId, trade, result, now, source = 'rebalance', accountId } = params;
   const symbol = trade.symbol.toUpperCase();
   const requestedAmount =
     result.fillPrice && result.fillPrice > 0
@@ -87,6 +90,8 @@ export function buildRebalanceInsertRow(params: {
     brokerage_order_id: result.orderId || null,
     source,
     created_at: now,
+    // Omitted entirely when unattributed (NULL = not yet attributed).
+    ...(accountId ? { account_id: accountId } : {}),
   };
 }
 
@@ -125,6 +130,13 @@ export async function placeRebalanceTrade(
   const isPhantom = PHANTOM_ORDER_IDS.has(result.orderId || '');
   if (!isPhantom) {
     try {
+      // Part B stamping: attributed to the sub-account SnapTrade placed this
+      // leg on (echoed by placeOrder) — flag-gated, never guessed.
+      const accountId = await resolveOrderAccountIdForWrite(supabase as any, {
+        userId,
+        connectionId: brokerConnectionId,
+        snapAccountId: result.accountId ?? null,
+      });
       const row = buildRebalanceInsertRow({
         orderId: vantageOrderId,
         userId,
@@ -133,6 +145,7 @@ export async function placeRebalanceTrade(
         result,
         now: new Date().toISOString(),
         source,
+        accountId,
       });
       await supabase.from('orders').insert(row).select('id').single();
       persisted = true;

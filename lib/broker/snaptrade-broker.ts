@@ -518,6 +518,7 @@ export class SnapTradeBroker implements BrokerEngine {
         orderId: 'no-qty',
         status: 'REJECTED',
         message: 'Order must specify shares or dollar amount.',
+        accountId,
       };
     }
 
@@ -567,6 +568,7 @@ export class SnapTradeBroker implements BrokerEngine {
         orderId: brokerOrderId || 'error',
         status: 'REJECTED' as const,
         message: errorMsg + rawDetail,
+        accountId,
       };
     }
 
@@ -621,6 +623,10 @@ export class SnapTradeBroker implements BrokerEngine {
       totalCost,
       filledAt: result.time_executed || result.filled_at || (status === 'FILLED' ? new Date().toISOString() : undefined),
       nextOpenLabel: nextOpen,
+      // The exact SnapTrade sub-account this order was sent to. Callers stamp
+      // `orders.account_id` from THIS value (part of the 1:1 request), so an
+      // order is never attributed to a sibling account on a shared login.
+      accountId,
     };
   }
 

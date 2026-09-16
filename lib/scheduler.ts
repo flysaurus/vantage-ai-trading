@@ -43,6 +43,7 @@ import { getPrice } from '@/lib/market-data';
 import { isTradingDay } from '@/lib/market-hours';
 import { resolveSnapTradeCredentials, SnapTradeAuthError, SnapTradeAmbiguousError } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
+import { resolveOrderAccountIdForWrite } from '@/lib/broker/account-id';
 import { formatBrokerName } from '@/lib/broker-name';
 import { notifyOrderEvent } from '@/lib/order-emails';
 import { notifyOrderNotification } from '@/lib/order-notifications';
@@ -311,6 +312,13 @@ async function placeDcaOrder(
   if (shouldPersist) {
     try {
       const now = new Date().toISOString();
+      // Part B stamping: DCA orders go to the sub-account SnapTrade placed them
+      // on (echoed by placeOrder) — never guessed.
+      const stampedAccountId = await resolveOrderAccountIdForWrite(supabase, {
+        userId,
+        connectionId: creds.brokerConnectionId,
+        snapAccountId: result.accountId ?? null,
+      });
       const insertRow: Record<string, unknown> = {
         id: vantageOrderId,
         user_id: userId,
@@ -335,6 +343,7 @@ async function placeDcaOrder(
       if (opts.isNotional) {
         insertRow.notional = opts.amount;
       }
+      if (stampedAccountId) insertRow.account_id = stampedAccountId;
       await supabase.from('orders').insert(insertRow).select('id').single();
     } catch (persistErr) {
       console.error('[scheduler][dca] ⚠️ DB persist failed:', (persistErr as Error)?.message);

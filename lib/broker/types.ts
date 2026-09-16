@@ -68,6 +68,11 @@ export interface OrderResult {
   symbol?: string;
   /** Vantage UUID sent as client_order_id for this leg (basket orders). */
   clientOrderId?: string;
+  /**
+   * SnapTrade sub-account this order was actually placed on (Part B stamping
+   * ground truth — `orders.account_id` is derived from this, never guessed).
+   */
+  accountId?: string;
 }
 
 /**

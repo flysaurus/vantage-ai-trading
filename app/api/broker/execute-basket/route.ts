@@ -24,6 +24,7 @@ import {
   SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
+import { resolveOrderAccountIdForWrite } from '@/lib/broker/account-id';
 import { createClient } from '@supabase/supabase-js';
 import { notifyBasketEvent, type BasketOrderEvent } from '@/lib/order-emails';
 import { notifyBasketNotification } from '@/lib/order-notifications';
@@ -273,6 +274,13 @@ export async function POST(req: NextRequest) {
           const symbol = (leg.symbol || '').toUpperCase();
           if (!symbol) return '';
           const legId = leg.clientOrderId || crypto.randomUUID();
+          // Part B stamping: the sub-account this leg was placed on (echoed by
+          // placeOrder). Never guessed; null ⇒ row stays unattributed.
+          const stampedAccountId = await resolveOrderAccountIdForWrite(supabase, {
+            userId: authUser!.id,
+            connectionId: brokerConnectionId,
+            snapAccountId: leg.accountId ?? null,
+          });
           const dollarAmount = leg.reservedAmount ?? 0;
           const isFilled = leg.status === 'FILLED';
           const insertRow: Record<string, unknown> = {
@@ -298,6 +306,7 @@ export async function POST(req: NextRequest) {
             notional: dollarAmount,
             created_at: now,
           };
+          if (stampedAccountId) insertRow.account_id = stampedAccountId;
           try {
             const { data, error: dbErr } = await supabase
               .from('orders')

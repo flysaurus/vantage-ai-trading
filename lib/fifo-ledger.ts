@@ -57,6 +57,13 @@ export interface CreateLotInput {
  * Consume `sellQty` shares FIFO from the lot ledger for a single ticker,
  * decrementing remaining_qty on each consumed lot.
  *
+ * `brokerAccountId` (Part B) narrows consumption to ONE sub-account's lots.
+ * Callers pass it only when the connection's sub-account is genuinely known
+ * (shared login with a resolved account); omitting it keeps the original
+ * connection-level behaviour (single-account connections, legacy lots that
+ * predate stamping). Passing it on a connection whose lots are unstamped
+ * yields a shortfall — honest, reported, never a cross-account merge.
+ *
  * Never throws on shortfall: if the ledger under-tracks the position
  * (e.g. external buys that predate lot tracking), it consumes what it can
  * and reports the shortfall. The ledger update itself is unconditional.
@@ -67,6 +74,7 @@ export async function consumeLotsForSell(
   accountId: string | null,
   ticker: string,
   sellQty: number,
+  brokerAccountId?: string | null,
 ): Promise<LedgerConsumeResult> {
   const empty: LedgerConsumeResult = {
     consumed: [],
@@ -93,6 +101,11 @@ export async function consumeLotsForSell(
   query = accountId === null
     ? query.is('account_id', null)
     : query.eq('account_id', accountId);
+
+  // Part B: narrow to the specific sub-account when the caller resolved one.
+  if (brokerAccountId) {
+    query = query.eq('broker_account_id', brokerAccountId);
+  }
 
   const { data: rows, error } = await query;
 

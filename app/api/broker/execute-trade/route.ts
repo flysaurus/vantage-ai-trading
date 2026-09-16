@@ -21,6 +21,7 @@ import {
   SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
+import { resolveOrderAccountIdForWrite } from '@/lib/broker/account-id';
 import { verifyTradeSymbol } from '@/lib/ai/trade-gate';
 import { resolveCompanyName } from '@/lib/market-data';
 import { checkIdempotency, releaseIdempotency } from '@/lib/broker/order-idempotency';
@@ -248,6 +249,14 @@ export async function POST(req: NextRequest) {
     if (shouldPersist) {
       try {
         const now = new Date().toISOString();
+        // Part B stamping: attribute the order to the sub-account SnapTrade
+        // actually placed it on (`result.accountId`, echoed by placeOrder).
+        // Flag-gated + never guessed: null ⇒ the row is left unattributed.
+        const stampedAccountId = await resolveOrderAccountIdForWrite(supabase, {
+          userId: authUser!.id,
+          connectionId: brokerConnectionId,
+          snapAccountId: result.accountId ?? null,
+        });
         // notional=null if column doesn't exist yet (migration 042 pending).
         // qty always stores the share estimate so it's meaningful even without notional.
         const insertRow: Record<string, unknown> = {
@@ -274,6 +283,7 @@ export async function POST(req: NextRequest) {
         if (isNotionalOrder) {
           insertRow.notional = dollarAmount;
         }
+        if (stampedAccountId) insertRow.account_id = stampedAccountId;
         const { data: dbOrder, error: dbErr } = await supabase
           .from('orders')
           .insert(insertRow)

@@ -247,3 +247,28 @@ describe('PHANTOM_ORDER_IDS', () => {
     );
   });
 });
+
+// ─── Part B step 5: order-row account stamping ──────────────────────────────
+// The rebalance leg is attributed to the sub-account SnapTrade placed it on
+// (`OrderResult.accountId`), and the key is OMITTED entirely when unknown so an
+// unstamped row stays NULL rather than being attributed to a sibling account.
+describe('buildRebalanceInsertRow — account stamping', () => {
+  const base = {
+    orderId: 'uuid-1',
+    userId: 'user-1',
+    brokerConnectionId: 'conn-1',
+    trade,
+    result: { success: true, orderId: 'broker-1', status: 'FILLED' as const },
+    now: 'now',
+  };
+
+  it('omits account_id when the placed-on account is unknown', () => {
+    const row = buildRebalanceInsertRow({ ...base, accountId: null });
+    expect('account_id' in row).toBe(false);
+  });
+
+  it('stamps account_id when the placed-on account is resolved', () => {
+    const row = buildRebalanceInsertRow({ ...base, accountId: 'broker-acct-1' });
+    expect(row.account_id).toBe('broker-acct-1');
+  });
+});

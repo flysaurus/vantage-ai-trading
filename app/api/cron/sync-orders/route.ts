@@ -31,6 +31,7 @@ import { notifyOrderEvent, type BasketOrderEvent } from '@/lib/order-emails';
 import { notifyOrderNotification, notifyBasketNotification } from '@/lib/order-notifications';
 import { formatBrokerName } from '@/lib/broker-name';
 import { consumeLotsForSell, createLotForBuy } from '@/lib/fifo-ledger';
+import { decideLotScope, type LotScopeDecision } from '@/lib/broker/account-id';
 import type { OrderStatus } from '@/lib/broker/types';
 
 const IN_FLIGHT = ['submitted', 'open', 'partially_filled'] as const;
@@ -82,6 +83,8 @@ function validateAuth(req: NextRequest): boolean {
 interface InFlightOrder {
   id: string;
   connection_id: string | null;
+  /** Part B: broker_accounts.id this order was placed on (null = unattributed). */
+  account_id?: string | null;
   brokerage_order_id: string | null;
   status: string;
   created_at: string;
@@ -94,6 +97,20 @@ interface InFlightOrder {
   basket_id?: string | null;
 }
 
+// ── Part B: FIFO lot-ledger account scope ───────────────────────
+// `orders.account_id` now carries the sub-account the order was placed on, and
+// `position_lots.broker_account_id` (migration 077) is the matching lot axis.
+// This cron resolves the SAME account context from the order row — it is NOT
+// re-derived from the payload — under the standing rule:
+//   • 0–1 registered accounts on the connection → unchanged connection scope
+//     (protects legacy lots that predate stamping),
+//   • 2+ registered accounts + the order's account_id IS registered → filter the
+//     lot ledger to that account only,
+//   • 2+ registered accounts + no usable account_id → SKIP the lot write and
+//     warn (posting into the merged pool would attach the fill to a sibling).
+// A failed registry lookup degrades to connection scope (never to a guess).
+type LotScope = LotScopeDecision;
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!validateAuth(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -105,10 +122,48 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
+  // Part B: per-(user, connection) resolution of the lot-ledger account scope.
+  // Cached for the run; `null` marks a failed registry lookup.
+  const registeredAccountIdsCache = new Map<string, string[] | null>();
+  async function registeredAccountIds(userId: string, connectionId: string): Promise<string[] | null> {
+    const key = `${userId}|${connectionId}`;
+    if (registeredAccountIdsCache.has(key)) return registeredAccountIdsCache.get(key)!;
+    try {
+      const { data, error } = await supabase
+        .from('broker_accounts')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('connection_id', connectionId);
+      if (error) {
+        console.warn('[sync-orders] broker_accounts lookup failed — lot writes stay connection-scoped:', error.message);
+        registeredAccountIdsCache.set(key, null);
+        return null;
+      }
+      const ids = (data || []).map((r: { id: string }) => String(r.id));
+      registeredAccountIdsCache.set(key, ids);
+      return ids;
+    } catch (err) {
+      console.warn('[sync-orders] broker_accounts lookup threw — lot writes stay connection-scoped:', err instanceof Error ? err.message : err);
+      registeredAccountIdsCache.set(key, null);
+      return null;
+    }
+  }
+  async function resolveLotScope(
+    userId: string,
+    connectionId: string | null,
+    orderAccountId: string | null,
+  ): Promise<LotScope> {
+    return decideLotScope(
+      connectionId ? await registeredAccountIds(userId, connectionId) : null,
+      orderAccountId,
+      connectionId,
+    );
+  }
+
   // 1. Load all in-flight orders, grouped by user
   const { data: rows, error } = await supabase
     .from('orders')
-    .select('id, user_id, connection_id, brokerage_order_id, status, created_at, symbol, side, qty, requested_amount, requested_qty, order_unit, basket_id')
+    .select('id, user_id, connection_id, account_id, brokerage_order_id, status, created_at, symbol, side, qty, requested_amount, requested_qty, order_unit, basket_id')
     .in('status', [...IN_FLIGHT]);
 
   if (error) {
@@ -132,6 +187,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     group.orders.push({
       id: r.id,
       connection_id: connectionId,
+      account_id: (r as { account_id?: string | null }).account_id ?? null,
       brokerage_order_id: r.brokerage_order_id,
       status: r.status,
       created_at: r.created_at,
@@ -373,9 +429,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           // a shortfall (external buy predating lot tracking) degrades
           // gracefully and is logged, never thrown.
           try {
-            if (live.side === 'SELL') {
+            const lotScope = await resolveLotScope(
+              userId,
+              o.connection_id ?? null,
+              o.account_id ?? null,
+            );
+            if (lotScope.mode === 'unavailable') {
+              // Shared login, no usable sub-account for this order — refuse
+              // rather than write into (or consume from) the merged pool.
+              console.warn(
+                `[sync-orders] shared login ${o.connection_id} has no resolvable sub-account for order ${o.id} — skipping lot-ledger update (not merging)`,
+              );
+            } else if (live.side === 'SELL') {
               const res = await consumeLotsForSell(
-                supabase, userId, o.connection_id ?? null, live.symbol, fillShares,
+                supabase,
+                userId,
+                o.connection_id ?? null,
+                live.symbol,
+                fillShares,
+                // Scoped consume only when a specific sub-account is known;
+                // otherwise the legacy connection-scope query is unchanged.
+                lotScope.mode === 'account' ? lotScope.brokerAccountId : undefined,
               );
               if (res.shortfall > 0) {
                 console.warn(
@@ -387,11 +461,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               await createLotForBuy(supabase, {
                 userId,
                 accountId: o.connection_id ?? null,
-                // ⚠️ Part B step 3b gap: this cron path has NO sub-account context
-                // (the orders row carries only connection_id), so it must not
-                // guess one — broker_account_id stays null here until an
-                // account column exists on `orders` (a later Part B step).
-                brokerAccountId: null,
+                // Part B: the lot is attributed to the SAME sub-account the
+                // order row carries (resolved above), or left unattributed
+                // when the connection is single-account / unresolved.
+                brokerAccountId: lotScope.mode === 'account' ? lotScope.brokerAccountId : null,
                 ticker: live.symbol,
                 qty: fillShares,
                 priceAtFill: fillPrice,

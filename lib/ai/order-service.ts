@@ -22,6 +22,7 @@ import {
   SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
+import { resolveOrderAccountIdForWrite } from '@/lib/broker/account-id';
 import { verifyTradeSymbol } from '@/lib/ai/trade-gate';
 import { checkIdempotency, releaseIdempotency } from '@/lib/broker/order-idempotency';
 import { notifyOrderEvent } from '@/lib/order-emails';
@@ -178,6 +179,12 @@ export async function placeSingleTrade(args: PlaceSingleTradeArgs): Promise<Exec
 
     let dbOrderId: string | null = null;
     if (shouldPersist) {
+      // Part B stamping: the sub-account SnapTrade placed this order on.
+      const stampedAccountId = await resolveOrderAccountIdForWrite(supabase, {
+        userId,
+        connectionId: brokerConnectionId,
+        snapAccountId: result.accountId ?? null,
+      });
       const insertRow: Record<string, unknown> = {
         id: vantageOrderId,
         user_id: userId,
@@ -200,6 +207,7 @@ export async function placeSingleTrade(args: PlaceSingleTradeArgs): Promise<Exec
         created_at: now,
       };
       if (isNotional) insertRow.notional = dollarAmount;
+      if (stampedAccountId) insertRow.account_id = stampedAccountId;
       const { data, error: dbErr } = await supabase
         .from('orders')
         .insert(insertRow)
@@ -442,6 +450,13 @@ export async function placeBasketTrade(args: PlaceBasketArgs): Promise<ExecResul
         const legId = leg.clientOrderId || crypto.randomUUID();
         const dollarAmount = leg.reservedAmount ?? 0;
         const isFilled = leg.status === 'FILLED';
+        // Part B stamping (AI basket legs): sub-account SnapTrade placed the leg
+        // on — echoed by placeOrder. Never guessed; null ⇒ left unattributed.
+        const stampedAccountId = await resolveOrderAccountIdForWrite(supabase, {
+          userId,
+          connectionId: brokerConnectionId,
+          snapAccountId: leg.accountId ?? null,
+        });
         const insertRow: Record<string, unknown> = {
           id: legId,
           user_id: userId,
@@ -465,6 +480,7 @@ export async function placeBasketTrade(args: PlaceBasketArgs): Promise<ExecResul
           notional: dollarAmount,
           created_at: now,
         };
+        if (stampedAccountId) insertRow.account_id = stampedAccountId;
         const { data, error: dbErr } = await supabase
           .from('orders')
           .insert(insertRow)
