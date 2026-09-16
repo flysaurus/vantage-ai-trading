@@ -277,6 +277,148 @@ export function evaluateWashSale(input: {
   };
 }
 
+/** Where the repurchase-window fills came from, and how complete that is. */
+export interface RepurchaseFillSources {
+  /** BUY fills Vantage placed (live trading-enabled logins, or demo). */
+  orders: OrderLike[];
+  /** BUY fills merely REPORTED by a read-only login — raw trade_history rows. */
+  history: TradeHistoryLike[];
+  /** Connections with no order coverage, i.e. trading_enabled !== true. */
+  gapConnectionIds: string[];
+  /** Rows of ANY kind in scope (NULL = query failed). Drives "can we see this account?" */
+  ordersCoverage: number | null;
+  historyCoverage: number | null;
+}
+
+/**
+ * Server-side READ of the repurchase window for ONE ticker. This is the single
+ * implementation of "which buys count" — both wash-sale checkers call it, so a
+ * gap only ever has to be fixed in one place.
+ *
+ * Why two tables:
+ *   • `orders`        — fills Vantage placed. Only exists for trading-enabled logins.
+ *   • `trade_history` — fills a broker REPORTS. The only record for a read-only
+ *                       login (e.g. Fidelity: trading_enabled=false, 0 orders
+ *                       rows but 4,081 reported fills live).
+ * `trade_history` is GAP-FILL only: it is read for connections in
+ * `gapConnectionIds`, and `mergeRepurchaseFills` drops any residual overlap so a
+ * fill present in both tables is counted once, `orders` winning.
+ *
+ * The DATE BOUND is applied in SQL as well as in the pure window check. Live
+ * `trade_history` is large (4,157 rows) and PostgREST caps a response at 1,000
+ * rows by default, so an unbounded read could silently truncate the window.
+ * A 31-day bound (one day of slack over the 30-day rule) keeps the row set small
+ * and per-symbol; the exact 30-day rule is still applied by findRecentBuys.
+ *
+ * Read-only: SELECTs only. Non-throwing — failures degrade to empty sources.
+ */
+export async function fetchRepurchaseFills(
+  supabase: SupabaseClient,
+  input: {
+    userId: string;
+    ticker: string;
+    isDemo: boolean;
+    /** Also count all-rows coverage for the user (2 extra head queries). */
+    withCoverage?: boolean;
+  },
+): Promise<RepurchaseFillSources> {
+  const { userId, ticker, isDemo, withCoverage = false } = input;
+  const out: RepurchaseFillSources = {
+    orders: [],
+    history: [],
+    gapConnectionIds: [],
+    ordersCoverage: null,
+    historyCoverage: null,
+  };
+  if (!ticker) return out;
+
+  const cutoff = new Date(Date.now() - (WASH_SALE_WINDOW_DAYS + 1) * 86_400_000).toISOString();
+
+  // ── Fills Vantage placed ──
+  try {
+    let q = supabase
+      .from('orders')
+      .select('symbol, side, status, filled_at, created_at, filled_qty, qty, filled_price, connection_id')
+      .eq('user_id', userId)
+      .eq('symbol', ticker)
+      .eq('side', 'buy')
+      .eq('status', 'filled')
+      .gte('created_at', cutoff);
+    q = isDemo
+      ? q.eq('is_demo', true)
+      : q.eq('is_demo', false).not('connection_id', 'is', null);
+    const { data, error } = await q;
+    if (error) console.warn('[wash-sale] order fetch failed:', error.message);
+    out.orders = (data || []) as OrderLike[];
+  } catch (e) {
+    console.warn('[wash-sale] order fetch failed:', (e as Error).message);
+  }
+
+  // ── Fills a read-only connection reported (live only) ──
+  if (!isDemo) {
+    try {
+      const { data: connRows, error: connError } = await supabase
+        .from('broker_connections')
+        .select('id, trading_enabled, status')
+        .eq('user_id', userId);
+      if (connError) console.warn('[wash-sale] connection fetch failed:', connError.message);
+
+      out.gapConnectionIds = (connRows || [])
+        .filter((c: any) => c.trading_enabled !== true)
+        .map((c: any) => c.id);
+
+      if (out.gapConnectionIds.length > 0) {
+        const { data: thRows, error: thError } = await supabase
+          .from('trade_history')
+          .select('symbol, action, quantity, price, executed_at, connection_id')
+          .eq('user_id', userId)
+          .eq('symbol', ticker)
+          .eq('action', 'buy')
+          .eq('is_demo', false)
+          .gte('executed_at', cutoff)
+          .in('connection_id', out.gapConnectionIds);
+        if (thError) console.warn('[wash-sale] trade_history fetch failed:', thError.message);
+        out.history = (thRows || []) as TradeHistoryLike[];
+      }
+    } catch (e) {
+      console.warn('[wash-sale] gap-fill failed:', (e as Error).message);
+    }
+  }
+
+  if (withCoverage) {
+    try {
+      let oc = supabase.from('orders').select('id', { count: 'exact', head: true }).eq('user_id', userId);
+      oc = isDemo ? oc.eq('is_demo', true) : oc.eq('is_demo', false).not('connection_id', 'is', null);
+      const { count, error } = await oc;
+      if (!error) out.ordersCoverage = count ?? null;
+    } catch { /* stays null = unknown */ }
+    if (!isDemo && out.gapConnectionIds.length > 0) {
+      try {
+        const { count, error } = await supabase
+          .from('trade_history')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .eq('is_demo', false)
+          .in('connection_id', out.gapConnectionIds);
+        if (!error) out.historyCoverage = count ?? null;
+      } catch { /* stays null = unknown */ }
+    }
+  }
+
+  return out;
+}
+
+/** Pure — union `orders` with gap-fill `trade_history` rows, each counted once. */
+export function mergeRepurchaseFills(
+  src: Pick<RepurchaseFillSources, 'orders' | 'history' | 'gapConnectionIds'>,
+): OrderLike[] {
+  const gaps = new Set(src.gapConnectionIds || []);
+  const history = (src.history || [])
+    .filter((h) => h.connection_id && gaps.has(h.connection_id))
+    .map((h) => tradeHistoryToOrderLike(h));
+  return unionBuyFills(src.orders || [], history);
+}
+
 /**
  * Server-side check: read the FIFO lot ledger + recent BUY orders for a
  * ticker, then evaluate. Non-throwing — a data/DB shortfall degrades to
@@ -338,84 +480,15 @@ export async function checkWashSale(
     filled_at: r.filled_at,
   }));
 
-  // 2. Repurchase window — same ticker, BUY side, filled, last 30 days.
-  //
-  //    CROSS-ACCOUNT SCOPE: for a live/paper account we look at BUY fills
-  //    across ALL of the user's broker connections — the rule is taxpayer-wide,
-  //    so a repurchase in a *different* connected account also triggers it.
-  //    Cost basis (the lots above) stays scoped to the selling account: the
-  //    loss is account-specific; only the repurchase window widens.
-  //
-  //    TWO SOURCES, COUNTED ONCE:
-  //      • orders        — fills Vantage placed (only trading-enabled logins)
-  //      • trade_history — fills REPORTED by a read-only login (e.g. Fidelity,
-  //                        trading_enabled=false, which has ZERO orders rows)
-  //    trade_history is used as GAP-FILL only, for connections that have no
-  //    order coverage; `unionBuyFills` then drops any residual overlap so a
-  //    fill that appears in both tables is counted once (orders wins).
-  //    Demo stays demo — a demo fill cannot create a real wash sale.
-  //
-  //    NOTE: this is connection-level, not sub-account-level. A login exposing
-  //    several sub-accounts contributes its fills as one pool, so the advisory
-  //    can name the account only at connection granularity. Sub-account
-  //    attribution arrives with the Part B account model — see disclosure copy.
-  let ordersQuery = supabase
-    .from('orders')
-    .select('symbol, side, status, filled_at, created_at, filled_qty, qty, filled_price, connection_id')
-    .eq('user_id', userId)
-    .eq('symbol', ticker)
-    .eq('side', 'buy')
-    .eq('status', 'filled');
-
-  ordersQuery = isDemo
-    ? ordersQuery.eq('is_demo', true)
-    : ordersQuery.not('connection_id', 'is', null);
-
-  const { data: orderRows, error: orderError } = await ordersQuery;
-  if (orderError) {
-    console.warn('[wash-sale] order fetch failed:', orderError.message);
-  }
-
-  // 2b. Gap-fill: connections with NO order coverage (trading_enabled is not
-  //     true, i.e. a position-imported / read-only login). Demo is untouched —
-  //     trade_history gap-fill is live-only.
-  let historyBuys: OrderLike[] = [];
-  if (!isDemo) {
-    try {
-      const { data: connRows, error: connError } = await supabase
-        .from('broker_connections')
-        .select('id, trading_enabled')
-        .eq('user_id', userId);
-      if (connError) console.warn('[wash-sale] connection fetch failed:', connError.message);
-
-      const gapIds = (connRows || [])
-        .filter((c: any) => c.trading_enabled !== true)
-        .map((c: any) => c.id);
-
-      if (gapIds.length > 0) {
-        const { data: thRows, error: thError } = await supabase
-          .from('trade_history')
-          .select('symbol, action, quantity, price, executed_at, connection_id')
-          .eq('user_id', userId)
-          .eq('symbol', ticker)
-          .eq('action', 'buy')
-          .eq('is_demo', false)
-          .in('connection_id', gapIds);
-        if (thError) console.warn('[wash-sale] trade_history fetch failed:', thError.message);
-        historyBuys = (thRows || []).map((r: any) => tradeHistoryToOrderLike(r as TradeHistoryLike));
-      }
-    } catch (e) {
-      console.warn('[wash-sale] gap-fill failed:', (e as Error).message);
-    }
-  }
-
-  const mergedBuys = unionBuyFills((orderRows || []) as OrderLike[], historyBuys);
+  // 2. Repurchase window — one shared implementation, see fetchRepurchaseFills
+  //    for the cross-connection + two-source (orders ∪ trade_history) rationale.
+  const src = await fetchRepurchaseFills(supabase, { userId, ticker, isDemo });
 
   return evaluateWashSale({
     lots,
     sellQty,
     salePrice,
-    orders: mergedBuys,
+    orders: mergeRepurchaseFills(src),
     ticker,
   });
 }

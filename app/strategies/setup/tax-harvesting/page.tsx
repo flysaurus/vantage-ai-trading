@@ -69,11 +69,15 @@ interface HarvestSelection {
 interface WashSaleStatus {
   symbol: string;
   isSafe: boolean;
-  /** null when we hold no trade history for the account — unknown, not "clear". */
+  /** null when no fills are on file — unknown, not "clear". */
   daysSinceLastTrade: number | null;
   lastTradeDate: string | null;
-  /** false ⇒ this account has no order history, so the check couldn't run. */
+  /** false ⇒ no fills on file for this account, so the check couldn't run. */
   historyAvailable?: boolean;
+  /** true ⇒ the buy that blocks this harvest is in ANOTHER connected account. */
+  crossConnection?: boolean;
+  /** broker_connections.id of that buy (null = unknown/demo). */
+  buyConnectionId?: string | null;
 }
 
 interface TradeSummary {
@@ -776,9 +780,9 @@ function TaxHarvestingPageInner() {
           washSaleStatus: wash
             ? (wash.isSafe
                 ? wash.historyAvailable === false
-                  ? 'Not checked — no trade history on file for this account'
+                  ? 'Not checked — no fill history on file for this account'
                   : 'Clear'
-                : `Blocked — purchased ${wash.daysSinceLastTrade} day${wash.daysSinceLastTrade === 1 ? '' : 's'} ago`)
+                : `Blocked — purchased ${wash.daysSinceLastTrade} day${wash.daysSinceLastTrade === 1 ? '' : 's'} ago${wash.crossConnection ? ' in another connected account' : ''}`)
             : 'Not checked',
         };
       });
@@ -1220,14 +1224,14 @@ function TaxHarvestingPageInner() {
                         {isWashBlocked ? (
                           <>
                             <AlertTriangle size={12} />
-                            <span>⚠️ Wash sale risk — bought {wash.daysSinceLastTrade} days ago</span>
+                            <span>⚠️ Wash sale risk — bought {wash.daysSinceLastTrade} days ago{wash.crossConnection ? ' in another connected account' : ''}</span>
                           </>
                         ) : washUnchecked ? (
                           <>
                             <AlertTriangle size={12} />
-                            {/* No trade history for THIS account ⇒ we cannot run the
-                                30-day window. Say so instead of claiming "safe". */}
-                            <span>Wash-sale window not available — no trade history on file for this account. Confirm with your broker before selling.</span>
+                            {/* No fills on file at all ⇒ we cannot run the 30-day
+                                window. Say so instead of claiming "safe". */}
+                            <span>Wash-sale window not available — no fill history on file for this account. Confirm with your broker before selling.</span>
                           </>
                         ) : (
                           <>
@@ -1339,7 +1343,7 @@ function TaxHarvestingPageInner() {
                 </p>
                 {Object.values(washSaleStatuses).some(s => s.isSafe && s.historyAvailable === false) && (
                   <p style={{ margin: '8px 0 0', color: 'var(--v-text-muted)' }}>
-                    This account has no trade history on file with Vantage — shares were imported from your broker, which doesn&apos;t
+                    This account has no fill history on file with Vantage — shares were imported from your broker, which doesn&apos;t
                     report per-share purchase dates. The 30-day window can&apos;t be evaluated here, so those positions are labelled
                     rather than marked safe; confirm before selling.
                   </p>
@@ -1350,7 +1354,7 @@ function TaxHarvestingPageInner() {
                     <div style={{ fontWeight: 600, color: 'var(--v-warn)', marginBottom: 4 }}>⚠️ Restricted positions:</div>
                     {Object.entries(washSaleStatuses).filter(([, s]) => !s.isSafe).map(([sym, status]) => (
                       <div key={sym} style={{ fontSize: 11, color: 'var(--v-warn)' }}>
-                        {sym} — bought {status.daysSinceLastTrade} days ago
+                        {sym} — bought {status.daysSinceLastTrade} days ago{status.crossConnection ? ' in another connected account' : ''}
                       </div>
                     ))}
                   </div>

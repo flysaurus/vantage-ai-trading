@@ -14,7 +14,8 @@
 // Usage: npx tsx scripts/verify-wash-sale-cross-connection.ts
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
-import { checkWashSale, evaluateWashSale, type OrderLike } from '../lib/wash-sale';
+import { checkWashSale, evaluateWashSale, fetchRepurchaseFills, type OrderLike } from '../lib/wash-sale';
+import { buildWashSaleCheck } from '../lib/tax-harvest/recent-buys';
 
 const USER_ID =
   process.env.RECONCILE_USER_ID || '58ffa82a-2b14-4a5d-9662-5c48f105031f';
@@ -122,6 +123,82 @@ async function main() {
       console.log(`[verify]   ⚠️ did not demonstrate the cross-connection catch`);
     }
   }
+
+  // ── Same window, TLH endpoint payload (GET /api/strategies/tax-harvest/wash-sale-check) ──
+  console.log('\n[verify] ── TLH wash-sale-check payload (same shared window) ──');
+  for (const lot of candidates) {
+    const ticker = String(lot.ticker).toUpperCase();
+    const src = await fetchRepurchaseFills(supabase, { userId: USER_ID, ticker, isDemo: false, withCoverage: true });
+    const payload = buildWashSaleCheck({
+      symbol: ticker,
+      orders: src.orders,
+      history: src.history,
+      gapConnectionIds: src.gapConnectionIds,
+      scopedConnectionId: ALPACA,
+      isDemo: false,
+      ordersCoverage: src.ordersCoverage,
+      historyCoverage: src.historyCoverage,
+    });
+    // The pre-fix shape: gap connections ignored ⇒ trade_history never read.
+    const legacy = buildWashSaleCheck({
+      symbol: ticker,
+      orders: src.orders,
+      history: src.history,
+      gapConnectionIds: [],
+      scopedConnectionId: ALPACA,
+      isDemo: false,
+      ordersCoverage: src.ordersCoverage,
+      historyCoverage: src.historyCoverage,
+    });
+    console.log(
+      `[verify] ${ticker.padEnd(5)} isSafe=${payload.isSafe} recentBuys=${payload.recentBuys} crossConnection=${payload.crossConnection} ` +
+      `buyFrom=${payload.buyConnectionId === FIDELITY ? 'FIDELITY' : String(payload.buyConnectionId)} days=${payload.daysSinceLastTrade} ` +
+      `| historyAvailable=${payload.historyAvailable} (orders=${src.ordersCoverage}, history=${src.historyCoverage}) | pre-fix isSafe=${legacy.isSafe} buys=${legacy.recentBuys}`,
+    );
+  }
+
+  // ── True boolean flip: a ticker Fidelity bought in-window that Vantage has
+  //    NO order for at all (so the old, orders-only check said "safe"). ──
+  console.log('\n[verify] ── true flip case (Fidelity-only ticker, no orders rows) ──');
+  const { data: fidSample } = await supabase
+    .from('trade_history')
+    .select('symbol')
+    .eq('user_id', USER_ID)
+    .eq('connection_id', FIDELITY)
+    .eq('action', 'buy')
+    .gte('executed_at', cutoff)
+    .limit(200);
+  const seen = new Set<string>();
+  let flipped = 0;
+  for (const row of fidSample || []) {
+    const sym = String((row as any).symbol).toUpperCase();
+    if (seen.has(sym)) continue;
+    seen.add(sym);
+    const { count } = await supabase
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', USER_ID)
+      .eq('symbol', sym);
+    if ((count ?? 0) > 0) continue;
+    const src = await fetchRepurchaseFills(supabase, { userId: USER_ID, ticker: sym, isDemo: false, withCoverage: true });
+    const payload = buildWashSaleCheck({
+      symbol: sym, orders: src.orders, history: src.history, gapConnectionIds: src.gapConnectionIds,
+      scopedConnectionId: ALPACA, isDemo: false,
+      ordersCoverage: src.ordersCoverage, historyCoverage: src.historyCoverage,
+    });
+    const legacy = buildWashSaleCheck({
+      symbol: sym, orders: src.orders, history: src.history, gapConnectionIds: [],
+      scopedConnectionId: ALPACA, isDemo: false,
+      ordersCoverage: src.ordersCoverage, historyCoverage: src.historyCoverage,
+    });
+    console.log(
+      `[verify] ${sym.padEnd(5)} ordersRows=0 → pre-fix isSafe=${legacy.isSafe} (green)  |  NEW isSafe=${payload.isSafe} recentBuys=${payload.recentBuys} ` +
+      `crossConnection=${payload.crossConnection} buyFrom=FIDELITY days=${payload.daysSinceLastTrade}`,
+    );
+    flipped += 1;
+    if (flipped >= 5) break;
+  }
+  console.log(`[verify] ${flipped} true-flip case(s) shown (pre-fix would have said "safe to harvest")`);
 
   console.log(`\n[verify] RESULT: ${proved} symbol(s) proved, ${failed} inconclusive, out of ${candidates.length}`);
 }
