@@ -29,6 +29,8 @@ export interface WashSaleRecentBuy {
   filledAt: string;
   qty: number;
   price: number;
+  /** broker_connections.id the fill came from (null for legacy/demo rows). */
+  connectionId?: string | null;
 }
 
 export interface WashSaleResult {
@@ -44,6 +46,14 @@ export interface WashSaleResult {
   hasLots: boolean;
   /** Most recent qualifying BUY within the window (null if none). */
   recentBuy: WashSaleRecentBuy | null;
+  /**
+   * EVERY qualifying BUY within the window, de-duplicated across sources,
+   * newest-first. `recentBuy` is `recentBuys[0]`. Exposed so callers (and tests)
+   * can assert the window was counted once, not once per source.
+   */
+  recentBuys: WashSaleRecentBuy[];
+  /** Total shares across `recentBuys` (de-duplicated). */
+  recentBuyQty: number;
 }
 
 /** Minimal order row shape — matches public.orders columns we read. */
@@ -56,6 +66,103 @@ export interface OrderLike {
   filled_qty?: number | null;
   qty?: number | null;
   filled_price?: number | null;
+  connection_id?: string | null;
+}
+
+/** Minimal trade_history row shape — fills REPORTED by a connected broker. */
+export interface TradeHistoryLike {
+  symbol: string;
+  action: string;
+  quantity: number | null;
+  price: number | null;
+  executed_at: string | null;
+  connection_id?: string | null;
+}
+
+/**
+ * Normalize a `trade_history` row into the OrderLike shape the window math uses.
+ * trade_history is a fill LOG (no order lifecycle), so status is implicitly
+ * 'filled' and `executed_at` is the fill timestamp. Mapping once here keeps the
+ * 60-day/30-day math identical for both sources.
+ */
+export function tradeHistoryToOrderLike(row: TradeHistoryLike): OrderLike {
+  return {
+    symbol: String(row.symbol || ''),
+    side: String(row.action || '').toLowerCase(),
+    status: 'filled',
+    filled_at: row.executed_at,
+    created_at: row.executed_at,
+    filled_qty: row.quantity,
+    qty: row.quantity,
+    filled_price: row.price,
+    connection_id: row.connection_id ?? null,
+  };
+}
+
+/**
+ * Pure — union BUY fills from `orders` (fills Vantage placed) with `trade_history`
+ * (fills merely reported by a read-only broker), counting each fill ONCE.
+ *
+ * `orders` always wins on overlap. Two fills are the same fill when symbol +
+ * side + qty + price agree AND their timestamps are within `skewMs` (default
+ * 24h) — the same execution gets different timestamps per source (observed
+ * 13h apart on the TSLA fill: orders.filled_at 13:30 vs executed_at 00:36).
+ * Exact duplicates WITHIN a source (same symbol/side/qty/price/day) are also
+ * collapsed, which is how the pre-existing duplicate `orders` rows drop out.
+ *
+ * Measured on live data: 74 of 75 Alpaca trade_history rows duplicate an
+ * `orders` row, so an un-deduped union would double-count ~90% of the window.
+ */
+export function unionBuyFills(
+  orders: OrderLike[],
+  history: OrderLike[],
+  opts?: { skewMs?: number },
+): OrderLike[] {
+  const skewMs = opts?.skewMs ?? 24 * 60 * 60 * 1000;
+
+  const fillKey = (o: OrderLike): string =>
+    [
+      String(o.symbol || '').toUpperCase(),
+      String(o.side || '').toLowerCase(),
+      Number(o.filled_qty ?? o.qty ?? 0).toFixed(6),
+      Number(o.filled_price ?? 0).toFixed(2),
+    ].join('|');
+
+  const dayKey = (o: OrderLike): string =>
+    String(o.filled_at || o.created_at || '').slice(0, 10);
+
+  const ts = (o: OrderLike): number | null => {
+    const ms = Date.parse(String(o.filled_at || o.created_at || ''));
+    return Number.isFinite(ms) ? ms : null;
+  };
+
+  const out: OrderLike[] = [];
+  const seen = new Set<string>();
+
+  // Orders first — they win every overlap.
+  for (const o of orders || []) {
+    const k = `${fillKey(o)}|${dayKey(o)}`;
+    if (seen.has(k)) continue; // collapse duplicate orders rows
+    seen.add(k);
+    out.push(o);
+  }
+
+  for (const h of history || []) {
+    const k = `${fillKey(h)}|${dayKey(h)}`;
+    if (seen.has(k)) continue; // same-day exact duplicate of an accepted fill
+    const hTs = ts(h);
+    const duplicateOfOrder = out.some((o) => {
+      if (fillKey(o) !== fillKey(h)) return false;
+      const oTs = ts(o);
+      if (hTs === null || oTs === null) return true; // no timestamps → same qty+price counts as the same fill
+      return Math.abs(oTs - hTs) <= skewMs;
+    });
+    if (duplicateOfOrder) continue; // orders wins
+    seen.add(k);
+    out.push(h);
+  }
+
+  return out;
 }
 
 /**
@@ -125,6 +232,7 @@ export function findRecentBuys(
       filledAt: o.filled_at || o.created_at || '',
       qty: Number(o.filled_qty ?? o.qty ?? 0),
       price: Number(o.filled_price ?? 0),
+      connectionId: o.connection_id ?? null,
     }))
     .filter((o) => o.filledAt)
     .filter((o) => new Date(o.filledAt).getTime() >= cutoff)
@@ -150,6 +258,8 @@ export function evaluateWashSale(input: {
       matchedQty: loss.matchedQty,
       hasLots: loss.hasLots,
       recentBuy: null,
+      recentBuys: [],
+      recentBuyQty: 0,
     };
   }
 
@@ -162,6 +272,8 @@ export function evaluateWashSale(input: {
     matchedQty: loss.matchedQty,
     hasLots: loss.hasLots,
     recentBuy: buys[0] ?? null,
+    recentBuys: buys,
+    recentBuyQty: buys.reduce((s, b) => s + (Number.isFinite(b.qty) ? b.qty : 0), 0),
   };
 }
 
@@ -193,6 +305,8 @@ export async function checkWashSale(
     matchedQty: 0,
     hasLots: false,
     recentBuy: null,
+    recentBuys: [],
+    recentBuyQty: 0,
   };
 
   if (!ticker || sellQty <= 0 || !Number.isFinite(salePrice)) return empty;
@@ -224,20 +338,30 @@ export async function checkWashSale(
     filled_at: r.filled_at,
   }));
 
-  // 2. Recent BUY orders — same ticker, BUY side, filled. The 30-day window
-  //    is applied in the pure findRecentBuys (single source of truth).
+  // 2. Repurchase window — same ticker, BUY side, filled, last 30 days.
   //
   //    CROSS-ACCOUNT SCOPE: for a live/paper account we look at BUY fills
-  //    across ALL of the user's broker connections — a repurchase made in a
-  //    *different* connected account also triggers the wash-sale rule, so
-  //    scoping the repurchase window to one connection under-reported it.
+  //    across ALL of the user's broker connections — the rule is taxpayer-wide,
+  //    so a repurchase in a *different* connected account also triggers it.
   //    Cost basis (the lots above) stays scoped to the selling account: the
-  //    loss is account-specific; only the repurchase window widens. Demo
-  //    stays demo — a demo fill cannot create a real wash sale.
-  //    Coverage is Vantage-connected accounts only (see disclosure copy).
+  //    loss is account-specific; only the repurchase window widens.
+  //
+  //    TWO SOURCES, COUNTED ONCE:
+  //      • orders        — fills Vantage placed (only trading-enabled logins)
+  //      • trade_history — fills REPORTED by a read-only login (e.g. Fidelity,
+  //                        trading_enabled=false, which has ZERO orders rows)
+  //    trade_history is used as GAP-FILL only, for connections that have no
+  //    order coverage; `unionBuyFills` then drops any residual overlap so a
+  //    fill that appears in both tables is counted once (orders wins).
+  //    Demo stays demo — a demo fill cannot create a real wash sale.
+  //
+  //    NOTE: this is connection-level, not sub-account-level. A login exposing
+  //    several sub-accounts contributes its fills as one pool, so the advisory
+  //    can name the account only at connection granularity. Sub-account
+  //    attribution arrives with the Part B account model — see disclosure copy.
   let ordersQuery = supabase
     .from('orders')
-    .select('symbol, side, status, filled_at, created_at, filled_qty, qty, filled_price')
+    .select('symbol, side, status, filled_at, created_at, filled_qty, qty, filled_price, connection_id')
     .eq('user_id', userId)
     .eq('symbol', ticker)
     .eq('side', 'buy')
@@ -252,11 +376,46 @@ export async function checkWashSale(
     console.warn('[wash-sale] order fetch failed:', orderError.message);
   }
 
+  // 2b. Gap-fill: connections with NO order coverage (trading_enabled is not
+  //     true, i.e. a position-imported / read-only login). Demo is untouched —
+  //     trade_history gap-fill is live-only.
+  let historyBuys: OrderLike[] = [];
+  if (!isDemo) {
+    try {
+      const { data: connRows, error: connError } = await supabase
+        .from('broker_connections')
+        .select('id, trading_enabled')
+        .eq('user_id', userId);
+      if (connError) console.warn('[wash-sale] connection fetch failed:', connError.message);
+
+      const gapIds = (connRows || [])
+        .filter((c: any) => c.trading_enabled !== true)
+        .map((c: any) => c.id);
+
+      if (gapIds.length > 0) {
+        const { data: thRows, error: thError } = await supabase
+          .from('trade_history')
+          .select('symbol, action, quantity, price, executed_at, connection_id')
+          .eq('user_id', userId)
+          .eq('symbol', ticker)
+          .eq('action', 'buy')
+          .eq('is_demo', false)
+          .in('connection_id', gapIds);
+        if (thError) console.warn('[wash-sale] trade_history fetch failed:', thError.message);
+        historyBuys = (thRows || []).map((r: any) => tradeHistoryToOrderLike(r as TradeHistoryLike));
+      }
+    } catch (e) {
+      console.warn('[wash-sale] gap-fill failed:', (e as Error).message);
+    }
+  }
+
+  const mergedBuys = unionBuyFills((orderRows || []) as OrderLike[], historyBuys);
+
   return evaluateWashSale({
     lots,
     sellQty,
     salePrice,
-    orders: (orderRows || []) as OrderLike[],
+    orders: mergedBuys,
     ticker,
   });
 }

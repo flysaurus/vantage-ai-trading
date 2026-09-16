@@ -369,10 +369,13 @@ export default function TradeTicket({
                   Wash-sale advisory
                 </div>
                 <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>
-                  Selling <b style={{ color: '#ffffff' }}>{symbol}</b> may trigger a wash sale — you bought {symbol} on {formatWashSaleDate(washSale.recentBuy.filledAt)} (within the last 30 days), so this loss may not be tax-deductible this year.
+                  Selling <b style={{ color: '#ffffff' }}>{symbol}</b> may trigger a wash sale — you bought {symbol} on {formatWashSaleDate(washSale.recentBuy.filledAt)}
+                  {washSale.recentBuy.connectionId && washAccountId && washSale.recentBuy.connectionId !== washAccountId
+                    ? ' in another connected account'
+                    : ''} (within the last 30 days), so this loss may not be tax-deductible this year.
                 </div>
                 <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 4 }}>
-                  This checks same-ticker purchases only — substantially identical securities (e.g. VOO vs IVV) are not detected.
+                  Covers every account you have connected to Vantage (placed orders and broker-reported fills). Accounts held elsewhere are not visible. This checks same-ticker purchases only — substantially identical securities (e.g. VOO vs IVV) are not detected.
                 </div>
               </div>
             </div>

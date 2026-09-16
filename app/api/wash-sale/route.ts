@@ -1,6 +1,10 @@
 // ─── POST /api/wash-sale ─────────────────────────────────────
 // Deterministic wash-sale pre-trade advisory for the Sell TradeTicket.
-// Returns { isWashSale, isLoss, fifoCostBasis, matchedQty, hasLots, recentBuy }.
+// Returns { isWashSale, isLoss, fifoCostBasis, matchedQty, hasLots, recentBuy,
+//           recentBuys, recentBuyQty }.
+// The repurchase window unions `orders` (fills Vantage placed) with
+// `trade_history` (fills reported by a read-only connected login) and counts
+// each fill once — see lib/wash-sale.ts unionBuyFills.
 //
 // Advisory only — this endpoint never blocks or executes a trade. Any
 // failure degrades to "no advisory" so it can never wedge the sell flow.
@@ -17,6 +21,8 @@ const NO_ADVISORY = {
   matchedQty: 0,
   hasLots: false,
   recentBuy: null,
+  recentBuys: [],
+  recentBuyQty: 0,
 };
 
 export async function POST(req: NextRequest) {
