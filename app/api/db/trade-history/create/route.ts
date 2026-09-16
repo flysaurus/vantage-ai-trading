@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 import { TRADE_HISTORY_SELECT, toTradeRecord, toTradeInsert } from '@/lib/db/trade-history';
+import { resolveBrokerAccountIdForWrite } from '@/lib/broker/account-id';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
@@ -13,7 +14,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const body = await req.json().catch(() => null);
     if (!body) return NextResponse.json({ error: 'Missing request body' }, { status: 400 });
 
-    const { userId, symbol, action, quantity, price, commission, notes, alpacaOrderId, executedAt, connectionId, isDemo } = body as Record<string, any>;
+    const { userId, symbol, action, quantity, price, commission, notes, alpacaOrderId, executedAt, connectionId, snapAccountId, isDemo } = body as Record<string, any>;
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
     if (!symbol?.trim()) return NextResponse.json({ error: 'symbol required' }, { status: 400 });
     if (!action || !['buy', 'sell'].includes(action)) return NextResponse.json({ error: 'action must be buy or sell' }, { status: 400 });
@@ -41,7 +42,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const { data, error } = await (supabase as any).from('trade_history')
       .insert(toTradeInsert(
         { symbol, action, quantity, price, commission, notes, executedAt: execTime },
-        { userId, connectionId: connectionId || null, isDemo },
+        {
+          userId,
+          connectionId: connectionId || null,
+          isDemo,
+          // Part B step 3b: stamp the sub-account from the same active-account
+          // context the read path uses (snapAccountId → scopedUrl), never from
+          // the payload. Inert until BROKER_ACCOUNT_ID_WRITES=1 (returns null).
+          accountId: await resolveBrokerAccountIdForWrite(supabase, {
+            userId,
+            connectionId: connectionId || null,
+            snapAccountId: typeof snapAccountId === 'string' ? snapAccountId : null,
+          }),
+        },
       ))
       .select(TRADE_HISTORY_SELECT)
       .single();

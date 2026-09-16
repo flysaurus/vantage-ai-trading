@@ -14,6 +14,7 @@ import {
 } from '@/lib/snaptrade/client';
 import { canonicalizeSymbol } from '@/lib/sector-resolver';
 import { resolvePositionSectors } from '@/lib/portfolio/position-sectors-server';
+import { resolveBrokerAccountIdForWrite } from '@/lib/broker/account-id';
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { positions, connectionId } = body;
+    const { positions, connectionId, snapAccountId } = body;
 
     if (!Array.isArray(positions)) {
       return NextResponse.json({ error: 'positions array required' }, { status: 400 });
@@ -51,6 +52,16 @@ export async function POST(req: NextRequest) {
 
     const supabase = createServerClient();
 
+    // Part B step 3b — stamp the sub-account on every row we are about to write.
+    // The account comes from the SAME active-account context the read path used
+    // (`snapAccountId` → scopedUrl); it is never re-derived from the payload.
+    // Inert until BROKER_ACCOUNT_ID_WRITES=1: returns null, zero queries.
+    const writeAccountId = await resolveBrokerAccountIdForWrite(supabase, {
+      userId,
+      connectionId: resolvedConnectionId,
+      snapAccountId: typeof snapAccountId === 'string' ? snapAccountId : null,
+    });
+
     // Enrich positions with sectors before persisting. Single authority:
     // lib/portfolio/position-sectors-server.ts — static symbol map → live
     // Finnhub, plus the SAME ETF look-through the sector-mix donut uses for
@@ -73,6 +84,7 @@ export async function POST(req: NextRequest) {
       return {
         user_id: userId,
         connection_id: resolvedConnectionId,
+        account_id: writeAccountId,
         symbol: p.symbol,
         name: p.name ?? p.description ?? null,
         qty: p.shares ?? p.qty ?? 0,
@@ -85,12 +97,21 @@ export async function POST(req: NextRequest) {
 
     // Always delete this connection's live positions, then insert fresh.
     // (Even an empty positions array must clear stale rows after a sell-to-zero.)
-    await (supabase as any)
+    //
+    // ⚠️ Once rows are account-stamped, the delete MUST narrow with them. A
+    // connection-wide delete on a shared login (Fidelity: 2 accounts) would wipe
+    // the sibling account's rows on every sync of the active one. Scoped by the
+    // same account id that the inserts carry — and only when that id resolved.
+    let deleteQuery = (supabase as any)
       .from('positions')
       .delete()
       .eq('user_id', userId)
       .eq('is_demo', false)
       .eq('connection_id', resolvedConnectionId);
+    if (writeAccountId) {
+      deleteQuery = deleteQuery.eq('account_id', writeAccountId);
+    }
+    await deleteQuery;
 
     if (rows.length > 0) {
       await (supabase as any)

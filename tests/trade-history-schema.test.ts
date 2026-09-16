@@ -4,7 +4,8 @@
 // `filled_at` and `alpaca_order_id` — none of which exist on the table — so
 // get-all/get-single/create/sync all returned 500 on EVERY request and the
 // trade-history page silently rendered empty. The real column list below is
-// the one PostgREST reports for `trade_history` (2026-09-12).
+// the one PostgREST reports for `trade_history` (2026-09-12), plus `account_id`
+// (added by migration 077, Part B step 1 — verified live 2026-09-16).
 
 import { describe, it, expect } from 'vitest';
 import {
@@ -17,6 +18,7 @@ import {
 
 /** The actual PostgREST column set for `trade_history`. */
 const REAL_SCHEMA = [
+  'account_id',
   'action',
   'commission',
   'connection_id',
@@ -109,6 +111,15 @@ describe('toTradeInsert', () => {
     expect(row.price).toBe(150);
     expect(row.user_id).toBe('u1');
     expect(row.connection_id).toBe('c9');
+    expect(row.account_id).toBeNull(); // step 3b stamp is opt-in and off by default
+  });
+
+  it('stamps account_id only when the caller supplies a resolved one', () => {
+    const row = toTradeInsert(
+      { symbol: 'spy', action: 'buy', quantity: 1, price: 500 },
+      { userId: 'u1', connectionId: 'c9', accountId: 'acct-1' },
+    );
+    expect(row.account_id).toBe('acct-1');
   });
 
   it('folds legacy callers’ alias fields into the real ones', () => {

@@ -36,6 +36,13 @@ export interface CreateLotInput {
   userId: string;
   /** Broker connection id (NULL = demo). Maps to position_lots.account_id. */
   accountId: string | null;
+  /**
+   * broker_accounts.id for this lot (position_lots.broker_account_id).
+   * Part B step 3b: supplied by the caller from the SAME resolved active-account
+   * context the read path uses (snapAccountId → scopedUrl), never re-derived.
+   * Optional and usually null — the stamping flag is off until Part B step 4.
+   */
+  brokerAccountId?: string | null;
   ticker: string;
   qty: number;
   priceAtFill: number;
@@ -172,6 +179,7 @@ export async function createLotForBuy(
     .insert({
       user_id: input.userId,
       account_id: input.accountId,
+      broker_account_id: input.brokerAccountId ?? null,
       basket_id: input.basketId ?? null,
       ticker: input.ticker,
       qty: input.qty,

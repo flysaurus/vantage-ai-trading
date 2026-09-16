@@ -7,6 +7,8 @@
 //   action, commission, connection_id, created_at, executed_at, id, is_demo,
 //   notes, price, quantity, symbol, updated_at, user_id
 //
+//   (+ account_id, added by migration 077 — Part B step 1)
+//
 // The routes asked for `total_value`, `side`, `qty`, `filled_price`, `status`,
 // `filled_at` and `alpaca_order_id` — none of which exist. PostgREST rejects a
 // query naming an unknown column, so GET /get-all, POST /create, /get-single
@@ -20,6 +22,7 @@
 
 /** Columns that exist on `trade_history`, as returned by PostgREST. */
 export const TRADE_HISTORY_COLUMNS = [
+  'account_id',
   'action',
   'commission',
   'connection_id',
@@ -64,6 +67,8 @@ export interface TradeHistoryRow {
   created_at: string | null;
   is_demo: boolean | null;
   connection_id: string | null;
+  /** broker_accounts.id (migration 077). NULL = not yet attributed. */
+  account_id?: string | null;
 }
 
 /** The API shape the client consumes (`totalValue` is derived, not stored). */
@@ -133,7 +138,13 @@ export interface TradeInsertInput {
  */
 export function toTradeInsert(
   input: TradeInsertInput,
-  opts: { userId: string; connectionId?: string | null; isDemo?: boolean },
+  opts: {
+    userId: string;
+    connectionId?: string | null;
+    isDemo?: boolean;
+    /** broker_accounts.id — stamped at write time (Part B step 3b). */
+    accountId?: string | null;
+  },
 ): Record<string, unknown> {
   const action = input.action ?? input.side ?? null;
   const quantity = numOrNull(input.quantity ?? input.qty);
@@ -156,6 +167,7 @@ export function toTradeInsert(
     executed_at: executedAt,
     is_demo: opts.isDemo === true,
     connection_id: opts.connectionId ?? null,
+    account_id: opts.accountId ?? null,
   };
 }
 

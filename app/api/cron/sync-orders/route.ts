@@ -387,6 +387,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               await createLotForBuy(supabase, {
                 userId,
                 accountId: o.connection_id ?? null,
+                // ⚠️ Part B step 3b gap: this cron path has NO sub-account context
+                // (the orders row carries only connection_id), so it must not
+                // guess one — broker_account_id stays null here until an
+                // account column exists on `orders` (a later Part B step).
+                brokerAccountId: null,
                 ticker: live.symbol,
                 qty: fillShares,
                 priceAtFill: fillPrice,

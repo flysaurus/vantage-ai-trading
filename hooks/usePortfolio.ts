@@ -717,6 +717,10 @@ export function usePortfolio() {
         apiPost('/api/positions/sync', {
           positions: brokerPositions,
           connectionId: connectionId || undefined,
+          // Part B step 3b: the same resolved sub-account the broker adapter was
+          // just scoped to, so written rows can be attributed to it (inert until
+          // the server flag is on).
+          snapAccountId: parseAccountScope(activeAccountId)?.snapAccountId ?? undefined,
         }).catch((e) =>
           console.warn('[usePortfolio] positions sync skipped:', e?.message)
         );
