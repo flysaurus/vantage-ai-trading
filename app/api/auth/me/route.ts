@@ -38,6 +38,9 @@ export async function GET() {
       target_return_pct: userData?.target_return_pct ?? null,
       target_loss_pct: userData?.target_loss_pct ?? null,
       tier: userData?.tier ?? 'demo',
+      // BugPin bug-report widget gate (migration 079). Strict boolean: a missing
+      // column (migration not yet applied) resolves to false, never undefined.
+      is_tester: userData?.is_tester === true,
       demo_start_at: userData?.demo_start_at ?? null,
       demo_expires_at: userData?.demo_expires_at ?? null,
       connection_type: userData?.connection_type ?? null,

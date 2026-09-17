@@ -6,6 +6,7 @@ import { InactivityWarning } from '@/components/providers/InactivityWarning';
 import { MilestoneToastProvider } from '@/context/MilestoneContext';
 import { MilestoneToastRenderer } from '@/components/gamification/MilestoneToastRenderer';
 import { ThemeProvider, THEME_BOOT_SCRIPT } from '@/lib/theme/theme-provider';
+import { BugPinTesterEmbed } from '@/components/tester/BugPinTesterEmbed';
 import './globals.css';
 import './theme.css';
 
@@ -81,6 +82,9 @@ export default function RootLayout({
               </AuthGuard>
               <InactivityWarning />
               <MilestoneToastRenderer />
+              {/* BugPin bug-report widget — client-side, testers only (is_tester).
+                  Renders nothing at all for everyone else. */}
+              <BugPinTesterEmbed />
             </TabSessionGuard>
           </MilestoneToastProvider>
         </AuthProvider>

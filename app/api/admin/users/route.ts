@@ -25,6 +25,7 @@ interface UserRow {
   is_admin?: boolean | null;
   suspended?: boolean | null;
   deleted?: boolean | null;
+  is_tester?: boolean | null;
   created_at: string;
   updated_at?: string | null;
   monthly_chat_used?: number | null;
@@ -41,6 +42,8 @@ interface AggregatedUser {
   tier: string | null;
   is_admin: boolean | null;
   suspended: boolean | null;
+  /** null = migration 079 not applied yet (column missing) */
+  is_tester: boolean | null;
   subscription_tier_key: string | null;
   subscription_tier_name: string | null;
   subscription_status: string | null;
@@ -88,25 +91,42 @@ export async function GET(request: NextRequest) {
     // Note: display_name may not exist on older Supabase instances —
     // we coalesce it to NULL client-side if the column is missing.
     // Migration 030 adds the column if missing.
-    let userQuery = sb
-      .from('users')
-      .select(`
-        id, email, avatar_url,
-        investor_style, investor_style_onboarded, tier,
-        is_admin, suspended, deleted,
-        created_at, updated_at,
-        monthly_chat_used,
-        demo_expires_at
-      `)
-      .order(sortField, { ascending: sortOrder === 'asc' })
-      .limit(limit);
+    const userColumns = [
+      'id, email, avatar_url',
+      'investor_style, investor_style_onboarded, tier',
+      'is_admin, suspended, deleted',
+      'created_at, updated_at',
+      'monthly_chat_used',
+      'demo_expires_at',
+    ];
 
-    // Apply email search filter
-    if (search) {
-      userQuery = userQuery.ilike('email', `%${search}%`);
+    const buildUserQuery = (withTester: boolean) => {
+      const cols = withTester
+        ? [...userColumns, 'is_tester'].join(', ')
+        : userColumns.join(', ');
+      let q = sb
+        .from('users')
+        .select(cols)
+        .order(sortField, { ascending: sortOrder === 'asc' })
+        .limit(limit);
+      // Apply email search filter
+      if (search) q = q.ilike('email', `%${search}%`);
+      return q;
+    };
+
+    let { data: users, error: usersError } = await buildUserQuery(true);
+
+    // Graceful degradation: `is_tester` arrives with migration 079. Until that
+    // is applied, drop it from the projection instead of 500-ing the whole
+    // admin users page. Testers report null (= "unknown") rather than false.
+    let testerColumnAvailable = true;
+    if (usersError && /is_tester/i.test(usersError.message || '')) {
+      testerColumnAvailable = false;
+      console.warn(
+        '[admin/users] is_tester column missing — apply migration 079_users_is_tester.sql. Falling back to a projection without it.',
+      );
+      ({ data: users, error: usersError } = await buildUserQuery(false));
     }
-
-    const { data: users, error: usersError } = await userQuery;
 
     if (usersError) {
       return NextResponse.json({ error: usersError.message }, { status: 500 });
@@ -202,6 +222,7 @@ export async function GET(request: NextRequest) {
         is_admin: u.is_admin ?? null,
         suspended: u.suspended ?? null,
         deleted: u.deleted ?? null,
+        is_tester: testerColumnAvailable ? (u.is_tester ?? false) : null,
         subscription_tier_key: subscriptionTierKey,
         subscription_tier_name: subscriptionTierName,
         subscription_status: subscriptionStatus,
@@ -225,6 +246,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       users: aggregated,
       total: aggregated.length,
+      isTesterColumnAvailable: testerColumnAvailable,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -237,6 +259,7 @@ export async function GET(request: NextRequest) {
 //   toggle_admin       — grant or revoke is_admin
 //   toggle_suspension  — suspend or unsuspend user
 //   reset_demo         — reset demo trial (expiry)
+//   toggle_tester      — grant or revoke is_tester (BugPin bug-report widget)
 // All actions are audit-logged with old_value / new_value JSONB.
 
 export async function PUT(request: NextRequest) {
@@ -276,6 +299,8 @@ export async function PUT(request: NextRequest) {
         return handleToggleSuspension(sb, userId, reason, adminEmail);
       case 'reset_demo':
         return handleResetDemo(sb, userId, adminEmail);
+      case 'toggle_tester':
+        return handleToggleTester(sb, userId, adminEmail);
       case 'delete_user':
         return handleSoftDelete(sb, userId, reason, adminEmail);
       case 'restore_user':
@@ -286,7 +311,7 @@ export async function PUT(request: NextRequest) {
         return handleResetMfa(sb, userId, adminEmail);
       default:
         return NextResponse.json(
-          { error: `Unknown action: ${action}. Must be: tier_override, toggle_admin, toggle_suspension, reset_demo, delete_user, restore_user, reset_password, reset_mfa` },
+          { error: `Unknown action: ${action}. Must be: tier_override, toggle_admin, toggle_suspension, reset_demo, toggle_tester, delete_user, restore_user, reset_password, reset_mfa` },
           { status: 400 }
         );
     }
@@ -426,6 +451,67 @@ async function handleToggleSuspension(
     success: true,
     message: newValue ? 'User suspended — all active sessions invalidated' : 'User reactivated',
     userId, suspended: newValue,
+  });
+}
+
+// ── Toggle Tester (BugPin widget) ──────────────────────────
+// is_tester gates the BugPin bug-report embed in the client. Uses its own
+// narrow select rather than fetchUser() so that a missing column (migration 079
+// not applied) can never break the OTHER admin actions.
+
+async function handleToggleTester(sb: any, userId: string, adminEmail: string) {
+  const MIGRATION_HINT =
+    'Tester flag is not available yet — apply migration 079_users_is_tester.sql in the Supabase SQL editor.';
+
+  const { data: user, error } = await sb
+    .from('users')
+    .select('id, is_tester')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) {
+    if (/is_tester/i.test(error.message || '')) {
+      return NextResponse.json({ error: MIGRATION_HINT }, { status: 409 });
+    }
+    return NextResponse.json({ error: `User not found: ${error.message}` }, { status: 404 });
+  }
+  if (!user) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  }
+
+  const oldValue = user.is_tester === true;
+  const newValue = !oldValue;
+
+  const { error: updateErr } = await sb
+    .from('users')
+    .update({ is_tester: newValue, updated_at: new Date().toISOString() })
+    .eq('id', userId);
+
+  // Never let a write failure look like success.
+  if (updateErr) {
+    if (/is_tester/i.test(updateErr.message || '')) {
+      return NextResponse.json({ error: MIGRATION_HINT }, { status: 409 });
+    }
+    console.error('[admin/users] Tester toggle write failed:', updateErr.message);
+    return NextResponse.json({ error: updateErr.message }, { status: 500 });
+  }
+
+  await writeAudit(
+    sb,
+    adminEmail,
+    userId,
+    newValue ? 'grant_tester' : 'revoke_tester',
+    { is_tester: oldValue },
+    { is_tester: newValue },
+  );
+
+  return NextResponse.json({
+    success: true,
+    message: newValue
+      ? 'Tester enabled — BugPin bug-report widget will appear for this user on next load'
+      : 'Tester disabled — BugPin widget removed',
+    userId,
+    is_tester: newValue,
   });
 }
 

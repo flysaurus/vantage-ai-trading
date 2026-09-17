@@ -14,6 +14,8 @@ interface AggregatedUser {
   tier: string | null;
   is_admin: boolean | null;
   suspended: boolean | null;
+  /** null = the is_tester column is missing (migration 079 not applied) */
+  is_tester: boolean | null;
   subscription_tier_key: string | null;
   subscription_tier_name: string | null;
   subscription_status: string | null;
@@ -390,7 +392,7 @@ export function UsersManager() {
 
   // Modal state
   const [modalUser, setModalUser] = useState<AggregatedUser | null>(null);
-  const [modalType, setModalType] = useState<'tier' | 'admin' | 'suspend' | 'reset_demo' | 'activity' | 'delete' | 'reset_password' | 'reset_mfa'>('tier');
+  const [modalType, setModalType] = useState<'tier' | 'admin' | 'suspend' | 'reset_demo' | 'tester' | 'activity' | 'delete' | 'reset_password' | 'reset_mfa'>('tier');
   const [selectedTier, setSelectedTier] = useState<string>('demo');
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
@@ -445,7 +447,7 @@ export function UsersManager() {
 
   // ── Action launchers ──────────────────────────────────────
 
-  const openModal = (user: AggregatedUser, type: 'tier' | 'admin' | 'suspend' | 'reset_demo' | 'activity' | 'delete' | 'reset_password' | 'reset_mfa') => {
+  const openModal = (user: AggregatedUser, type: 'tier' | 'admin' | 'suspend' | 'reset_demo' | 'tester' | 'activity' | 'delete' | 'reset_password' | 'reset_mfa') => {
     setModalUser(user);
     setModalType(type);
     setSelectedTier(user.tier || 'demo');
@@ -704,6 +706,26 @@ export function UsersManager() {
                         >
                           {u.suspended ? '⚫ Susp' : 'Suspend'}
                         </button>
+                        <button
+                          onClick={() => openModal(u, 'tester')}
+                          style={{
+                            ...styles.actionBtn,
+                            background:
+                              u.is_tester === true ? 'rgba(35,134,54,0.2)' : 'transparent',
+                            border:
+                              u.is_tester === true ? '1px solid #238636' : '1px solid #30363d',
+                            color: u.is_tester === true ? '#3fb950' : '#8b949e',
+                          }}
+                          title={
+                            u.is_tester === null
+                              ? 'Tester flag unavailable — apply migration 079'
+                              : u.is_tester
+                                ? 'Disable tester (BugPin bug-report widget)'
+                                : 'Enable tester (BugPin bug-report widget)'
+                          }
+                        >
+                          {u.is_tester === null ? '🧪 n/a' : u.is_tester ? '🧪 Tester ✓' : '🧪 Tester'}
+                        </button>
                         {u.tier === 'demo' && (
                           <button onClick={() => openModal(u, 'reset_demo')} style={styles.actionBtn} title="Reset demo trial">
                             🔄 Demo
@@ -827,6 +849,24 @@ export function UsersManager() {
                 >
                   {u.suspended ? '⚫ Unsusp' : 'Suspend'}
                 </button>
+                <button
+                  onClick={() => openModal(u, 'tester')}
+                  style={{
+                    ...styles.actionBtn,
+                    background: u.is_tester === true ? 'rgba(35,134,54,0.2)' : 'transparent',
+                    border: u.is_tester === true ? '1px solid #238636' : '1px solid #30363d',
+                    color: u.is_tester === true ? '#3fb950' : '#8b949e',
+                  }}
+                  title={
+                    u.is_tester === null
+                      ? 'Tester flag unavailable — apply migration 079'
+                      : u.is_tester
+                        ? 'Disable tester (BugPin widget)'
+                        : 'Enable tester (BugPin widget)'
+                  }
+                >
+                  {u.is_tester === null ? '🧪 n/a' : u.is_tester ? '🧪 Tester ✓' : '🧪 Tester'}
+                </button>
                 {u.tier === 'demo' && (
                   <button onClick={() => openModal(u, 'reset_demo')} style={styles.actionBtn}>🔄 Demo</button>
                 )}
@@ -857,6 +897,8 @@ export function UsersManager() {
               {modalType === 'tier' && 'Edit Tier'}
               {modalType === 'admin' && (modalUser.is_admin ? 'Revoke Admin Access' : 'Grant Admin Access')}
               {modalType === 'suspend' && (modalUser.suspended ? 'Unsuspend User' : 'Suspend User')}
+              {modalType === 'tester' &&
+                (modalUser.is_tester ? 'Disable Tester (BugPin widget)' : 'Enable Tester (BugPin widget)')}
               {modalType === 'reset_demo' && 'Reset Demo Trial'}
               {modalType === 'delete' && (modalUser.deleted ? 'Restore User' : 'Delete User')}
               {modalType === 'reset_password' && 'Reset Password'}
@@ -990,6 +1032,53 @@ export function UsersManager() {
                     {saving ? 'Saving...' : modalUser.suspended ? 'Unsuspend User' : 'Suspend User'}
                   </button>
                 </div>
+              </>
+            )}
+
+            {/* Tester toggle (BugPin bug-report widget) */}
+            {modalType === 'tester' && (
+              <>
+                {modalUser.is_tester === null ? (
+                  <>
+                    <p style={{ color: '#e6edf3', fontSize: '0.875rem', marginBottom: '0.75rem' }}>
+                      The <code>is_tester</code> column doesn't exist yet, so this toggle cannot
+                      work.
+                    </p>
+                    <p style={{ color: '#8b949e', fontSize: '0.8125rem', marginBottom: '1rem' }}>
+                      Apply <strong>supabase/migrations/079_users_is_tester.sql</strong> in the
+                      Supabase SQL editor, then reload this page.
+                    </p>
+                    <div style={styles.modalActions}>
+                      <button onClick={closeModal} style={styles.cancelBtn}>Close</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p style={{ color: '#e6edf3', marginBottom: '0.75rem', fontSize: '0.875rem' }}>
+                      {modalUser.is_tester
+                        ? 'This removes the BugPin bug-report widget for this user. The embed script is no longer injected on any page they load.'
+                        : 'This enables the BugPin bug-report widget for this user only. The embed script is injected client-side on every page they load; nothing BugPin-related is rendered for anyone else.'}
+                    </p>
+                    <p style={{ color: '#8b949e', fontSize: '0.75rem', marginBottom: '1rem' }}>
+                      Sets <code>public.users.is_tester</code>. Takes effect on their next page
+                      load.
+                    </p>
+                    <div style={styles.modalActions}>
+                      <button onClick={closeModal} style={styles.cancelBtn} disabled={saving}>Cancel</button>
+                      <button
+                        onClick={() => handleAction('toggle_tester')}
+                        style={{
+                          ...styles.confirmBtn,
+                          background: modalUser.is_tester ? '#da3633' : '#238636',
+                          opacity: saving ? 0.6 : 1,
+                        }}
+                        disabled={saving}
+                      >
+                        {saving ? 'Saving...' : modalUser.is_tester ? 'Disable Tester' : 'Enable Tester'}
+                      </button>
+                    </div>
+                  </>
+                )}
               </>
             )}
 
