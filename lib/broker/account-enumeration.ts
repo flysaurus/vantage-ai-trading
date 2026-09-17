@@ -67,12 +67,21 @@ function believableOrNull(v: number | null | undefined): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v !== 0 ? v : null;
 }
 
+/**
+ * Values from the connect-time snapshot (`broker_connections.snaptrade_accounts`).
+ *
+ * ⚠️ The snapshot is written ONCE at connect time and never refreshed, so its
+ * CASH is a connect-time artifact — it is NOT current cash and must never be
+ * presented as a balance (this is the class of bug behind the "$100,865 cash
+ * idle" card; see 0f55682 / lib/broker/live-account-cash.ts). Cash and buying
+ * power are therefore dropped here. A snapshot TOTAL is still surfaced, but only
+ * when believable, and it is labelled `valueSource: 'snapshot'`.
+ */
 function snapshotValues(s: LegacySnapAccount): { totalValue: number | null; cash: number | null; buyingPower: number | null } {
-  const cash = typeof s.cash === 'number' && Number.isFinite(s.cash) ? s.cash : null;
   return {
     totalValue: believableOrNull(s.totalValue ?? s.total_value),
-    cash,
-    buyingPower: s.buyingPower ?? s.buying_power ?? null,
+    cash: null,
+    buyingPower: null,
   };
 }
 

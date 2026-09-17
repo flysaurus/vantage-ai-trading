@@ -83,7 +83,7 @@ describe('enumerateConnectionAccounts — registry first', () => {
     expect(out[0].valueSource).toBe('unknown');
   });
 
-  it('falls back to a per-account snapshot value when it is believable', () => {
+  it('falls back to a per-account snapshot value when it is believable — but never a snapshot CASH', () => {
     const out = enumerateConnectionAccounts({
       registered: [reg(R_YOUTH, YOUTH, 'YOUTH')],
       live: null,
@@ -92,6 +92,10 @@ describe('enumerateConnectionAccounts — registry first', () => {
     });
     expect(out[0].totalValue).toBe(22963.15);
     expect(out[0].valueSource).toBe('snapshot');
+    // The snapshot's cash was captured at connect time and has not been refreshed
+    // since — it is not current cash, so it is reported as unknown, not as $7,981.90.
+    expect(out[0].cash).toBeNull();
+    expect(out[0].buyingPower).toBeNull();
   });
 
   it('never matches a snapshot entry of a DIFFERENT account id', () => {

@@ -125,9 +125,12 @@ describe('GET /api/connections — registry-first enumeration', () => {
     expect(c.accountsSource).toBe('snapshot');
     expect(c.accounts.map((a: any) => a.snapAccountId)).toEqual(['snap-sma', 'snap-youth']);
     // Values come from the connect-time snapshot and are LABELLED as such —
-    // the raw JSONB is never returned as though it were current.
+    // the raw JSONB is never returned as though it were current. Cash is NOT
+    // among them: a connect-time cash figure is not current cash.
     expect(c.accounts.every((a: any) => a.valueSource === 'snapshot')).toBe(true);
-    expect(c.accounts[0].cash).toBe(15906.16);
+    expect(c.accounts[0].totalValue).toBe(377551.36);
+    expect(c.accounts[0].cash).toBeNull();
+    expect(c.accounts.every((a: any) => a.cash === null && a.buyingPower === null)).toBe(true);
     expect('snaptrade_accounts' in c).toBe(false);
   });
 
