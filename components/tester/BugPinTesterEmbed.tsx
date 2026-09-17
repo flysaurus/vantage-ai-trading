@@ -14,6 +14,8 @@
 // The widget reads data-api-key from its own script tag and derives its API
 // origin from the script src, so BUGPIN_WIDGET_SRC must point at the BugPin
 // server that serves /widget.js (see lib/tester/bugpin.ts for overrides).
+// Matches Em's snippet; next/script's afterInteractive strategy supersedes the
+// snippet's `defer` (same effect: injected after hydration).
 
 import Script from 'next/script';
 import { useAuth } from '@/components/providers/AuthProvider';

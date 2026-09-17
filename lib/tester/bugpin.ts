@@ -6,12 +6,18 @@
 // public.users.is_tester is true (migration 079). Everything else — logged-out,
 // profile fetch failed, column missing — means "do not inject". Fail closed.
 
+// Source = the BugPin snippet Em supplied verbatim (2026-09-17): the Tailscale
+// Funnel host that currently fronts the BugPin container, NOT the duckdns
+// domain (Caddy is not enabled — see TOOLS.md host-infra notes).
+//
+// The widget derives its API origin from this src and reads the key from its own
+// script tag, so this single value pins both halves of the embed.
 export const BUGPIN_WIDGET_SRC =
   process.env.NEXT_PUBLIC_BUGPIN_WIDGET_URL ||
-  'https://vantage-ai-trading.duckdns.org/widget.js';
+  'https://vmi3186946-2.tailc64401.ts.net/widget.js';
 
-// BugPin project key for the "Vantage" project. Public by design: it ships in
-// the embed snippet and in the client bundle.
+// BugPin project key for the "Vantage" project, from Em's snippet. Public by
+// design: it ships in the embed snippet and in the client bundle.
 export const BUGPIN_WIDGET_API_KEY =
   process.env.NEXT_PUBLIC_BUGPIN_API_KEY || 'proj_5607fda83911476fa0d894210826428d';
 
