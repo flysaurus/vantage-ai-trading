@@ -642,6 +642,21 @@ export interface UserProcessingContext {
 
 // ── Run full noticed pipeline for one user, returning processed results ──
 // Used by both the POST route and the cron endpoint
+/**
+ * Is this pipeline input a real observation of the portfolio?
+ *
+ * The stale-resolve pass must only run when the snapshot can actually fire
+ * rules. An empty position list is the tell-tale of a degraded read (a sync
+ * mid delete+insert, a holdings-unavailable account, a failed broker call),
+ * not of a portfolio that genuinely holds nothing — and resolving off it
+ * silently deletes every active card the user was looking at.
+ *
+ * Pure + exported so the rule is unit-tested on its own.
+ */
+export function snapshotIsUsableForResolve(input: NoticedRuleInput): boolean {
+  return Array.isArray(input.positions) && input.positions.length > 0;
+}
+
 export async function runNoticedPipeline(
   ctx: UserProcessingContext,
 ): Promise<{
@@ -904,29 +919,40 @@ export async function runNoticedPipeline(
   // suppresses re-firing during the same trigger period). `allTriggers` is the
   // FULL currently-firing set, so still-firing cards are preserved and only
   // truly-stale active cards get resolved.
+  //
+  // GUARD: never resolve off an EMPTY snapshot. Every rule engine needs
+  // positions, so a degraded read (partial `positions/sync` mid delete+insert,
+  // holdings-unavailable account) fires nothing — and the naive resolve pass
+  // then clears the whole feed. That is how a 349-position account ended up
+  // showing "nothing under Rufus Noticed": truthful engine output, wiped by a
+  // snapshot that was never a real observation of the portfolio.
   const allTriggerKeys = new Set(allTriggers.map(t => t.trigger_key));
   const nowIso = new Date().toISOString().replace('Z', '');
-  const { data: staleItems } = await supabase
-    .from('noticed_items')
-    .select('trigger_key')
-    .eq('user_id', userId)
-    .eq('account_id', accountId)
-    .eq('resolved', false)
-    .or(`dismissed_until.is.null,dismissed_until.lt.${nowIso}`);
+  if (snapshotIsUsableForResolve(input)) {
+    const { data: staleItems } = await supabase
+      .from('noticed_items')
+      .select('trigger_key')
+      .eq('user_id', userId)
+      .eq('account_id', accountId)
+      .eq('resolved', false)
+      .or(`dismissed_until.is.null,dismissed_until.lt.${nowIso}`);
 
-  if (staleItems) {
-    const toResolve = (staleItems as any[])
-      .filter((s: any) => !allTriggerKeys.has(s.trigger_key))
-      .map((s: any) => s.trigger_key);
+    if (staleItems) {
+      const toResolve = (staleItems as any[])
+        .filter((s: any) => !allTriggerKeys.has(s.trigger_key))
+        .map((s: any) => s.trigger_key);
 
-    if (toResolve.length > 0) {
-      await supabase
-        .from('noticed_items')
-        .update({ resolved: true, last_checked_at: new Date().toISOString() })
-        .eq('user_id', userId)
-        .eq('account_id', accountId)
-        .in('trigger_key', toResolve);
+      if (toResolve.length > 0) {
+        await supabase
+          .from('noticed_items')
+          .update({ resolved: true, last_checked_at: new Date().toISOString() })
+          .eq('user_id', userId)
+          .eq('account_id', accountId)
+          .in('trigger_key', toResolve);
+      }
     }
+  } else {
+    console.warn('[noticed] snapshot has no positions — skipping stale-resolve pass');
   }
 
   return { allTriggers, trulyNew, haikuGenerated, budgetRemaining };
