@@ -743,6 +743,18 @@ export interface BatchQuoteOptions {
   enrich?: boolean;
   /** Max concurrent enrichment fetches. Default 6, capped at 16. */
   enrichConcurrency?: number;
+  /**
+   * Wall-clock budget for the enrichment pass, in ms. Default 4000.
+   *
+   * Ranges are cosmetic (the bars on position rows) while the QUOTES in the
+   * same response are what the user is waiting for, so the pass is bounded:
+   * whatever does not resolve in the budget stays un-enriched for this pass
+   * and is picked up on the next one. Progress is monotonic because resolved
+   * ranges land in the 30-minute range cache — a 349-position account fills
+   * in over a couple of loads instead of blowing the route's time budget.
+   * Pass 0 for no deadline (tests / background callers).
+   */
+  enrichDeadlineMs?: number;
 }
 
 /**
@@ -781,8 +793,9 @@ async function enrichQuoteWithRange(
   const cached = _getCachedRange(sym);
   if (cached) return { ...quote, ...cached };
 
-  // 1. Finnhub /stock/metric (fast, official)
-  if (fhKey) {
+  // 1. Finnhub /stock/metric (fast, official). Skipped while Finnhub is
+  //    rate-limiting us — the 429 is a wasted round trip per symbol.
+  if (fhKey && !finnhubRateLimited()) {
     const metric = await finnhubFundamentals(sym, 4000);
     if (metric?.high52w != null && metric.high52w > 0) {
       const found = { high52w: metric.high52w, low52w: metric.low52w ?? quote.low52w ?? 0 };
@@ -791,15 +804,14 @@ async function enrichQuoteWithRange(
     }
   }
 
-  // 2. Yahoo v8/chart meta (free, no key, always available). Skipped while
-  //    Finnhub is rate-limiting us: on a large portfolio this fallback would
-  //    otherwise burn a 4s timeout per symbol for a cosmetic range mark.
-  if (finnhubRateLimited()) return quote;
+  // 2. Yahoo v8/chart meta (free, no key, always available). This one is NOT
+  //    skipped under rate limiting: it is the only remaining source, and the
+  //    caller's deadline (not a source skip) is what bounds the pass.
   try {
     const ySymbol = yahooSymbol(sym);
     const yRes = await fetch(
       `${YAHOO_CHART_BASE}/${encodeURIComponent(ySymbol)}?range=1y&interval=1d&includePrePost=false`,
-      { headers: { 'User-Agent': YAHOO_UA }, signal: AbortSignal.timeout(4000) },
+      { headers: { 'User-Agent': YAHOO_UA }, signal: AbortSignal.timeout(2500) },
     );
     if (yRes.ok) {
       const yData = await yRes.json();
@@ -813,6 +825,60 @@ async function enrichQuoteWithRange(
   } catch { /* keep quote as-is */ }
 
   return quote;
+}
+
+/**
+ * Fetch 52-week ranges for every symbol in `results` that is still missing one.
+ *
+ * Extracted so it runs on BOTH exits of getBatchQuotes: a request served
+ * entirely from the quote cache must still be able to pick up a range that a
+ * previous call deferred (see BatchQuoteOptions.enrichDeadlineMs).
+ */
+async function enrichMissingRanges(
+  results: Map<string, Quote>,
+  opts: BatchQuoteOptions,
+  fhKey: string | null,
+): Promise<void> {
+  if (opts.enrich === false || results.size === 0) return;
+
+  const pending = [...results.keys()].filter((sym) => {
+    const q = results.get(sym)!;
+    // Skip if quote already has valid 52-week range
+    return !(q.high52w != null && q.high52w > 0);
+  });
+  if (pending.length === 0) return;
+
+  const concurrency = Math.max(1, Math.min(opts.enrichConcurrency ?? 6, 16));
+  const deadline =
+    opts.enrichDeadlineMs === 0 ? 0 : Date.now() + (opts.enrichDeadlineMs ?? 4000);
+  let enriched = 0;
+  let skippedForBudget = 0;
+  for (let i = 0; i < pending.length; i += concurrency) {
+    if (deadline && Date.now() > deadline) {
+      skippedForBudget = pending.length - i;
+      break;
+    }
+    const wave = pending.slice(i, i + concurrency);
+    const settled = await Promise.allSettled(
+      wave.map((sym) => enrichQuoteWithRange(sym, results.get(sym)!, fhKey)),
+    );
+    settled.forEach((r, idx) => {
+      const sym = wave[idx];
+      if (r.status !== 'fulfilled') return; // keep quote as-is
+      const before = results.get(sym)!;
+      const hadRange = before.high52w != null && before.high52w > 0;
+      results.set(sym, r.value);
+      if (!hadRange && r.value.high52w != null && r.value.high52w > 0) {
+        enriched++;
+        _setCache(sym, r.value);
+      }
+    });
+    if (i + concurrency < pending.length) await new Promise(r => setTimeout(r, 50));
+  }
+  console.log(
+    '[quotes] 52-week enrichment: resolved=' + enriched + ' total=' + pending.length +
+    ' (concurrency=' + concurrency + (skippedForBudget ? ', budget-deferred=' + skippedForBudget : '') + ')',
+  );
 }
 
 export async function getBatchQuotes(
@@ -840,7 +906,11 @@ export async function getBatchQuotes(
     console.log(`[quotes] cache hits: ${cacheHits}/${symbols.length} (TTL: ${_cacheTtlMs() / 1000}s)`);
   }
 
-  if (remaining.size === 0) return results;
+  if (remaining.size === 0) {
+    // Served entirely from cache — still let deferred ranges fill in.
+    await enrichMissingRanges(results, opts, finnhubKey());
+    return results;
+  }
 
   const fetched = new Map<string, Quote>();
 
@@ -915,43 +985,17 @@ export async function getBatchQuotes(
     console.log('[quotes] yahoo: skipped (no remaining)');
   }
 
-  // 4. Enrich: fetch 52-week range for all resolved symbols
-  //    Primary: Finnhub /stock/metric (fast, official)
-  //    Fallback: Yahoo v8/chart meta (free, no key, always works)
-  if (opts.enrich !== false && fetched.size > 0) {
-    const pending = [...fetched.keys()].filter((sym) => {
-      const q = fetched.get(sym)!;
-      // Skip if quote already has valid 52-week range
-      return !(q.high52w != null && q.high52w > 0);
-    });
-    const concurrency = Math.max(1, Math.min(opts.enrichConcurrency ?? 6, 16));
-    let enriched = 0;
-    for (let i = 0; i < pending.length; i += concurrency) {
-      const wave = pending.slice(i, i + concurrency);
-      const settled = await Promise.allSettled(
-        wave.map((sym) => enrichQuoteWithRange(sym, fetched.get(sym)!, fhKey)),
-      );
-      settled.forEach((r, idx) => {
-        const sym = wave[idx];
-        if (r.status !== 'fulfilled') return; // keep quote as-is
-        const before = fetched.get(sym)!;
-        const hadRange = before.high52w != null && before.high52w > 0;
-        fetched.set(sym, r.value);
-        if (!hadRange && r.value.high52w != null && r.value.high52w > 0) enriched++;
-      });
-      if (i + concurrency < pending.length) await new Promise(r => setTimeout(r, 50));
-    }
-    console.log(
-      '[quotes] 52-week enrichment: resolved=' + enriched + ' total=' + pending.length +
-      ' (concurrency=' + concurrency + ')',
-    );
-  }
-
   // Merge fetched results into main results + update cache
   for (const [sym, quote] of fetched) {
     _setCache(sym, quote);
     results.set(sym, quote);
   }
+
+  // 4. Enrich: fetch 52-week range for every symbol still missing one.
+  //    Runs over `results` (cache hits + freshly fetched), not just the fetched
+  //    slice, so a range deferred by the budget is picked up on the next load
+  //    even while the quote itself is still cached.
+  await enrichMissingRanges(results, opts, fhKey);
 
   return results;
 }

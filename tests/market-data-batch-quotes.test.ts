@@ -276,20 +276,48 @@ describe('getBatchQuotes Finnhub rate limiting', () => {
     expect(quotes.get('M2')?.price).toBe(100);
   });
 
-  it('skips the Yahoo range fallback while rate limited (no 4s/symbol burn)', async () => {
+  it('falls through to the Yahoo range fallback while Finnhub is rate limited', async () => {
     const { getBatchQuotes, __clearRangeCache, __resetFinnhubLimit } = await load();
     __clearRangeCache();
     __resetFinnhubLimit();
-    // metric 429s → cooldown trips → enrichment must not fall through to Yahoo
+    // the metric endpoint 429s → cooldown trips → ranges come from Yahoo
     h.metricResult = () =>
       new Response('{}', { status: 429, headers: { 'retry-after': '60' } });
+    h.chartResult = () => new Response(JSON.stringify(yahooChartPayload(210, 110)), { status: 200 });
 
     const quotes = await getBatchQuotes(['N1', 'N2']);
 
-    expect(h.chartCalls).toBe(0);
-    expect(quotes.get('N1')?.high52w).toBeUndefined();
-    // quotes themselves resolve fine (Finnhub /quote is healthy); the 429 on
-    // the metric endpoint trips the cooldown and the Yahoo fallback is skipped.
+    // Yahoo is the only remaining source, so it is NOT skipped — but the pass
+    // is bounded by the deadline rather than by a per-symbol 4s timeout.
+    expect(h.chartCalls).toBe(2);
+    expect(quotes.get('N1')?.high52w).toBe(210);
+    expect(quotes.get('N2')?.low52w).toBe(110);
     expect(quotes.get('N1')?.price).toBe(100);
+  });
+
+  it('stops enriching once the wall-clock budget is spent', async () => {
+    const { getBatchQuotes, __clearRangeCache, __resetFinnhubLimit } = await load();
+    __clearRangeCache();
+    __resetFinnhubLimit();
+    h.latencyMs = 40;
+    h.metricResult = () => new Response(JSON.stringify(metricPayload(150, 90)), { status: 200 });
+
+    const syms = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'];
+    const first = await getBatchQuotes(syms, {
+      enrichConcurrency: 1,
+      enrichDeadlineMs: 120,
+    });
+
+    // budget spent part-way through: the tail is deferred, not waited on
+    const resolvedFirst = syms.filter((s) => first.get(s)?.high52w != null);
+    expect(resolvedFirst.length).toBeGreaterThan(0);
+    expect(resolvedFirst.length).toBeLessThan(syms.length);
+    const callsAfterFirst = h.metricCalls;
+
+    // a later load resumes where it stopped (resolved ranges are cached, and
+    // the pass covers cache-hit quotes too)
+    const second = await getBatchQuotes(syms, { enrichDeadlineMs: 0 });
+    expect(h.metricCalls).toBeGreaterThan(callsAfterFirst);
+    for (const s of syms) expect(second.get(s)?.high52w).toBe(150);
   });
 });
