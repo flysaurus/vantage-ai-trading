@@ -17,6 +17,10 @@ import {
   isTransientStatus,
   withTimeout,
 } from '@/lib/async-guards';
+// fetchWithTimeout now routes GETs through the shared de-dupe/TTL layer, whose
+// cache is module-level state — reset it between cases so one test's stubbed
+// response can never be served to the next.
+import { __resetGetCache } from '@/lib/http/get-cache';
 
 const ok = (body: unknown = {}, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -25,6 +29,7 @@ const originalFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = originalFetch;
   vi.restoreAllMocks();
+  __resetGetCache();
 });
 
 describe('budgets', () => {

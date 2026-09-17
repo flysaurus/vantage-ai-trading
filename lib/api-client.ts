@@ -8,6 +8,8 @@
 //   const res = await apiGet('/api/broker/status')
 //   const res = await apiPost('/api/strategies/execute', { ... })
 
+import { dedupedGet } from '@/lib/http/get-cache';
+
 async function handleResponse(res: Response): Promise<Response> {
   return res;
 }
@@ -16,8 +18,11 @@ export async function apiGet(
   endpoint: string,
   init?: Omit<RequestInit, 'method' | 'headers'> & { headers?: Record<string, string> },
 ): Promise<Response> {
-  return fetch(endpoint, {
-    method: 'GET',
+  // GETs go through the shared de-dupe layer: identical concurrent reads share
+  // one request, and a few read-only paths opt into a short TTL (see
+  // lib/http/get-cache.ts). Callers still get their own Response, so
+  // `res.json()` stays safe. Writes below are never coalesced.
+  return dedupedGet(endpoint, {
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',

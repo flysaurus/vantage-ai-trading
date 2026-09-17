@@ -16,6 +16,7 @@ import TradeTicket from './TradeTicket';
 import BasketActionPanel from '@/components/basket/BasketActionPanel';
 import BasketCard from './BasketCard';
 import PortfolioChart from './PortfolioChart';
+import { dedupedGet } from '@/lib/http/get-cache';
 import PositionRow from './PositionRow';
 import SectorAllocation from './SectorAllocation';
 import AssetMixChart from './AssetMixChart';
@@ -484,7 +485,11 @@ export function PortfolioTab() {
       await Promise.all(
         missing.map(async (s) => {
           try {
-            const r = await fetch(`/api/stock/fundamentals?symbol=${encodeURIComponent(s)}`);
+            // De-duped: this effect re-runs whenever the position list changes
+            // identity (several position syncs land during first paint) and the
+            // insights tab fetches the same symbols — all of it collapses to one
+            // request per symbol via the shared GET cache.
+            const r = await dedupedGet(`/api/stock/fundamentals?symbol=${encodeURIComponent(s)}`);
             if (!r.ok) { out[s] = null; return; }
             const j = await r.json();
             const a = j?.analyst;

@@ -13,6 +13,8 @@
 // Dev mode: returns synthetic data when SnapTrade API keys are
 // not configured, enabling end-to-end testing.
 
+import { dedupedGet } from '@/lib/http/get-cache';
+
 import type {
   BrokerAdapter,
   BrokerConfig,
@@ -375,13 +377,20 @@ export class SnapTradeAdapter implements BrokerAdapter {
     // Thread the explicit broker_connections.id when known so the server can
     // scope the fetch to THIS connection (fails closed on multi-broker instead
     // of silently resolving "first row wins").
+    //
+    // Only when the URL doesn't carry one already: `scopedUrl()` sets
+    // `connectionId` itself, and appending it again produced the duplicated
+    // `?connectionId=…&snapAccountId=…&connectionId=…` request seen on prod.
     let resolvedUrl = url;
-    if (this.connectionId) {
+    if (this.connectionId && !/[?&]connectionId=/.test(url)) {
       const sep = url.includes('?') ? '&' : '?';
       resolvedUrl = `${url}${sep}connectionId=${encodeURIComponent(this.connectionId)}`;
     }
 
-    const res = await fetch(resolvedUrl, { credentials: 'include' });
+    // De-duped: several components mount the same portfolio hook, so the same
+    // scoped URL was fetched 3× at once (each an upstream SnapTrade call, all
+    // competing — one measured 14.3s).
+    const res = await dedupedGet(resolvedUrl, { credentials: 'include' });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Request failed' }));

@@ -19,6 +19,8 @@
 //      splash. (Silently falling through to `'onboarding'` is just as bad:
 //      it shows a signed-in user the intro flow, which reads as data loss.)
 
+import { dedupedGet } from '@/lib/http/get-cache';
+
 /** Bound for `supabase.auth.getUser()` (a network round-trip to the auth server). */
 export const AUTH_GETUSER_TIMEOUT_MS = 8_000;
 /** Bound for the local-storage session fallback (should be instant). */
@@ -39,7 +41,6 @@ export class TimeoutError extends Error {
 
 export const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
-
 /** Reject if `promise` has not settled within `ms`. The original promise is
  *  NOT cancelled (we cannot cancel all of them) — we just stop waiting on it. */
 export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -71,7 +72,11 @@ export async function fetchWithTimeout(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    // GETs go through the shared de-dupe layer, so the route gate's
+    // `/api/auth/me` and the auth provider's copy of it are ONE request.
+    // The abort still bounds THIS caller (dedupedGet races the caller's
+    // signal); the shared request simply keeps going for anyone else.
+    return await dedupedGet(url, { ...init, signal: controller.signal });
   } catch (err) {
     if (isAbortError(err) || (err as { name?: string })?.name === 'AbortError') {
       throw new TimeoutError(`fetch ${url}`, ms);
