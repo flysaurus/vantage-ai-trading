@@ -1,0 +1,157 @@
+name: Triage → OpenClaw
+
+# When an issue is labelled `approved`, dispatch it to OpenClaw over Telegram and
+# leave an audit comment on the issue. Any other label event is skipped — the
+# allow-list is the single label name below, nothing else.
+
+on:
+  issues:
+    types: [labeled]
+
+# GITHUB_TOKEN needs issues:write to post the audit comment (repo default is read-only).
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  dispatch:
+    # 1. Only the literal `approved` label proceeds. Every other label event
+    #    (qa, automated, source:*, …) shows up as a skipped job, not a failure.
+    if: github.event.label.name == 'approved'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      # 2. Fail loudly before doing anything if the secrets are absent — an empty
+      #    token would otherwise produce a confusing 404 from the Bot API.
+      - name: Preflight — required secrets
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          missing=""
+          if [ -z "${TELEGRAM_BOT_TOKEN}" ]; then missing="${missing} TELEGRAM_BOT_TOKEN"; fi
+          if [ -z "${TELEGRAM_CHAT_ID}" ]; then missing="${missing} TELEGRAM_CHAT_ID"; fi
+          if [ -n "${missing}" ]; then
+            echo "::error::Missing repository secret(s):${missing}. Add them in Settings → Secrets and variables → Actions → Secrets."
+            echo "::error::Expected: TELEGRAM_BOT_TOKEN (Bot API token) and TELEGRAM_CHAT_ID (target chat)."
+            exit 1
+          fi
+          echo "Secrets present (values never printed)."
+
+      # 3. Build the message and send it to the Telegram Bot API.
+      #    Done in actions/github-script rather than a shell curl because the
+      #    issue body is arbitrary text: JSON.stringify is the only safe way to
+      #    escape quotes, newlines and backslashes into the Bot API payload.
+      - name: Send to OpenClaw via Telegram
+        id: send
+        uses: actions/github-script@v7
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const number = issue.number;
+            const url = issue.html_url;
+
+            // 2. Message contents: title, full body (screenshot markdown links
+            //    included verbatim), number, url, and source:*/tc:* labels.
+            const title = (issue.title || '').trim();
+            const rawBody = (issue.body || '').trim();
+            const body = rawBody.length ? rawBody : '(no description provided)';
+
+            const labels = (issue.labels || [])
+              .map((l) => (typeof l === 'string' ? l : l.name))
+              .filter(Boolean);
+            const scoped = labels.filter((l) => l.startsWith('source:') || l.startsWith('tc:'));
+
+            const footer =
+              `Fix this and reference #${number} in your commit message so it links automatically.\n${url}`;
+            const labelLine = scoped.length ? `🏷 ${scoped.join(' · ')}` : '';
+
+            const blocks = [`🔧 Ready to build — Issue #${number}`, title, body, footer];
+            if (labelLine) blocks.push(labelLine);
+            let text = blocks.join('\n\n');
+
+            // Telegram caps a message at 4096 characters. Truncate the whole
+            // payload (never mid-surrogate-pair) and mark it, rather than letting
+            // the API reject the send outright.
+            const LIMIT = 4000;
+            let truncated = false;
+            if ([...text].length > LIMIT) {
+              truncated = true;
+              text = [...text].slice(0, LIMIT).join('') + '\n\n… [message truncated — see the issue]';
+            }
+
+            const payload = {
+              chat_id: process.env.TELEGRAM_CHAT_ID,
+              text,
+              parse_mode: 'Markdown',
+            };
+
+            const send = async (p) =>
+              fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(p),
+              });
+
+            let res = await send(payload);
+            let resBody = await res.text();
+            let fallbackReason = '';
+
+            // 4. A 400 "can't parse entities" means the issue body broke Telegram's
+            //    legacy Markdown parser (a stray * or _ is enough). Retry once as
+            //    plain text so the dispatch still lands — recorded, never silent.
+            if (res.status === 400 && /can't parse entities|can't find end/i.test(resBody)) {
+              fallbackReason = 'Markdown parse failed — resent as plain text';
+              core.warning(`${fallbackReason} (Telegram said: ${resBody})`);
+              const { parse_mode, ...plain } = payload;
+              res = await send(plain);
+              resBody = await res.text();
+            }
+
+            // 5. Anything else non-200 fails the workflow loudly. The Bot API's own
+            //    description is echoed so the Actions tab shows the real cause.
+            if (res.status !== 200) {
+              core.setFailed(
+                `Telegram sendMessage failed: HTTP ${res.status} — ${resBody}` +
+                  (fallbackReason ? ` (after ${fallbackReason})` : ''),
+              );
+              return;
+            }
+
+            const sentAt = new Date().toISOString();
+            core.setOutput('sent_at', sentAt);
+            core.setOutput('fallback_reason', fallbackReason);
+            core.setOutput('truncated', String(truncated));
+
+            core.summary
+              .addHeading(`Dispatched issue #${number}`)
+              .addRaw(`Sent at ${sentAt}${fallbackReason ? ` (${fallbackReason})` : ''}`)
+              .write();
+
+            core.info(`Sent issue #${number} to Telegram at ${sentAt}`);
+
+      # 6. Audit trail on the issue itself — only after a 200 from Telegram.
+      - name: Comment dispatch timestamp on the issue
+        if: steps.send.outputs.sent_at != ''
+        uses: actions/github-script@v7
+        env:
+          SENT_AT: ${{ steps.send.outputs.sent_at }}
+          FALLBACK_REASON: ${{ steps.send.outputs.fallback_reason }}
+          TRUNCATED: ${{ steps.send.outputs.truncated }}
+        with:
+          script: |
+            const notes = [];
+            if (process.env.FALLBACK_REASON) notes.push(process.env.FALLBACK_REASON);
+            if (process.env.TRUNCATED === 'true') notes.push('message truncated to fit Telegram’s limit');
+            const suffix = notes.length ? `\n\n_(${notes.join('; ')})_` : '';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: `📤 Sent to OpenClaw at ${process.env.SENT_AT}${suffix}`,
+            });
