@@ -18,6 +18,7 @@ import { saveChatMessage } from '@/lib/chat-service';
 import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, parsePositions, stripRecommendationMarkers, markMarkerExecuted, isMarkerExecutedInStorage, type Suggestion, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
 import ChatChart from '@/components/charts/ChatChart';
 import type { ResolvedChart } from '@/lib/ai/chart-registry';
+import { buildChartResolvePayload, selectChartHealCandidates } from '@/lib/ai/chart-replay';
 import StrategyCards from '@/components/ai/StrategyCards';
 import { parsePortfolioBlocks } from '@/lib/portfolio-blocks';
 import type { PortfolioBlock } from '@/lib/portfolio-types';
@@ -362,6 +363,47 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
   // written to the DB with the message, but the `finally` save runs in the same
   // tick as the last SSE event, where the state update is not readable yet.
   const chartsRef = useRef<ResolvedChart[]>([]);
+  // Legacy chart replay — messages stored before charts were persisted carry only
+  // the `[CHART:…]` marker. Keyed by message id so a message is asked about once
+  // per mount, never in a loop.
+  const chartHealTriedRef = useRef<Set<string>>(new Set());
+  const healLegacyCharts = useCallback(async (
+    msgs: Array<{ id?: string; role?: string; content?: string; charts?: unknown[] | null }>,
+  ) => {
+    const candidates = selectChartHealCandidates(msgs, 8).filter(
+      (c) => !chartHealTriedRef.current.has(c.id),
+    );
+    if (candidates.length === 0) return;
+    candidates.forEach((c) => chartHealTriedRef.current.add(c.id));
+    try {
+      const res = await apiPost('/api/ai/charts/resolve', {
+        items: candidates,
+        portfolio: buildChartResolvePayload(liveAccount),
+        accountMeta: {
+          accountId,
+          isDemo: isDemoAccount,
+          investorStyle,
+          riskTolerance: user?.riskTolerance || 'Moderate',
+        },
+      });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => null);
+      const resolved = Array.isArray(data?.resolved) ? data.resolved : [];
+      if (resolved.length === 0) return;
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (!m.id) return m;
+          const hit = resolved.find((r: any) => r.id === m.id);
+          if (!hit || !Array.isArray(hit.charts) || hit.charts.length === 0) return m;
+          return { ...m, charts: hit.charts as ResolvedChart[] };
+        }),
+      );
+    } catch {
+      // Replay is best-effort — a failure just leaves the message prose-only.
+    }
+  }, [liveAccount, accountId, isDemoAccount, investorStyle, user?.riskTolerance]);
+  const healLegacyChartsRef = useRef(healLegacyCharts);
+  healLegacyChartsRef.current = healLegacyCharts;
 
   // ── TL;DR toggle state (set of collapsed message indices) ──
   const [collapsedTLDRs, setCollapsedTLDRs] = useState<Set<number>>(new Set());
@@ -1038,6 +1080,9 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
               return base;
             }));
             setCurrentSessionId(targetSession.id);
+            // Legacy chart replay: messages stored before charts were persisted
+            // only carry the [CHART:…] marker. Best-effort, once per message.
+            void healLegacyChartsRef.current(lastMessages);
           }
         }
       }
