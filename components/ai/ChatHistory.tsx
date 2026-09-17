@@ -8,6 +8,11 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useAccounts } from '@/context/AccountContext';
 import { fetchRecentSessions, type DBSession, type DBChatMessage } from '@/lib/chat-history-db';
 import { stripRecommendationMarkers } from '@/components/ai/InlineTradeButton';
+import ChatChart from '@/components/charts/ChatChart';
+import type { ResolvedChart } from '@/lib/ai/chart-registry';
+import { apiPost } from '@/lib/api-client';
+import { useLivePortfolio } from '@/context/PortfolioContext';
+import { buildChartResolvePayload, selectChartHealCandidates } from '@/lib/ai/chart-replay';
 
 // ── Same design tokens as AITab.tsx ──
 const ACCENT = '#22d3ee';
@@ -252,6 +257,15 @@ function SessionDay({
                 >
                   {stripRecommendationMarkers(msg.content)}
                 </ReactMarkdown>
+                {/* Resolved charts replayed with the message (server payload).
+                    History used to show prose only — charts were live-session only. */}
+                {Array.isArray(msg.charts) && msg.charts.length > 0 && (
+                  <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {(msg.charts as ResolvedChart[]).map((c, ci) => (
+                      <ChatChart key={`${c.type}:${c.key}:${ci}`} chart={c} />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -264,8 +278,11 @@ function SessionDay({
 export function ChatHistory({ open, onClose }: ChatHistoryProps) {
   const { user } = useAuth();
   const userId = user?.id ? String(user.id) : null;
-  const { activeAccountId } = useAccounts();
+  const { activeAccountId, activeAccount } = useAccounts();
   const accountId = activeAccountId || 'demo';
+  const { account: liveAccount } = useLivePortfolio();
+  const investorStyle = (user as any)?.investorStyle || 'Balanced';
+  const isDemoAccount = (activeAccount as any)?.isDemo ?? true;
 
   const [sessions, setSessions] = useState<DBSession[]>([]);
   const [loading, setLoading] = useState(false);
@@ -279,6 +296,9 @@ export function ChatHistory({ open, onClose }: ChatHistoryProps) {
     try {
       const data = await fetchRecentSessions(userId, accountId, 10);
       setSessions(data);
+      // Messages written before charts were persisted carry only the [CHART:…]
+      // marker — ask the server to re-resolve them once, then stitch them in.
+      void healLegacyCharts(data);
       // Expand most recent day by default (browser local timezone)
       if (data.length > 0) {
         const now = new Date();
@@ -302,6 +322,44 @@ export function ChatHistory({ open, onClose }: ChatHistoryProps) {
       loadSessions();
     }
   }, [open, userId, accountId, loadSessions]);
+
+  /**
+   * Replay charts for stored messages that predate chart persistence.
+   * Best-effort: a failure leaves the message prose-only, exactly as before.
+   * The server stamps the payload too, so this costs one request per NEW marker
+   * found — re-opened history comes back already carrying its charts.
+   */
+  const healLegacyCharts = useCallback(async (sessionsIn: DBSession[]) => {
+    // Oldest→newest overall; the selector walks that from the end (newest first).
+    const flat: Array<{ id?: string; role?: string; content?: string; charts?: unknown[] | null }> =
+      [...sessionsIn].reverse().flatMap((s) => s.messages as any[]);
+    const candidates = selectChartHealCandidates(flat, 12);
+    if (candidates.length === 0) return;
+    try {
+      const res = await apiPost('/api/ai/charts/resolve', {
+        items: candidates,
+        portfolio: buildChartResolvePayload(liveAccount),
+        accountMeta: { accountId, isDemo: isDemoAccount, investorStyle, riskTolerance: user?.riskTolerance || 'Moderate' },
+      });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => null);
+      const resolved: Array<{ id: string; charts: ResolvedChart[] }> = Array.isArray(data?.resolved)
+        ? data.resolved
+        : [];
+      if (resolved.length === 0) return;
+      const byId = new Map(resolved.map((r) => [r.id, r.charts]));
+      setSessions((prev) =>
+        prev.map((s) => ({
+          ...s,
+          messages: s.messages.map((m) =>
+            m.id && byId.has(m.id) ? { ...m, charts: byId.get(m.id) as any } : m,
+          ),
+        })),
+      );
+    } catch {
+      // Best-effort replay — never block the history view on it.
+    }
+  }, [liveAccount, accountId, isDemoAccount, investorStyle, user?.riskTolerance]);
 
   const toggleDate = (date: string) => {
     setExpandedDates(prev => {
