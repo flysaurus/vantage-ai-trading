@@ -79,19 +79,30 @@ async function getUserTier(userId: string): Promise<string> {
   }
 }
 
+/**
+ * Read a tier limit from the DB.
+ *
+ * Returns `number` when the feature has a value for the user's tier, and
+ * **`null` when it is NOT CONFIGURED** — no `tier_features` row for the key, or
+ * no `tier_feature_values` row for that tier. `get_tier_limit` is STABLE and
+ * answers a missing row with HTTP 200 + `null`; it does NOT error.
+ *
+ * 2026-09-18 (Em): the old version threw on `null`, so a missing
+ * `noticed_check_limit` row made `checkUsageLimit` fail CLOSED forever — the
+ * noticed surface silently degraded to deterministic fallback copy (and every
+ * pass logged a misleading "RPC failed"). A missing limit is "not configured",
+ * which is not the same thing as an outage. Only a real RPC error throws now.
+ */
 async function getUserTierLimit(
   userId: string,
   featureKey: string
-): Promise<number> {
+): Promise<number | null> {
   const supabase = createServerClient();
-  try {
-    const { data, error } = await (supabase as any)
-      .rpc('get_tier_limit', { p_user_id: userId, p_feature_key: featureKey });
+  const { data, error } = await (supabase as any)
+    .rpc('get_tier_limit', { p_user_id: userId, p_feature_key: featureKey });
 
-    if (!error && typeof data === 'number') return data;
-  } catch { /* throw below */ }
-
-  throw new Error('get_tier_limit RPC unavailable');
+  if (error) throw new Error(`get_tier_limit RPC failed: ${error.message || 'unknown error'}`);
+  return typeof data === 'number' ? data : null;
 }
 
 // ─── Usage Check (multi-dimensional) ─────────────────────
@@ -193,12 +204,22 @@ export async function checkUsageLimit(
   if (type !== 'message') {
     try {
       const limit = await getUserTierLimit(userId, config.dailyFeature);
-      if (typeof limit === 'number') dailyLimit = limit;
-      else console.warn(`[ai-guard] get_tier_limit(${config.dailyFeature}) returned non-number:`, limit);
+      if (typeof limit === 'number') {
+        dailyLimit = limit;
+      } else {
+        // NOT CONFIGURED (the RPC returned null, not an error). Fail OPEN: an
+        // unseeded feature row must never hard-block a user-visible surface.
+        // `dailyLimit` stays 0 → uncapped below, same shape as the disabled
+        // daily chat cap. The surface still has its deterministic fallback copy.
+        console.warn(
+          `[ai-guard] ${config.dailyFeature} is not configured for this tier — allowing ${type} uncapped (seed tier_features + tier_feature_values to cap it)`,
+        );
+      }
     } catch (err: any) {
-      console.error(`[ai-guard] get_tier_limit(${config.dailyFeature}) RPC failed:`, err.message);
-      // If we can't read the limit, fail closed (block usage) rather than
-      // silently allowing with a wrong hardcoded number.
+      // A REAL RPC error (outage) is different from "not configured": fail
+      // closed, but never silently — the error is logged and the reason string
+      // says exactly why. Distinguishable from the null path on purpose.
+      console.error(`[ai-guard] get_tier_limit(${config.dailyFeature}) RPC error:`, err.message);
       return {
         allowed: false,
         remaining: 0,
