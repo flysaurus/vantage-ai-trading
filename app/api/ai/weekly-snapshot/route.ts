@@ -246,7 +246,9 @@ export async function GET(req: NextRequest) {
     // Fetch quotes via the shared multi-source quote service (Finnhub →
     // Alpaca → Yahoo, batched + cached) — same path the Portfolio tab uses.
     const symbols = positions.map((p: any) => p.symbol);
-    const quotes = await getBatchQuotes(symbols);
+    // Snapshot text only uses price / change% — skip the per-symbol 52-week
+    // enrichment pass (it dominates wall-clock time on large accounts).
+    const quotes = await getBatchQuotes(symbols, { enrich: false });
 
     // Get investor style
     let investorStyle = 'buffett';

@@ -66,29 +66,29 @@ async function fetchMarketNews(
     `${topTickers[1] || ''} ${topTickers[2] || ''} earnings`,
   ].filter(q => q.trim());
 
-  const allNews: { title: string; url: string; source: string }[] = [];
-
-  for (const query of queries) {
-    try {
+  // Queries are independent — run them in parallel. Sequentially they cost up
+  // to 3 × 5s of the route's (small) serverless budget for nothing.
+  const settled = await Promise.allSettled(
+    queries.map(async (query) => {
       const res = await fetch(
         `${SEARXNG_URL}/search?q=${encodeURIComponent(query)}&format=json&categories=news&language=en`,
         { signal: AbortSignal.timeout(5000) },
       );
       const data = await res.json();
+      if (!data.results?.length) return [];
+      return data.results.slice(0, 2).map((r: any) => ({
+        title: r.title,
+        url: r.url,
+        source: r.engine || 'News',
+      }));
+    }),
+  );
 
-      if (data.results?.length) {
-        allNews.push(
-          ...data.results.slice(0, 2).map((r: any) => ({
-            title: r.title,
-            url: r.url,
-            source: r.engine || 'News',
-          })),
-        );
-      }
-    } catch {
-      console.log('[Brief] SearXNG unavailable for:', query);
-    }
-  }
+  const allNews: { title: string; url: string; source: string }[] = [];
+  settled.forEach((r, i) => {
+    if (r.status === 'fulfilled') allNews.push(...r.value);
+    else console.log('[Brief] SearXNG unavailable for:', queries[i]);
+  });
 
   return allNews.slice(0, 5);
 }
@@ -170,7 +170,10 @@ export async function GET(req: NextRequest) {
     const positionSymbols = positions.map((p: any) => p.symbol);
     const quoteSymbols = [...new Set([...INDEX_SYMBOLS, ...positionSymbols])];
 
-    const quotes = await getBatchQuotes(quoteSymbols);
+    // The brief only reads price / change% — 52-week ranges are not used here,
+    // so skip the per-symbol enrichment pass entirely. That pass is what made a
+    // 349-position account blow the serverless budget and 504 this route.
+    const quotes = await getBatchQuotes(quoteSymbols, { enrich: false });
 
     const indices = INDEX_SYMBOLS.map((sym) => {
       const q = quotes.get(sym);

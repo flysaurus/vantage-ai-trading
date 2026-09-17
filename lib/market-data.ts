@@ -694,7 +694,92 @@ function _setCache(symbol: string, data: Quote): void {
   _quoteCache.set(symbol.toUpperCase(), { data, timestamp: Date.now() });
 }
 
-export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quote>> {
+export interface BatchQuoteOptions {
+  /**
+   * Run the 52-week range enrichment pass (Finnhub /stock/metric → Yahoo
+   * chart fallback). Default TRUE.
+   *
+   * Pass `false` for callers that only need price / change / market value
+   * (daily brief, weekly snapshot). The pass is PER-SYMBOL and dominates
+   * wall-clock time for accounts with hundreds of positions — a 349-position
+   * account blew past the serverless function budget and 504'd the brief.
+   */
+  enrich?: boolean;
+  /** Max concurrent enrichment fetches. Default 6, capped at 16. */
+  enrichConcurrency?: number;
+}
+
+/**
+ * 52-week range cache — kept separate from the quote cache above so a range
+ * survives the short quote TTL (ranges move far too slowly to re-fetch every
+ * 60-300s). TTL: 30 minutes.
+ */
+const _rangeCache = new Map<string, { high52w: number; low52w: number; timestamp: number }>();
+const RANGE_TTL_MS = 30 * 60_000;
+
+function _getCachedRange(sym: string): { high52w: number; low52w: number } | null {
+  const entry = _rangeCache.get(sym.toUpperCase());
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > RANGE_TTL_MS) {
+    _rangeCache.delete(sym.toUpperCase());
+    return null;
+  }
+  return { high52w: entry.high52w, low52w: entry.low52w };
+}
+
+/** Test hook — clears the 52-week range cache. */
+export function __clearRangeCache(): void {
+  _rangeCache.clear();
+}
+
+/**
+ * Enrich ONE quote with its 52-week range.
+ * Chain: in-process range cache → Finnhub /stock/metric → Yahoo v8/chart meta.
+ * Always resolves to a quote (the input quote on total failure).
+ */
+async function enrichQuoteWithRange(
+  sym: string,
+  quote: Quote,
+  fhKey: string | null,
+): Promise<Quote> {
+  const cached = _getCachedRange(sym);
+  if (cached) return { ...quote, ...cached };
+
+  // 1. Finnhub /stock/metric (fast, official)
+  if (fhKey) {
+    const metric = await finnhubFundamentals(sym, 4000);
+    if (metric?.high52w != null && metric.high52w > 0) {
+      const found = { high52w: metric.high52w, low52w: metric.low52w ?? quote.low52w ?? 0 };
+      _rangeCache.set(sym.toUpperCase(), { ...found, timestamp: Date.now() });
+      return { ...quote, ...found };
+    }
+  }
+
+  // 2. Yahoo v8/chart meta (free, no key, always available)
+  try {
+    const ySymbol = yahooSymbol(sym);
+    const yRes = await fetch(
+      `${YAHOO_CHART_BASE}/${encodeURIComponent(ySymbol)}?range=1y&interval=1d&includePrePost=false`,
+      { headers: { 'User-Agent': YAHOO_UA }, signal: AbortSignal.timeout(4000) },
+    );
+    if (yRes.ok) {
+      const yData = await yRes.json();
+      const yMeta = yData?.chart?.result?.[0]?.meta;
+      if (yMeta?.fiftyTwoWeekHigh != null && yMeta.fiftyTwoWeekHigh > 0) {
+        const found = { high52w: yMeta.fiftyTwoWeekHigh, low52w: yMeta.fiftyTwoWeekLow ?? 0 };
+        _rangeCache.set(sym.toUpperCase(), { ...found, timestamp: Date.now() });
+        return { ...quote, ...found };
+      }
+    }
+  } catch { /* keep quote as-is */ }
+
+  return quote;
+}
+
+export async function getBatchQuotes(
+  symbols: string[],
+  opts: BatchQuoteOptions = {},
+): Promise<Map<string, Quote>> {
   if (symbols.length === 0) return new Map();
 
   const remaining = new Set<string>();
@@ -785,50 +870,33 @@ export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quo
   // 4. Enrich: fetch 52-week range for all resolved symbols
   //    Primary: Finnhub /stock/metric (fast, official)
   //    Fallback: Yahoo v8/chart meta (free, no key, always works)
-  if (fetched.size > 0) {
-    const symArr = [...fetched.keys()];
-    let enriched = 0;
-    let yahooFallback = 0;
-    for (let i = 0; i < symArr.length; i++) {
-      const sym = symArr[i];
+  if (opts.enrich !== false && fetched.size > 0) {
+    const pending = [...fetched.keys()].filter((sym) => {
       const q = fetched.get(sym)!;
       // Skip if quote already has valid 52-week range
-      if (q.high52w != null && q.high52w > 0) continue;
-
-      try {
-        // Try Finnhub first (only if key available)
-        if (fhKey) {
-          const metric = await finnhubFundamentals(sym, 4000);
-          if (metric?.high52w != null && metric.high52w > 0) {
-            fetched.set(sym, { ...q, high52w: metric.high52w, low52w: metric.low52w ?? q.low52w });
-            enriched++;
-            continue;
-          }
-        }
-        // Fallback: Yahoo 52-week range from v8/chart meta (always available)
-        try {
-          const ySymbol = yahooSymbol(sym);
-          const yRes = await fetch(
-            `${YAHOO_CHART_BASE}/${encodeURIComponent(ySymbol)}?range=1y&interval=1d&includePrePost=false`,
-            { headers: { 'User-Agent': YAHOO_UA }, signal: AbortSignal.timeout(4000) }
-          );
-          if (yRes.ok) {
-            const yData = await yRes.json();
-            const yMeta = yData?.chart?.result?.[0]?.meta;
-            if (yMeta?.fiftyTwoWeekHigh != null && yMeta.fiftyTwoWeekHigh > 0) {
-              fetched.set(sym, {
-                ...q,
-                high52w: yMeta.fiftyTwoWeekHigh,
-                low52w: yMeta.fiftyTwoWeekLow ?? 0,
-              });
-              yahooFallback++;
-            }
-          }
-        } catch { /* keep quote as-is */ }
-      } catch { /* non-critical - keep quote as-is */ }
-      if (i < symArr.length - 1) await new Promise(r => setTimeout(r, 50));
+      return !(q.high52w != null && q.high52w > 0);
+    });
+    const concurrency = Math.max(1, Math.min(opts.enrichConcurrency ?? 6, 16));
+    let enriched = 0;
+    for (let i = 0; i < pending.length; i += concurrency) {
+      const wave = pending.slice(i, i + concurrency);
+      const settled = await Promise.allSettled(
+        wave.map((sym) => enrichQuoteWithRange(sym, fetched.get(sym)!, fhKey)),
+      );
+      settled.forEach((r, idx) => {
+        const sym = wave[idx];
+        if (r.status !== 'fulfilled') return; // keep quote as-is
+        const before = fetched.get(sym)!;
+        const hadRange = before.high52w != null && before.high52w > 0;
+        fetched.set(sym, r.value);
+        if (!hadRange && r.value.high52w != null && r.value.high52w > 0) enriched++;
+      });
+      if (i + concurrency < pending.length) await new Promise(r => setTimeout(r, 50));
     }
-    console.log('[quotes] 52-week enrichment: finnhub=' + enriched + ' yahoo=' + yahooFallback + ' total=' + symArr.length);
+    console.log(
+      '[quotes] 52-week enrichment: resolved=' + enriched + ' total=' + pending.length +
+      ' (concurrency=' + concurrency + ')',
+    );
   }
 
   // Merge fetched results into main results + update cache
