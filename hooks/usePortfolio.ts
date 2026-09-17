@@ -14,7 +14,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useAccounts } from '@/context/AccountContext';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { connectionIdFromAccountId, parseAccountScope } from '@/lib/account-scope';
-import { apiPost } from '@/lib/api-client';
+import { postOnce } from '@/lib/http/post-once';
 import { getDemoAccount, getDemoSectorAllocations, getDemoSymbols } from '@/lib/demo-data';
 import type {
   AccountSummary,
@@ -735,14 +735,27 @@ export function usePortfolio() {
       // Sync broker positions to Supabase for AI routes (daily-brief, weekly-snapshot).
       // Always sync (even empty) so a sell-to-zero clears stale rows in the positions table.
       if (isConnected) {
-        apiPost('/api/positions/sync', {
-          positions: brokerPositions,
-          connectionId: connectionId || undefined,
-          // Part B step 3b: the same resolved sub-account the broker adapter was
-          // just scoped to, so written rows can be attributed to it (inert until
-          // the server flag is on).
-          snapAccountId: parseAccountScope(activeAccountId)?.snapAccountId ?? undefined,
-        }).catch((e) =>
+        // COALESCED: `refresh()` is re-run by more than one effect and the poll
+        // can land mid-refresh, so this fired **3× within 120ms** on a single
+        // prod load (measured). Each call is a delete + insert of ~350 rows, and
+        // the overlap is what made two of the three answer 500 — the first
+        // request's insert collided with the next one's delete-then-insert
+        // window. Same write target ⇒ join the in-flight request instead of
+        // starting a second one. Once it settles, later refreshes (the 30s poll)
+        // issue a fresh sync as before.
+        const syncScope = parseAccountScope(activeAccountId)?.snapAccountId ?? 'connection';
+        postOnce(
+          '/api/positions/sync',
+          {
+            positions: brokerPositions,
+            connectionId: connectionId || undefined,
+            // Part B step 3b: the same resolved sub-account the broker adapter
+            // was just scoped to, so written rows can be attributed to it
+            // (inert until the server flag is on).
+            snapAccountId: parseAccountScope(activeAccountId)?.snapAccountId ?? undefined,
+          },
+          { key: `positions-sync:${connectionId || 'auto'}:${syncScope}` },
+        ).catch((e) =>
           console.warn('[usePortfolio] positions sync skipped:', e?.message)
         );
       }

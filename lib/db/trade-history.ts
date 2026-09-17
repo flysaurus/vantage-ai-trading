@@ -172,6 +172,121 @@ export function toTradeInsert(
 }
 
 /**
+ * Match key used when deciding whether a synced order is already in the table.
+ *
+ * ⚠️ Deliberately does NOT include the execution time: this mirrors exactly what
+ * `app/api/db/trade-history/create/route.ts` matches on
+ * (`user_id` + symbol + action + quantity + price). The two MUST agree — if the
+ * batch path matched more strictly than the single path, a re-synced order would
+ * be inserted by the batch that the single route would have skipped, and the
+ * table would grow duplicates again.
+ *
+ * (Trade *identity* is genuinely ambiguous without a broker-order-id column;
+ * `tradeDedupeKey` below is the stricter, time-aware variant. Changing the
+ * table's identity rule is a product decision, not a perf fix.)
+ */
+export function tradeMatchKey(t: {
+  symbol?: unknown;
+  action?: unknown;
+  side?: unknown;
+  quantity?: unknown;
+  qty?: unknown;
+  price?: unknown;
+  // Accepted for parity with `tradeDedupeKey` and DELIBERATELY IGNORED — the
+  // single-order route does not match on the execution time either.
+  executedAt?: unknown;
+  executed_at?: unknown;
+  filledAt?: unknown;
+  filled_at?: unknown;
+}): string {
+  const action = String(t.action ?? t.side ?? '').toLowerCase();
+  const quantity = numOrNull(t.quantity ?? t.qty) ?? 0;
+  const price = numOrNull(t.price) ?? 0;
+  return [String(t.symbol ?? '').toUpperCase(), action, String(quantity), String(price)].join('|');
+}
+
+export interface BatchOrderInput {
+  symbol?: unknown;
+  action?: unknown;
+  side?: unknown;
+  quantity?: unknown;
+  qty?: unknown;
+  price?: unknown;
+  executedAt?: unknown;
+  executed_at?: unknown;
+}
+
+export interface BatchPlanItem {
+  symbol: string;
+  action: 'buy' | 'sell';
+  quantity: number;
+  price: number;
+  executedAt: string | null;
+}
+
+export interface BatchPlan {
+  /** Valid, not-already-present orders — exactly the rows to insert. */
+  missing: BatchPlanItem[];
+  /** Rejected by validation (never silently written). */
+  invalid: number;
+  /** Same order repeated inside the payload; counted, inserted once. */
+  duplicatesInBatch: number;
+  /** Already in the table for this user. */
+  existing: number;
+}
+
+/**
+ * Plan one batched trade-history sync: validate, dedupe against what the table
+ * already holds, dedupe within the payload, and return only the rows to insert.
+ *
+ * Pure — no I/O — so the rule that decides what gets written is testable on its
+ * own. `existing` is the set of candidate rows the route fetched for this user
+ * (only the match-key columns are read).
+ */
+export function planTradeHistoryBatch(
+  existing: Array<{ symbol?: unknown; action?: unknown; side?: unknown; quantity?: unknown; qty?: unknown; price?: unknown }>,
+  incoming: BatchOrderInput[],
+  opts: { max?: number } = {},
+): BatchPlan {
+  const max = opts.max ?? 500;
+  const seen = new Set(existing.map((r) => tradeMatchKey(r)));
+  const missing: BatchPlanItem[] = [];
+  let invalid = 0;
+  let duplicatesInBatch = 0;
+  let existingCount = 0;
+  const claimed = new Set<string>();
+
+  for (const raw of incoming.slice(0, max)) {
+    const symbol = String(raw?.symbol ?? '').trim().toUpperCase();
+    const action = String(raw?.action ?? raw?.side ?? '').toLowerCase();
+    const quantity = numOrNull(raw?.quantity ?? raw?.qty);
+    const price = numOrNull(raw?.price);
+
+    if (!symbol || (action !== 'buy' && action !== 'sell') || quantity == null || quantity <= 0 || price == null || price <= 0) {
+      invalid += 1;
+      continue;
+    }
+
+    const item: BatchPlanItem = {
+      symbol,
+      action,
+      quantity,
+      price,
+      executedAt: (raw.executedAt as string) ?? (raw.executed_at as string) ?? null,
+    };
+    const key = tradeMatchKey(item);
+
+    if (seen.has(key)) { existingCount += 1; continue; }
+    if (claimed.has(key)) { duplicatesInBatch += 1; continue; }
+
+    claimed.add(key);
+    missing.push(item);
+  }
+
+  return { missing, invalid, duplicatesInBatch, existing: existingCount };
+}
+
+/**
  * Dedupe key for a trade. There is no broker-order-id column to key on, so a
  * re-synced order is recognised by what it actually is: the same symbol, side,
  * size, price and execution timestamp for the same user.

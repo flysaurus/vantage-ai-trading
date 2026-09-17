@@ -27,7 +27,21 @@ export async function createTrade(params: { userId: string; symbol: string; acti
   return res.json();
 }
 
-/** Syncs filled broker orders to the trade_history table. Deduplicates by alpacaOrderId. */
+/**
+ * Syncs filled broker orders to the trade_history table. Deduplicates by order id.
+ *
+ * One BATCHED request per sync pass (POST /trade-history/sync-batch), not one
+ * request per order. Measured live on prod: a fresh page load re-POSTed the
+ * whole filled book one order at a time — 35–36 sequential requests, ~20s of
+ * churn per load, for rows the server already had. The server now does the work
+ * once (one dedupe read, one account resolve, one insert).
+ *
+ * Dedup is still two-layered:
+ *   - client: the session set below, so a re-run after a 30s poll doesn't resend
+ *     an order this session already synced (the server would no-op it, but the
+ *     payload is smaller if we don't send it);
+ *   - server: matches the order against what the table already holds.
+ */
 export async function syncFilledOrders(
   userId: string,
   filledOrders: Array<{
@@ -37,41 +51,53 @@ export async function syncFilledOrders(
   connectionId?: string | null,
   snapAccountId?: string | null,
 ): Promise<number> {
-  let synced = 0;
+  // Claim every key BEFORE awaiting: two refresh passes can overlap (the hook is
+  // mounted by more than one component and a poll can land mid-refresh); when
+  // the mark was added after the await, both passes saw "not synced" and sent
+  // the same order — measured live: 36 of 64 orders were sent twice per burst.
+  // Claiming first makes the check-then-act atomic (single-threaded JS); a failed
+  // batch releases every claim so a later attempt can retry.
+  const claimed: Array<{ key: string; order: unknown }> = [];
+  const orders: Array<{ symbol: string; action: 'buy' | 'sell'; quantity: number; price: number; executedAt: string }> = [];
+
   for (const order of filledOrders) {
     if (!order.filledPrice || !order.filledQty) continue;
-    // Session-scoped dedup. The caller re-runs this after EVERY orders refresh
-    // (30s poll) with the full filled-order list, so unaffected orders were
-    // POSTed to /trade-history/create again on every tick — measured live: 129
-    // POSTs in 75s for a 150-order book. The server dedupes correctly, but the
-    // client still paid a round trip per order per poll. Mark an order once the
-    // server has a copy (whether it inserted or reported `_existing`).
     const key = `${userId}:${order.id}`;
     if (syncedOrderIds.has(key)) continue;
-    // Claim the key BEFORE awaiting. Two refresh passes can overlap (the hook is
-    // mounted by more than one component and a poll can land mid-refresh); when
-    // the mark was added after the await, both passes saw "not synced" and
-    // POSTed the same order — measured live: 36 of 64 orders were posted twice
-    // per burst. Claiming first makes the check-then-act atomic (single-threaded
-    // JS); a failed create releases the claim so a later attempt can retry.
     syncedOrderIds.add(key);
-    const result = await createTrade({
-      userId,
+    claimed.push({ key, order });
+    orders.push({
       symbol: order.symbol,
       action: order.side,
       quantity: order.filledQty,
       price: order.filledPrice,
-      alpacaOrderId: order.id,
       executedAt: order.createdAt,
-      connectionId,
-      // Same active-account context the read path uses — never re-derived.
-      // Without it, a shared login (2+ sub-accounts) leaves the row unattributed.
-      snapAccountId: snapAccountId ?? null,
     });
-    if (!result) { syncedOrderIds.delete(key); continue; }
-    if (!result._existing) synced++;
   }
-  return synced;
+
+  if (orders.length === 0) return 0;
+
+  const res = await apiFetch(`${API_BASE}/sync-batch`, {
+    method: 'POST',
+    body: JSON.stringify({
+      userId,
+      connectionId: connectionId ?? null,
+      // Same active-account context the read path uses — never re-derived.
+      // Without it, a shared login (2+ sub-accounts) leaves the rows unattributed.
+      snapAccountId: snapAccountId ?? null,
+      orders,
+    }),
+  });
+
+  if (!res.ok) {
+    // Release so the next pass retries rather than silently losing the fills.
+    for (const c of claimed) syncedOrderIds.delete(c.key);
+    console.warn('[trades] batch sync failed:', res.status, await res.text().catch(() => ''));
+    return 0;
+  }
+
+  const json = await res.json().catch(() => null);
+  return typeof json?.inserted === 'number' ? json.inserted : 0;
 }
 
 export async function getTrades(userId: string, limit = 100, offset = 0, connectionId?: string | null): Promise<{ trades: Trade[]; total: number }> {
