@@ -24,6 +24,7 @@ import { runNoticedPipeline } from '@/lib/noticed/engine';
 import { parseAccountScope, applyAccountScopeFilter } from '@/lib/account-scope';
 import { resolveBrokerAccountReadFilter } from '@/lib/broker/account-id';
 import { resolveLiveAccountCash } from '@/lib/broker/live-account-cash';
+import { resolveBrokerNoticedInput, toPortfolioPosition } from '@/lib/noticed/resolve-input';
 
 // ── Auth ──
 const ALLOWED_SECRETS = [
@@ -272,6 +273,39 @@ async function processAccount(
     return { triggers: 0, haikuGenerated: 0, skippedBudget: false };
   }
 
+  // ── BROKER scopes: delegate to the SAME resolver the API route uses ──────
+  //
+  // 2026-09-18 (Em): this function used to re-implement the position mapping
+  // locally, coercing a stored NULL P&L to zero ("no signal", not "no data").
+  // Broker `positions` rows
+  // store NO P&L (live-verified: 349/349 null on Fidelity Taxable SMA), so that
+  // coercion fed `totalPnlPercent: 0` for every position → no milestone band
+  // could ever cross → the stale-resolve pass resolved EVERY milestone card on
+  // every cron pass (every 30 min in market hours), while the API path — which
+  // derives P&L — re-created them on the next page load. That was the
+  // resolved↔active flip: two mappers disagreeing, not unstable data.
+  //
+  // One mapper, imported. Never re-implemented.
+  if (scope && !scope.isDemo && scope.connectionId) {
+    const brokerInput = await resolveBrokerNoticedInput(
+      supabase,
+      userId,
+      accountId,
+      ctx.watchlistSymbols,
+    );
+    if (!brokerInput) {
+      // Covers a shared login with no resolvable sub-account scope (never
+      // merge), an unresolvable registry lookup, and an account with no
+      // holdings — all of them "skip", none of them "blend".
+      console.log(
+        `[portfolio-agent] Account ${accountId.slice(0, 12)} — no resolvable scope or no holdings — skipping (never merging)`,
+      );
+      return { triggers: 0, haikuGenerated: 0, skippedBudget: false };
+    }
+    return runPipelineForInput(brokerInput);
+  }
+
+  // ── DEMO / non-broker scope: original local assembly below ──
   // ── Fetch positions scoped to this account ──
   let positionsQuery = supabase
     .from('positions')
@@ -290,11 +324,14 @@ async function processAccount(
   }
 
   // ── Compute account values from positions ──
+  // Same shared mapper as the broker path above — the demo branch must not
+  // carry a second P&L rule either.
+  const mappedPositions = (positions as any[]).map(toPortfolioPosition);
   let equity = 0;
   let totalPnl = 0;
-  for (const pos of positions) {
-    equity += Number(pos.market_value || 0);
-    totalPnl += Number(pos.unrealized_pnl || 0);
+  for (const pos of mappedPositions) {
+    equity += pos.marketValue;
+    totalPnl += pos.totalPnl;
   }
 
   // ── Cash: demo → demo_portfolio_state.cash_balance; broker → snap account cash ──
@@ -373,53 +410,55 @@ async function processAccount(
       dayPnl,
       dayPnlPercent: dayPnlPct == null ? null : Math.round(dayPnlPct * 10) / 10,
     },
-    positions: positions.map((p: any) => ({
-      symbol: p.symbol,
-      qty: Number(p.qty),
-      marketValue: Number(p.market_value || 0),
-      avgCost: Number(p.avg_cost || 0),
-      totalPnl: Number(p.unrealized_pnl || 0),
-      totalPnlPercent: Number(p.unrealized_pnl_pct || 0),
-      sector: p.sector || undefined,
-    })),
+    positions: mappedPositions,
     watchlistSymbols: ctx.watchlistSymbols,
     daysSinceLastTrade,
   };
 
-  // ── Get existing trigger keys (scoped to account) ──
-  const { data: existing } = await supabase
-    .from('noticed_items')
-    .select('trigger_key')
-    .eq('user_id', userId)
-    .eq('account_id', accountId)
-    .eq('resolved', false);
+  // ── Run the pipeline for the assembled input ──
+  //
+  // Shared by the broker delegation above and the demo assembly below so the
+  // two can never diverge again. Declared as a (hoisted) function declaration
+  // so the broker path can call it before this point in the body.
+  async function runPipelineForInput(
+    input: NoticedRuleInput,
+  ): Promise<{ triggers: number; haikuGenerated: number; skippedBudget: boolean }> {
+    // ── Get existing trigger keys (scoped to account) ──
+    const { data: existing } = await supabase
+      .from('noticed_items')
+      .select('trigger_key')
+      .eq('user_id', userId)
+      .eq('account_id', accountId)
+      .eq('resolved', false);
 
-  const existingKeys = new Set<string>((existing || []).map((e: any) => e.trigger_key));
+    const existingKeys = new Set<string>((existing || []).map((e: any) => e.trigger_key));
 
-  // ── Run the pipeline ──
-  const { trulyNew, haikuGenerated } = await runNoticedPipeline({
-    userId,
-    accountId,
-    input,
-    investorStyle: ctx.investorStyle,
-    existingKeys,
-    supabase,
-    concSinglePct: ctx.concSinglePct,
-    concTop3Pct: ctx.concTop3Pct,
-    targetReturnPct: ctx.targetReturnPct,
-    targetLossPct: ctx.targetLossPct,
-  });
+    const { trulyNew, haikuGenerated } = await runNoticedPipeline({
+      userId,
+      accountId,
+      input,
+      investorStyle: ctx.investorStyle,
+      existingKeys,
+      supabase,
+      concSinglePct: ctx.concSinglePct,
+      concTop3Pct: ctx.concTop3Pct,
+      targetReturnPct: ctx.targetReturnPct,
+      targetLossPct: ctx.targetLossPct,
+    });
 
-  const skippedBudget = trulyNew.length > 0 && !haikuGenerated;
-  if (skippedBudget) {
-    console.log(`[portfolio-agent] Account ${accountId.slice(0, 12)} budget exhausted — ${trulyNew.length} triggers used fallback`);
+    const skippedBudget = trulyNew.length > 0 && !haikuGenerated;
+    if (skippedBudget) {
+      console.log(`[portfolio-agent] Account ${accountId.slice(0, 12)} budget exhausted — ${trulyNew.length} triggers used fallback`);
+    }
+
+    return {
+      triggers: trulyNew.length,
+      haikuGenerated: haikuGenerated ? 1 : 0,
+      skippedBudget,
+    };
   }
 
-  return {
-    triggers: trulyNew.length,
-    haikuGenerated: haikuGenerated ? 1 : 0,
-    skippedBudget,
-  };
+  return runPipelineForInput(input);
 }
 
 // ── Config: max duration for Vercel serverless ──

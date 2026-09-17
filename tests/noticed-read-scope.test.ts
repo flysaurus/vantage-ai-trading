@@ -8,6 +8,7 @@
 //     a merged card
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 // Cash is now resolved from the LIVE balances endpoint
 // (`lib/broker/live-account-cash.ts`), not from the connect-time
@@ -234,5 +235,80 @@ describe('resolveBrokerNoticedInput — single-account connection (unchanged)', 
     expect(filtersFor(calls, 'positions').some((f) => f[0] === 'account_id')).toBe(false);
     expect(out!.account.cash).toBeCloseTo(468.81, 2);
     expect(out!.account.cash).not.toBeCloseTo(100865.95, 2); // stale snapshot value
+  });
+});
+
+// ─── 2026-09-18: the milestone resolved↔active flip — ONE mapper, not two ────
+// The noticed cron route used to re-implement this mapping locally and coerced a
+// NULL P&L to 0 (`Number(p.unrealized_pnl_pct || 0)`). Live broker rows store NO
+// P&L (Fidelity Taxable SMA: 349/349 null, verified in prod), so the cron fed the
+// rules engine `totalPnlPercent: 0` for every position → no milestone band could
+// cross → the stale-resolve pass resolved EVERY milestone card on every 30-minute
+// cron pass, while this resolver (the API path) derived P&L and re-created them.
+// These tests pin the derivation the two callers must now share.
+describe('resolveBrokerNoticedInput — derives P&L when the broker stores none', () => {
+  // Shape produced by the live sync: market_value + avg_cost only.
+  const NULL_PNL_POSITIONS = [
+    { symbol: 'VALE', qty: 10.13, market_value: 143.14, avg_cost: 9.5252, unrealized_pnl: null, unrealized_pnl_pct: null },
+    { symbol: 'XOM', qty: 1, market_value: 90, avg_cost: 100, unrealized_pnl: null, unrealized_pnl_pct: null },
+  ];
+
+  const resolve = async () => {
+    liveCash.mockResolvedValue(2994.1);
+    const { client } = makeSupabase({
+      broker_accounts: { many: TWO },
+      positions: { many: NULL_PNL_POSITIONS },
+      broker_connections: FIDELITY_CONN,
+      users: { one: { day_pnl: 0 } },
+      orders: { one: null },
+    });
+    return resolveBrokerNoticedInput(client, USER, `snaptrade:${CONN}:${SMA}`);
+  };
+
+  it('derives totalPnl / totalPnlPercent from market value − cost basis', async () => {
+    const out = await resolve();
+    expect(out).not.toBeNull();
+    const vale = out!.positions.find((p) => p.symbol === 'VALE')!;
+    const xom = out!.positions.find((p) => p.symbol === 'XOM')!;
+    expect(vale.totalPnl).toBeCloseTo(143.14 - 10.13 * 9.5252, 2);
+    expect(vale.totalPnlPercent).toBeCloseTo(48.3, 0);
+    expect(xom.totalPnlPercent).toBeCloseTo(-10, 0);
+    // The regression: a coerced zero means "no signal", not "no data".
+    expect(vale.totalPnlPercent).not.toBe(0);
+    expect(out!.account.equity).toBeCloseTo(233.14, 2);
+  });
+
+  it('feeds the rules engine a milestone trigger (the cron used to feed 0%)', async () => {
+    const { findNewTriggers } = await import('@/lib/noticed/engine');
+    const out = await resolve();
+    const keys = findNewTriggers(out!, new Set()).map((t) => t.trigger_key);
+    expect(keys).toContain('MILESTONE_VALE_+25');
+    expect(keys).toContain('MILESTONE_XOM_-10');
+
+    // Failing control: the OLD cron mapping produced no trigger at all.
+    const coerced = {
+      ...out!,
+      positions: out!.positions.map((p) => ({ ...p, totalPnl: 0, totalPnlPercent: 0 })),
+    };
+    const coercedKeys = findNewTriggers(coerced, new Set()).map((t) => t.trigger_key);
+    expect(coercedKeys).not.toContain('MILESTONE_VALE_+25');
+  });
+});
+
+// ─── 2026-09-18: the cron must delegate to the shared resolver ────────────────
+// Static scan, deliberately: the whole bug was a *second* mapper that nothing
+// pointed at. If a third one appears, this fails.
+describe('portfolio-agent cron uses the shared noticed input resolver', () => {
+  const src = readFileSync('app/api/cron/portfolio-agent/route.ts', 'utf8');
+
+  it('imports and calls resolveBrokerNoticedInput for broker scopes', () => {
+    expect(src).toMatch(/import\s*\{[^}]*resolveBrokerNoticedInput[^}]*\}\s*from\s*'@\/lib\/noticed\/resolve-input'/);
+    expect(src).toMatch(/await resolveBrokerNoticedInput\(/);
+  });
+
+  it('never re-derives P&L with a `|| 0` coercion', () => {
+    expect(src).not.toMatch(/unrealized_pnl_pct\s*\|\|\s*0/);
+    expect(src).not.toMatch(/unrealized_pnl\s*\|\|\s*0/);
+    expect(src).not.toMatch(/totalPnlPercent:\s*Number\(/);
   });
 });
