@@ -202,6 +202,34 @@ function alpacaIsLive(): boolean {
   return process.env.ALPACA_ENVIRONMENT === 'live';
 }
 
+// ─── Finnhub rate-limit cooldown ─────────────────────────────
+// Finnhub's free tier is 60 calls/min. A large account (hundreds of
+// positions) can exhaust that mid-pass; every further call then 429s while
+// still costing a full round trip. Once a 429 is seen we stop calling Finnhub
+// for a short window so the remaining symbols fall through to Alpaca's batch
+// endpoint (one request) instead of burning the route's time budget.
+const FINNHUB_LIMIT_COOLDOWN_MS = 60_000;
+let _finnhubLimitedUntil = 0;
+
+function finnhubRateLimited(): boolean {
+  return Date.now() < _finnhubLimitedUntil;
+}
+
+/** Record a 429 (honouring Retry-After when present). */
+function noteFinnhubRateLimit(res?: Response): void {
+  let waitMs = FINNHUB_LIMIT_COOLDOWN_MS;
+  try {
+    const retryAfter = Number(res?.headers?.get('retry-after'));
+    if (Number.isFinite(retryAfter) && retryAfter > 0) waitMs = retryAfter * 1000;
+  } catch { /* use default */ }
+  _finnhubLimitedUntil = Date.now() + waitMs;
+}
+
+/** Test hook — clears the Finnhub rate-limit cooldown. */
+export function __resetFinnhubLimit(): void {
+  _finnhubLimitedUntil = 0;
+}
+
 // ══════════════════════════════════════════════════════════════
 // SOURCE 1: FINNHUB
 // ══════════════════════════════════════════════════════════════
@@ -214,6 +242,10 @@ async function finnhubQuote(symbol: string, timeout = 5000): Promise<Quote | nul
       `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${key}`,
       { signal: AbortSignal.timeout(timeout) }
     );
+    if (res.status === 429) {
+      noteFinnhubRateLimit(res);
+      return null;
+    }
     if (!res.ok) return null;
     const data = await res.json();
     if (!data || data.c === 0) return null; // all zeros = unknown symbol
@@ -274,6 +306,10 @@ async function finnhubFundamentals(symbol: string, timeout = 5000): Promise<Fund
       `https://finnhub.io/api/v1/stock/metric?symbol=${encodeURIComponent(symbol.toUpperCase())}&metric=all&token=${key}`,
       { signal: AbortSignal.timeout(timeout) }
     );
+    if (res.status === 429) {
+      noteFinnhubRateLimit(res);
+      return null;
+    }
     if (!res.ok) return null;
     const data = await res.json();
     const m = data?.metric;
@@ -755,7 +791,10 @@ async function enrichQuoteWithRange(
     }
   }
 
-  // 2. Yahoo v8/chart meta (free, no key, always available)
+  // 2. Yahoo v8/chart meta (free, no key, always available). Skipped while
+  //    Finnhub is rate-limiting us: on a large portfolio this fallback would
+  //    otherwise burn a 4s timeout per symbol for a cosmetic range mark.
+  if (finnhubRateLimited()) return quote;
   try {
     const ySymbol = yahooSymbol(sym);
     const yRes = await fetch(
@@ -805,14 +844,19 @@ export async function getBatchQuotes(
 
   const fetched = new Map<string, Quote>();
 
-  // 1. Try Finnhub in concurrent batches (rate limit: 60/min)
+  // 1. Try Finnhub in concurrent batches (rate limit: 60/min). Skipped entirely
+  //    while a 429 cooldown is active — the symbols go to Alpaca's batch call.
   const fhKey = finnhubKey();
-  if (fhKey && remaining.size > 0) {
+  if (fhKey && remaining.size > 0 && !finnhubRateLimited()) {
     const batchSize = 10;
     const symArr = [...remaining];
     let fhResolved = 0;
     let fhFailed = 0;
     for (let i = 0; i < symArr.length; i += batchSize) {
+      if (finnhubRateLimited()) {
+        console.log('[quotes] finnhub: rate limited — handing remaining to alpaca');
+        break;
+      }
       const batch = symArr.slice(i, i + batchSize);
       const batchResults = await Promise.allSettled(
         batch.map(sym => finnhubQuote(sym, 5000))
@@ -832,7 +876,11 @@ export async function getBatchQuotes(
     }
     console.log('[quotes] finnhub result: resolved=' + fhResolved + ' failed=' + fhFailed + ' remaining=' + remaining.size);
   } else {
-    console.log('[quotes] finnhub: skipped (no key=' + !fhKey + ' remaining=' + (remaining.size === 0) + ')');
+    console.log(
+      '[quotes] finnhub: skipped (no key=' + !fhKey +
+      ' rateLimited=' + finnhubRateLimited() +
+      ' remaining=' + (remaining.size === 0) + ')',
+    );
   }
 
   // 2. Try Alpaca for remaining

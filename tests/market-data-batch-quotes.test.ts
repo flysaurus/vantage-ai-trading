@@ -42,6 +42,10 @@ interface Harness {
   latencyMs: number;
   metricResult: (sym: string) => Response | null;
   chartResult: (sym: string) => Response | null;
+  /** Status returned by the Finnhub /quote endpoint (429 = rate limited). */
+  quoteStatus: number;
+  /** Symbols resolved by the Alpaca snapshot fallback. */
+  alpacaCalls: number;
 }
 
 let h: Harness;
@@ -59,7 +63,28 @@ function installFetch() {
     try {
       if (h.latencyMs) await new Promise((r) => setTimeout(r, h.latencyMs));
       if (url.includes('/api/v1/quote?')) {
+        if (h.quoteStatus !== 200) {
+          return new Response('{"error":"rate limit"}', {
+            status: h.quoteStatus,
+            headers: h.quoteStatus === 429 ? { 'retry-after': '60' } : undefined,
+          });
+        }
         return new Response(JSON.stringify(quotePayload()), { status: 200 });
+      }
+      if (url.includes('/v2/stocks/snapshots')) {
+        h.alpacaCalls++;
+        const syms = decodeURIComponent(new URL(url).searchParams.get('symbols') || '')
+          .split(',')
+          .filter(Boolean);
+        const body: Record<string, any> = {};
+        for (const s of syms) {
+          body[s] = {
+            latestTrade: { p: 50 },
+            dailyBar: { c: 50, h: 51, l: 49 },
+            prevDailyBar: { c: 48 },
+          };
+        }
+        return new Response(JSON.stringify(body), { status: 200 });
       }
       if (url.includes('/api/v1/stock/metric')) {
         h.metricCalls++;
@@ -83,8 +108,8 @@ function installFetch() {
 beforeEach(async () => {
   vi.resetModules();
   env.FINNHUB_IO_API_KEY = 'test-finnhub-key';
-  delete env.ALPACA_API_KEY_ID;
-  delete env.ALPACA_SECRET_KEY;
+  env.ALPACA_API_KEY_ID = 'test-alpaca-key';
+  env.ALPACA_SECRET_KEY = 'test-alpaca-secret';
   h = {
     calls: [],
     metricCalls: 0,
@@ -93,6 +118,8 @@ beforeEach(async () => {
     latencyMs: 0,
     metricResult: () => null,
     chartResult: () => null,
+    quoteStatus: 200,
+    alpacaCalls: 0,
   };
   installFetch();
 });
@@ -100,6 +127,8 @@ beforeEach(async () => {
 afterEach(() => {
   vi.unstubAllGlobals();
   delete env.FINNHUB_IO_API_KEY;
+  delete env.ALPACA_API_KEY_ID;
+  delete env.ALPACA_SECRET_KEY;
 });
 
 async function load() {
@@ -196,5 +225,71 @@ describe('getBatchQuotes enrichment', () => {
 
     expect(h.metricCalls).toBe(3);
     expect(h.peakInFlight).toBe(1);
+  });
+});
+
+describe('getBatchQuotes Finnhub rate limiting', () => {
+  it('stops the Finnhub pass on a 429 and hands the rest to Alpaca', async () => {
+    const { getBatchQuotes, __resetFinnhubLimit } = await load();
+    __resetFinnhubLimit();
+    h.quoteStatus = 429;
+    const syms = Array.from({ length: 25 }, (_, i) => `K${i}`);
+
+    const quotes = await getBatchQuotes(syms, { enrich: false });
+
+    // One Finnhub batch (10 calls) is attempted, then the cooldown trips and
+    // the loop breaks instead of grinding through 3 batches of 429s.
+    const fhQuoteCalls = h.calls.filter((c) => c.url.includes('/api/v1/quote?')).length;
+    expect(fhQuoteCalls).toBeLessThanOrEqual(10);
+    expect(h.alpacaCalls).toBe(1);
+    // every symbol still resolved, via the Alpaca batch
+    expect(quotes.size).toBe(25);
+    expect(quotes.get('K24')?.price).toBe(50);
+  });
+
+  it('skips Finnhub entirely while the cooldown is active', async () => {
+    const { getBatchQuotes, __resetFinnhubLimit } = await load();
+    __resetFinnhubLimit();
+    h.quoteStatus = 429;
+
+    await getBatchQuotes(['L1'], { enrich: false });
+    const afterFirst = h.calls.filter((c) => c.url.includes('/api/v1/quote?')).length;
+    expect(afterFirst).toBeGreaterThan(0);
+
+    // Finnhub is healthy again, but the cooldown is still active → no calls.
+    h.quoteStatus = 200;
+    const quotes = await getBatchQuotes(['L2'], { enrich: false });
+
+    expect(h.calls.filter((c) => c.url.includes('/api/v1/quote?')).length).toBe(afterFirst);
+    expect(quotes.get('L2')?.price).toBe(50); // served by Alpaca
+  });
+
+  it('does not trip the cooldown on a healthy Finnhub response', async () => {
+    const { getBatchQuotes, __resetFinnhubLimit } = await load();
+    __resetFinnhubLimit();
+    h.quoteStatus = 200;
+
+    const quotes = await getBatchQuotes(['M1', 'M2'], { enrich: false });
+
+    expect(h.alpacaCalls).toBe(0);
+    expect(quotes.get('M1')?.price).toBe(100);
+    expect(quotes.get('M2')?.price).toBe(100);
+  });
+
+  it('skips the Yahoo range fallback while rate limited (no 4s/symbol burn)', async () => {
+    const { getBatchQuotes, __clearRangeCache, __resetFinnhubLimit } = await load();
+    __clearRangeCache();
+    __resetFinnhubLimit();
+    // metric 429s → cooldown trips → enrichment must not fall through to Yahoo
+    h.metricResult = () =>
+      new Response('{}', { status: 429, headers: { 'retry-after': '60' } });
+
+    const quotes = await getBatchQuotes(['N1', 'N2']);
+
+    expect(h.chartCalls).toBe(0);
+    expect(quotes.get('N1')?.high52w).toBeUndefined();
+    // quotes themselves resolve fine (Finnhub /quote is healthy); the 429 on
+    // the metric endpoint trips the cooldown and the Yahoo fallback is skipped.
+    expect(quotes.get('N1')?.price).toBe(100);
   });
 });
