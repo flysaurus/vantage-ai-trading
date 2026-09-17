@@ -26,7 +26,7 @@ import { useOrderStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
 import { connectionIdFromAccountId, parseAccountScope } from '@/lib/account-scope';
-import { availableCash, sumOpenReservedAmount } from '@/lib/available-cash';
+import { availableCash, availableCashOrNull, sumOpenReservedAmount } from '@/lib/available-cash';
 import { selectWorkingBasketLegs } from '@/lib/basket-cancel';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { consumeLotsForSell, createLotForBuy } from '@/lib/fifo-ledger';
@@ -642,7 +642,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         const summary: AccountSummary = {
           equity: ba.equity,
           buyingPower: ba.buyingPower,
-          cash: Math.max(0, ba.cash - reservedCash),
+          // Unknown settled cash stays unknown (never Math.max(0, null−x) ⇒ 0).
+          cash: ba.cash == null ? null : Math.max(0, ba.cash - reservedCash),
           reservedCash,
           dayPnl: ba.dayPnl ?? null,
           dayPnlPercent: ba.dayPnlPercent ?? null,
@@ -1939,6 +1940,17 @@ export function buildLivePortfolioContext(account: AccountSummary | null): strin
     ? `\nBuying power: $${account.buyingPower.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     : '';
 
+  // Settled cash is only quoted when the broker actually reported it. An
+  // unknown balance is stated as unknown — never as $0.00, and never as the
+  // connect-time snapshot (see lib/broker/live-account-cash.ts).
+  const liveAvailCash = availableCashOrNull({
+    cash: account.cash,
+    buyingPower: account.buyingPower,
+  });
+  const cashLine = liveAvailCash == null
+    ? 'unknown (the broker did not report settled cash for this account — do not state or estimate a cash figure)'
+    : `$${liveAvailCash.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
   return `
 ⚠️ CURRENT MARKET PRICES (use these, ignore training data):
 ${priceAnchor}
@@ -1947,7 +1959,7 @@ PORTFOLIO CONTEXT (live Finnhub prices):
 Total Value: $${account.equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 ${todayLine}
 Total P&L: ${totalSign}$${Math.abs(account.totalPnl).toFixed(2)} (${account.totalPnlPercent.toFixed(1)}%)
-Cash balance: ${availableCash(account).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${buyingPowerLine}
+Cash balance: ${cashLine}${buyingPowerLine}
 
 POSITIONS (${account.positions.length} holdings):
 ${positionsSummary}

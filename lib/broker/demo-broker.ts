@@ -609,8 +609,10 @@ export class DemoBroker implements BrokerEngine {
     );
 
     return {
-      totalValue: totals.totalValue,
-      cashBalance: totals.cash,
+      totalValue: totals.totalValue ?? this.state.cashBalance,
+      // Demo cash is always known (it is our own ledger) — the shared helper can
+      // only return null for a broker that did not report it.
+      cashBalance: totals.cash ?? this.state.cashBalance,
       buyingPower: this.state.cashBalance, // Demo: buying power = cash (no margin)
       totalInvested: totals.invested,
       totalPnL: totals.totalPnl,

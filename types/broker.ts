@@ -25,7 +25,8 @@ export interface BrokerConfig {
 export interface BrokerAccount {
   id: string;
   equity: number;
-  cash: number;
+  /** null = the broker did not report settled cash (UNKNOWN) — render "—", never $0. */
+  cash: number | null;
   /** null = non-margin account */
   buyingPower: number | null;
   dayTradeCount: number;

@@ -15,7 +15,7 @@ import {
   SnapTradeAuthError,
   SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
-import { computeAccountSummary, type PositionInput } from '@/lib/broker/account-summary';
+import { computeAccountSummary, sumBalancesHonest, type PositionInput } from '@/lib/broker/account-summary';
 import { extractPositionTicker, extractPositionName } from '@/lib/snaptrade/mapping';
 import { fetchFinnhubQuotes, positionDayChange } from '@/lib/finnhub-quote';
 import { createTtlCache } from '@/lib/ttl-cache';
@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
 
     if (!Array.isArray(accounts) || accounts.length === 0) {
       return {
-        totalValue: 0, cash: 0, buyingPower: null,
+        totalValue: 0, cash: null, cashKnown: false, buyingPower: null, buyingPowerKnown: false,
         invested: 0, marketValue: 0,
         dayChange: 0, dayChangePct: 0,
         totalPnl: 0, totalPnlPct: 0,
@@ -133,7 +133,7 @@ export async function GET(req: NextRequest) {
           `[snaptrade/account] requested sub-account ${snapAccountId} not present on authorization ${authorizationId} — returning empty (never another account's data)`,
         );
         return {
-          totalValue: 0, cash: 0, buyingPower: null,
+          totalValue: 0, cash: null, cashKnown: false, buyingPower: null, buyingPowerKnown: false,
           invested: 0, marketValue: 0,
           dayChange: 0, dayChangePct: 0,
           totalPnl: 0, totalPnlPct: 0,
@@ -161,8 +161,9 @@ export async function GET(req: NextRequest) {
       scoped = [primary];
     }
 
-    let totalCash = 0;
-    let totalBuyingPower: number | null = 0;
+    // Cash is only KNOWN when the broker actually reported it. A missing field
+    // (or a balances call that failed) is UNKNOWN — never a fabricated 0. The
+    // same holds for buying power. `sumBalancesHonest` owns that rule.
     let totalEquityFromSnap = 0;
     let latestSync: string | null = null;
     let anyHoldingsUnavailable = false;
@@ -203,16 +204,15 @@ export async function GET(req: NextRequest) {
     );
 
     for (const r of perAccount) {
-      if (r.status !== 'fulfilled') continue;
-      const { balances, rawPositions } = r.value;
-      if (Array.isArray(balances)) {
-        for (const b of balances) {
-          totalCash += Number(b.cash || 0);
-          totalBuyingPower! += Number(b.buying_power || 0);
-        }
-      }
-      allPositions.push(...normalisePositions(rawPositions));
+      if (r.status === 'fulfilled') allPositions.push(...normalisePositions(r.value.rawPositions));
     }
+
+    // ── Balances (honest): a failed per-account fetch ⇒ that field is UNKNOWN ──
+    const { cash: summedCash, buyingPower: summedBuyingPower } = sumBalancesHonest(
+      perAccount.map((r) =>
+        r.status === 'fulfilled' && Array.isArray(r.value.balances) ? r.value.balances : null,
+      ),
+    );
 
     // ── Enrich "Today" P&L from Finnhub ───────────────────
     // SnapTrade positions expose open_pnl only (no day_gain/day_change), so
@@ -244,15 +244,23 @@ export async function GET(req: NextRequest) {
     }
 
     // ── Step C: Compute using SHARED function ──────────
-    const summary = computeAccountSummary(totalCash, totalBuyingPower ?? 0, allPositions);
+    const summary = computeAccountSummary(
+      summedCash,
+      summedBuyingPower,
+      allPositions,
+    );
 
     // Prefer SnapTrade's own total, fall back to computed
-    const finalEquity = totalEquityFromSnap > 0 ? totalEquityFromSnap : summary.totalValue;
+    const finalEquity = totalEquityFromSnap > 0 ? totalEquityFromSnap : summary.totalValue ?? 0;
 
       return {
         totalValue: finalEquity,
+        // null = UNKNOWN (the broker did not report it); the `*Known` flags make
+        // the distinction explicit so no client re-introduces a 0.
         cash: summary.cash,
-        buyingPower: totalBuyingPower,
+        cashKnown: summary.cash != null,
+        buyingPower: summary.buyingPower,
+        buyingPowerKnown: summary.buyingPower != null,
         invested: summary.invested,
         marketValue: summary.marketValue,
         dayChange: summary.dayChange,

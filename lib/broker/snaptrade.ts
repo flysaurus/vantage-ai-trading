@@ -111,8 +111,10 @@ export class SnapTradeAdapter implements BrokerAdapter {
     const url = this.scopedUrl('/api/broker/snaptrade/account', fresh);
     const data = await this.snaptradeFetch<{
       totalValue: number;
-      cash: number;
-      buyingPower: number | null;
+      cash?: number | null;
+      buyingPower?: number | null;
+      cashKnown?: boolean;
+      buyingPowerKnown?: boolean;
       invested: number;
       marketValue: number;
       dayChange: number | null;
@@ -129,7 +131,8 @@ export class SnapTradeAdapter implements BrokerAdapter {
     return {
       id: `snaptrade-${this.underlyingBroker || 'unknown'}`,
       equity: data.totalValue ?? 0,
-      cash: data.cash ?? 0,
+      // Unknown cash stays unknown: a missing field must never become $0.
+      cash: typeof data.cash === 'number' ? data.cash : null,
       buyingPower: data.buyingPower ?? null,
       dayTradeCount: 0,
       dayPnl: data.dayChange ?? null,

@@ -105,6 +105,13 @@ export function AccountSummaryCard({ account }: { account: AccountSummary }) {
             <div style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-muted)', fontStyle: 'italic' }}>
               not shared
             </div>
+          ) : account.cash == null ? (
+            <div
+              style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-muted)', fontStyle: 'italic' }}
+              title="The broker did not report settled cash for this account."
+            >
+              —
+            </div>
           ) : (
             <div style={{ fontSize: 13, fontWeight: 700 }}>
               ${account.cash.toLocaleString('en-US', DOLLAR_FMT)}

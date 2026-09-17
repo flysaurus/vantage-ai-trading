@@ -84,6 +84,33 @@ export function sumOpenReservedAmount(orders: OpenOrderReservation[]): number {
 }
 
 /**
+ * Available cash (spendable) — NULLABLE form.
+ *
+ * Returns null when the broker reported neither settled cash nor buying power:
+ * the amount is UNKNOWN, and a 0 here would be a fabricated balance (the class
+ * of bug behind the "$100,865 cash idle" noticed card and the cash-Unknown
+ * policy in `lib/broker/live-account-cash.ts`).
+ *
+ * Use this wherever the number is shown to a human or fed to a model. Use
+ * `availableCash` (0 fallback) only where a numeric comparison must fail safe.
+ */
+export function availableCashOrNull(
+  balance: CashBalanceFields | null | undefined,
+  openReservedAmount = 0,
+): number | null {
+  const reserved = Number(openReservedAmount) || 0;
+  const cash = balance?.cash;
+  if (cash != null && Number.isFinite(Number(cash))) {
+    return Math.max(0, Number(cash) - reserved);
+  }
+  const bp = balance?.buyingPower;
+  if (bp != null && Number.isFinite(Number(bp))) {
+    return Math.max(0, Number(bp) - reserved);
+  }
+  return null;
+}
+
+/**
  * Available cash (spendable). FINAL: cash − open reservations primary;
  * buying_power secondary/informational only.
  *
@@ -106,5 +133,8 @@ export function availableCash(
   if (bp != null && Number.isFinite(Number(bp))) {
     return Math.max(0, Number(bp) - reserved);
   }
+  // ⚠️ UNKNOWN collapses to 0 here (fail-safe for numeric comparisons). This is
+  // NOT a claim that the balance is zero — see `availableCashOrNull` for the
+  // honest form, and never print this value as a balance.
   return 0;
 }

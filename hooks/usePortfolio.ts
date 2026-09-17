@@ -697,7 +697,8 @@ export function usePortfolio() {
       const accountSummary: AccountSummary = {
         equity: brokerAccount.equity,
         buyingPower: brokerAccount.buyingPower ?? null,
-        cash: Math.max(0, brokerAccount.cash - reservedCash),
+        // Unknown settled cash stays unknown (never Math.max(0, null−x) ⇒ 0).
+        cash: brokerAccount.cash == null ? null : Math.max(0, brokerAccount.cash - reservedCash),
         reservedCash,
         dayPnl: brokerAccount.dayPnl,
         dayPnlPercent: brokerAccount.dayPnlPercent,
