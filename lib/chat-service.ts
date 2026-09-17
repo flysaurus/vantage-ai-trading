@@ -17,6 +17,8 @@ export interface ChatMessageRow {
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
+  /** Raw column — carries structured extras (e.g. resolved `charts`) for replay. */
+  metadata?: Record<string, unknown> | null;
 }
 
 // ─── Message persistence ───
@@ -28,12 +30,22 @@ export async function saveChatMessage(
   content: string,
   accountId: string = 'demo',
   id?: string | null,
+  /**
+   * Structured extras stored verbatim in `chat_messages.metadata`.
+   * Used to replay server-resolved charts under a persisted message (the SSE
+   * `charts` event is live-session only, so without this a reload loses them).
+   * The RPC has no metadata parameter, so a call WITH metadata goes straight
+   * to the direct insert.
+   */
+  metadata?: Record<string, unknown> | null,
 ): Promise<string> {
   const supabase = createClient();
   const messageType = role === 'user' ? 'user_message' : 'ai_response';
+  const withMetadata = !!metadata && Object.keys(metadata).length > 0;
 
-  // Try updated RPC with message_type
-  try {
+  // Try updated RPC with message_type — skipped when we must persist metadata
+  // (the RPC signature has no slot for it).
+  if (!withMetadata) try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase.rpc as any)('insert_chat_message', {
       p_user_id: userId,
@@ -62,6 +74,7 @@ export async function saveChatMessage(
         content,
         message_type: messageType,
         account_id: accountId,
+        ...(withMetadata ? { metadata } : {}),
       })
       .select('id')
       .single();

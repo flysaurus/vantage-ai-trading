@@ -127,6 +127,12 @@ interface Message {
   content: string;
   id?: string;
   download?: DownloadPayload;
+  /**
+   * Server-resolved charts replayed from the DB (`chat_messages.metadata.charts`).
+   * Charts resolved during a live stream travel via the `charts` SSE event and
+   * are attached to the message in state; this field is what survives a reload.
+   */
+  charts?: ResolvedChart[];
   /** True when this response is the DEEP-research rerun of the same exchange. */
   deep?: boolean;
 }
@@ -352,6 +358,10 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
   // chart renders under THAT message only (same contract as dataCallout).
   // Live-session only: charts are not persisted with the message.
   const [charts, setCharts] = useState<{ charts: ResolvedChart[]; msgId: string } | null>(null);
+  // Mirrors `charts` for the save path: the resolved chart payload must be
+  // written to the DB with the message, but the `finally` save runs in the same
+  // tick as the last SSE event, where the state update is not readable yet.
+  const chartsRef = useRef<ResolvedChart[]>([]);
 
   // ── TL;DR toggle state (set of collapsed message indices) ──
   const [collapsedTLDRs, setCollapsedTLDRs] = useState<Set<number>>(new Set());
@@ -1013,6 +1023,11 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
                 role: m.role as 'user' | 'ai',
                 content: m.content,
                 id: m.id, // preserve DB id so action buttons / CLARIFY / strategy selection survive remount
+                // Charts persisted with the message — replayed on reload so a
+                // historical answer keeps the chart it was rendered with.
+                ...(Array.isArray(m.charts) && m.charts.length > 0
+                  ? { charts: m.charts as ResolvedChart[] }
+                  : {}),
               };
               // Reconstruct the Download button for structured responses so it
               // survives a page reload (markers/table are stored raw in content).
@@ -1548,6 +1563,7 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
         setDeepTargetId(deepTarget);
       }
       downloadRef.current = null; // reset per-message — never carry a stale payload into a retry
+      chartsRef.current = []; // same: never carry the previous answer's chart into this one
       if (!deepTarget) setMessages(prev => [...prev, { role: 'ai', content: '', id: aiMsgId }]);
 
       // SSE events (data: {...}\n\n) are NOT guaranteed to arrive aligned to
@@ -1644,7 +1660,9 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
               }
               if (data.charts) {
                 // Server-resolved charts (real computed data, keyed marker). Renders
-                // under this AI message once the stream settles.
+                // under this AI message once the stream settles. Mirrored into a ref
+                // so the save path can persist them with the message.
+                chartsRef.current = data.charts as ResolvedChart[];
                 setCharts({ charts: data.charts as ResolvedChart[], msgId: aiMsgId });
               }
               if (data.corrections) {
@@ -1925,7 +1943,13 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
           // user row would duplicate it in history — only the answer is updated.
           const userSaved = deepTarget ? 'skipped' : await saveChatMessage(userId, 'user', content, accountId).catch((e: any) => { console.error('[AITab] user msg save failed:', e?.message); return null; });
           if (lastAiResponseRef.current) {
-            const aiSaved = await saveChatMessage(userId, 'assistant', lastAiResponseRef.current, accountId, lastAiMessageIdRef.current).catch((e: any) => { console.error('[AITab] ai msg save failed:', e?.message); return null; });
+            // Persist the resolved charts WITH the message — the SSE `charts` event
+            // is live-session only, so without this every chart disappears on reload
+            // (and never appears in history). Empty ⇒ no metadata written at all.
+            const savedCharts = chartsRef.current;
+            const savedMeta = savedCharts.length > 0 ? { charts: savedCharts } : undefined;
+            const aiSaved = await saveChatMessage(userId, 'assistant', lastAiResponseRef.current, accountId, lastAiMessageIdRef.current, savedMeta).catch((e: any) => { console.error('[AITab] ai msg save failed:', e?.message); return null; });
+            chartsRef.current = [];
             console.log('[AITab] Saved: user=', !!userSaved, 'ai=', !!aiSaved);
             setLastAIResponse(lastAiResponseRef.current);
             lastAiResponseRef.current = '';
@@ -2852,14 +2876,22 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                     : null}
                 />
               )}
-              {/* Server-resolved charts for this message — real data, keyed markers. */}
-              {charts && charts.msgId === msg.id && charts.charts.length > 0 && (
-                <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {charts.charts.map((c, ci) => (
-                    <ChatChart key={`${c.type}:${c.key}:${ci}`} chart={c} />
-                  ))}
-                </div>
-              )}
+              {/* Server-resolved charts for this message — real data, keyed markers.
+                  Live stream ⇒ the `charts` SSE event (state); reloaded history ⇒
+                  the payload persisted on the message. Same renderer either way. */}
+              {(() => {
+                const msgCharts = charts && charts.msgId === msg.id
+                  ? charts.charts
+                  : (msg.charts ?? []);
+                if (!msgCharts.length) return null;
+                return (
+                  <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {msgCharts.map((c, ci) => (
+                      <ChatChart key={`${c.type}:${c.key}:${ci}`} chart={c} />
+                    ))}
+                  </div>
+                );
+              })()}
               {/* Inline trade buttons (Demo/Gold only) */}
               {(() => {
                 if (tier === 'silver') return null;

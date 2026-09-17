@@ -27,6 +27,31 @@ export interface DBChatMessage {
   role: 'user' | 'ai';
   content: string;
   createdAt: string;
+  /**
+   * Server-resolved charts stored with the message (`metadata.charts`).
+   * The live SSE `charts` event is NOT persisted with the message, so a reload
+   * used to drop every chart; this is what makes charts survive a reload.
+   * Absent/empty ⇒ the message simply has no chart (never re-invented here).
+   */
+  charts?: unknown[] | null;
+}
+
+/**
+ * Map a raw `chat_messages` row to the UI shape. PURE — no I/O.
+ * Keeps `charts` only when it is a real array with entries, so a malformed or
+ * empty `metadata.charts` degrades to "no chart" instead of rendering junk.
+ */
+export function toDBChatMessage(msg: any): DBChatMessage {
+  const meta = msg?.metadata;
+  const rawCharts = meta && typeof meta === 'object' ? (meta as any).charts : null;
+  const charts = Array.isArray(rawCharts) && rawCharts.length > 0 ? rawCharts : null;
+  return {
+    id: msg.id,
+    role: (msg.role === 'assistant' || msg.role === 'ai') ? 'ai' : 'user',
+    content: msg.content || '',
+    createdAt: msg.created_at,
+    charts,
+  };
 }
 
 const MAX_SESSIONS = 10;
@@ -51,7 +76,7 @@ export async function fetchRecentSessions(
   // Fetch recent messages within retention window (up to 500 — enough to find 10+ days)
   const { data, error } = await (supabase as any)
     .from('chat_messages')
-    .select('id, user_id, role, content, created_at')
+    .select('id, user_id, role, content, created_at, metadata')
     .eq('user_id', userId)
     .eq('account_id', accountId)
     .gte('created_at', cutoff.toISOString())
@@ -73,12 +98,7 @@ export async function fetchRecentSessions(
   for (const msg of data) {
     const date = localDateStr(new Date(msg.created_at));
     if (!dayMap.has(date)) dayMap.set(date, []);
-    dayMap.get(date)!.push({
-      id: msg.id,
-      role: (msg.role === 'assistant' || msg.role === 'ai') ? 'ai' : 'user',
-      content: msg.content || '',
-      createdAt: msg.created_at,
-    });
+    dayMap.get(date)!.push(toDBChatMessage(msg));
   }
 
   // Convert to sessions, newest date first
@@ -136,7 +156,7 @@ export async function fetchSessionMessages(
 
   const { data, error } = await (supabase as any)
     .from('chat_messages')
-    .select('id, user_id, role, content, created_at')
+    .select('id, user_id, role, content, created_at, metadata')
     .eq('user_id', userId)
     .eq('account_id', accountId)
     .gte('created_at', startOfDay)
@@ -145,12 +165,7 @@ export async function fetchSessionMessages(
 
   if (error || !data) return [];
 
-  return data.map((msg: any) => ({
-    id: msg.id,
-    role: (msg.role === 'assistant' || msg.role === 'ai') ? 'ai' : 'user',
-    content: msg.content || '',
-    createdAt: msg.created_at,
-  }));
+  return data.map(toDBChatMessage);
 }
 
 /**
