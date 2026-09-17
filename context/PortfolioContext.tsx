@@ -1020,6 +1020,14 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
                   totalPnlPercent: p.totalPnlPercent || 0,
                 })),
                 watchlistSymbols: [],
+                // ⚠️ REQUIRED: the canonical account scope. Without it the route
+                // defaults to 'demo', so this post-trade re-check ran the noticed
+                // pipeline under the DEMO account using LIVE broker positions —
+                // mis-attributed rows (same contamination class as the July 24
+                // demo data-integrity incident). For broker scopes the server
+                // ignores the client portfolio/positions above and re-derives
+                // them from the `positions` table; demo keeps the client payload.
+                accountId: activeAccountId || undefined,
               }),
             }).catch(() => {});
           }).catch(() => {});
