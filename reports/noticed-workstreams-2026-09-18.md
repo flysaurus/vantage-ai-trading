@@ -201,3 +201,46 @@ Branch: `feat/bounce-back-v1`.
    - new signal: **same-stock historical reversion** off the new 5 y daily candles.
    - keep (b), (c) unchanged.
 3. **(3)** cap constant 4 exported and covered by tests.
+
+---
+
+## STATUS — 2026-09-18 22:20 UTC (all three legs built; (4c) shadow data below)
+
+### Commits
+- `a97c01e` `feat(market-data)`: `getCandles` `'D5y'` (5y daily, yahoo-only) + `getEarningsCalendar` wrapper.
+- `cd1e2dd` `feat(noticed)`: bounce_back v1 + style-aware drift ((4a) hardening, (4c) policy + shadow).
+
+### Tests / types
+- `npx vitest run` (bounce-back, etf-sectors, noticed-action, noticed-read-scope, noticed-resolve-guard): **84/84 pass**.
+- `npx tsc --noEmit`: **0 errors** (scripts included).
+- No prod writes in this batch. Probe is read-only by construction (supabase mutation proxy).
+
+### (4c) SHADOW REPORT — what soros bucket drift WOULD have fired
+Probe: `scripts/_probe-drift-shadow.ts` (read-only; live SnapTrade cash via `.env.reconcile.local`).
+Soros user `58ffa82a-2b14-4a5d-9662-5c48f105031f`, targets `{Broad Market 35, Fixed Income 30, International 15, Materials 10, Cash 10}`:
+
+| scope | positions | cash | would-fire |
+|---|---|---|---|
+| `snaptrade:ae013e41…:51564504…` | 27 | $468.81 | Broad Market -35pp, Fixed Income -29pp, International -15pp |
+| `snaptrade:0bf72384…:47b6f4e3…` (SMA) | 349 | $2,994.49 | Broad Market -35pp, Fixed Income -30pp, International -15pp |
+| `snaptrade:0bf72384…:c0c932a5…` | 25 | $7,981.90 | Broad Market -34pp, Fixed Income -30pp, International -15pp |
+
+Verified: **0 non-sector cards SURFACED** in all three scopes (shadow held — no leak).
+Materials did not fire (within the 15pp band on all three).
+
+**Read:** every candidate is a *structural* underweight — these accounts hold individual
+equities, so `Broad Market`/`Fixed Income`/`International` sit at ~0% against an asset-allocation
+template. The cards can never resolve (no rebalance of stocks closes a 30pp bond gap), so going
+live as-is would pin 3 permanent cards on each soros account. Recommend NOT flipping live without
+a refinement — see options below.
+
+### ⚠️ Finding: "equity archetypes unchanged" does not quite hold
+`STYLE_SECTOR_TARGETS` shows **all four** equity archetypes also target `'Broad Market'`
+(buffett 10, lynch 10, livermore 10, **munger 25**). The style-aware skip therefore also enables
+`Broad Market` comparison for them:
+- buffett / lynch / livermore: need current > 25% to reach the 15pp band — practically never fires (unchanged in practice).
+- **munger: target 25% ⇒ any equity-only account sits at 0% ⇒ -25pp ⇒ FIRES "Broad Market underweight"** (new card). No munger user exists today (styles: null 1 / buffett 1 / lynch 2 / soros 1), so no live impact yet.
+
+Options for Em: (a) ship as-is; (b) add "only compare a bucket the account actually holds
+(non-zero)" — kills the soros noise AND the munger false positive; (c) keep all macro styles
+shadowed. Recommendation: (b), then flip live.
