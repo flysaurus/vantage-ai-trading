@@ -244,3 +244,28 @@ a refinement — see options below.
 Options for Em: (a) ship as-is; (b) add "only compare a bucket the account actually holds
 (non-zero)" — kills the soros noise AND the munger false positive; (c) keep all macro styles
 shadowed. Recommendation: (b), then flip live.
+
+### ⚠️ LIVE VERIFICATION FINDING — earnings calendar retains only ~6 weeks (Em's snag, confirmed)
+Probe `scripts/_probe-bounce-v1-live.ts` (read-only, SMA scope, 349 positions, key from Em):
+
+| symbol | revTTM | PE | surprises (newest-first) | lastReport | reaction | material | co-specific | DISQ |
+|---|---|---|---|---|---|---|---|---|
+| NVDA | +83.4% | 27.4 | 3.82, 4.34, 3.62, 1.99 | 2026-08-26 | −0.98pp | no | no | no |
+| MSFT | +17.8% | 27.5 | 9.53, 3.06, 2.61, 10.45 | **n/a** | n/a | no | no | no |
+| AMZN | +15.8% | 20.0 | 6.13, −3.47, −3.61, 21.50 | **n/a** | n/a | no | no | no |
+| GOOGL | +20.1% | 17.2 | −4.36, −3.15, 4.20, 29.41 | **n/a** | n/a | **yes** | no | no |
+| AVGO | +48.7% | 42.4 | 0.57, −0.24, −0.87, 2.65 | 2026-09-02 | +0.72pp | no | no | no |
+| META | +27.6% | 25.3 | −16.03, 5.59, 5.72, 6.23 | **n/a** | n/a | **yes** | no | no |
+| XOM | +9.6% | 20.8 | −1.86, 14.29, 0.49, 2.44 | **n/a** | n/a | no | no | no |
+
+`findBounceBackTriggers` → **0 fired** on the SMA scope (correct; the conjunction is strict — none of
+these are ≥20% below their own valuation average AND in a market-wide dip).
+
+**Root cause of the n/a rows:** `/calendar/earnings` history window. No-symbol window probes:
+`2026-08-05→08-15` = 0 rows, `2026-08-09→08-19` = 72 rows ⇒ retention begins ≈ **2026-08-10 (~40 days)**.
+AVGO/NVDA (inside) resolve; MSFT/GOOGL/META/XOM (outside) do not. NOT a plan limit, NOT a range limit,
+NOT symbol-specific (`/stock/earnings` works for all of them, but carries only the fiscal `period`).
+
+**Resolution (Em's instruction):** no fiscal-period approximation. Shipped the composite as
+**miss-magnitude-vs-own-history only** for out-of-window names; unknown reaction stays non-disqualifying
+and is now logged. `getLastReportDate` window narrowed 200d → 45d to match reality.
