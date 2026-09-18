@@ -269,3 +269,59 @@ NOT symbol-specific (`/stock/earnings` works for all of them, but carries only t
 **Resolution (Em's instruction):** no fiscal-period approximation. Shipped the composite as
 **miss-magnitude-vs-own-history only** for out-of-window names; unknown reaction stays non-disqualifying
 and is now logged. `getLastReportDate` window narrowed 200d → 45d to match reality.
+
+---
+
+## 🔑 PROD CONFIG FINDING — `FINNHUB_IO_API_KEY` is EMPTY in production (2026-09-18)
+Confirmed from a **live `vercel env pull --environment=production`** (not from behaviour, not from the
+stale workspace artifacts). Control test proves the pull decrypts real values: pulled
+`SUPABASE_SERVICE_ROLE_KEY` (219 ch) and `SNAPTRADE_CLIENT_ID` (21 ch) both hash-identical to the
+local copies.
+
+| source | FINNHUB key |
+|---|---|
+| **live prod (Vercel production)** | **EMPTY (len 0)** |
+| repo `.env.local` (local dev) | valid, distinct key |
+| key Em pasted 2026-09-18 | valid — identical to the *stale* workspace artifacts `.env.vercel` / `.env.production` |
+| `FINNHUB_API_KEY` | **absent from prod entirely** |
+
+**Blast radius** — `lib/finnhub.ts:7` `getToken()` throws `FINNHUB_IO_API_KEY not configured`, and it is
+called **outside** the try in `getFinancialMetrics`, `getEarningsSurprises` and the new
+`getEarningsCalendar` ⇒ in prod those throw, so:
+- `lib/noticed/bounce-back.ts` per-symbol catch swallows it ⇒ **bounce_back can never fire in prod**
+  (every symbol logs `Bounce-back check failed for X: FINNHUB_IO_API_KEY not configured`).
+- `lib/equity-screener.ts` (`Promise.allSettled` → all rejected) and `lib/stock-analyst.ts` likewise.
+- `getCompanyProfile` is the graceful one (returns null).
+- `engine.ts:461` + `event-impact.ts:263` read `FINNHUB_API_KEY || FINNHUB_IO_API_KEY` — neither exists
+  in prod, so their direct-key paths are undefined too.
+
+**Not done (Em's standing instruction: report before acting):** no rotation, no consolidation, no revoke.
+Proposed next step: set prod `FINNHUB_IO_API_KEY` to a single valid key, verify one prod Finnhub call,
+then revoke the other.
+
+## 🧪 (4c) DRIFT-SHADOW EVIDENCE — harness armed, baseline captured
+New read-only harness `scripts/drift-shadow-pass.ts` → `state/drift-shadow.jsonl` (per bucket per pass:
+exact `currentPct`, `targetPct`, `deviation`, `heldValue`, `unheld` ==0, `unheldLe1` <=1%, `fires` >=15pp,
+`shadowed`, `surfaced`, `mode` native|cross).
+
+**Baseline, 3 passes on 2026-09-18** (soros user `58ffa82a`, 3 accounts: 27 / 349 / 25 positions):
+
+| | material fires | on ≤1%-held bucket | on exactly 0% |
+|---|---|---|---|
+| **soros (native)** | 8 of 9 per pass | **8 (89%)** | 5 (56%) |
+| buffett (cross) | 2/18 reads | 0 | 0 |
+| lynch (cross) | 1/18 | 0 | 0 |
+| livermore (cross) | 4/15 | 0 | 0 |
+| munger (cross) | 5/15 | 3 (60%) | 0 |
+
+- **Only the soros user has broker connections** (lynch×2 and buffett have 0) — the equity comparison is
+  the same real portfolios scored against each equity archetype's targets.
+- Equity fires are almost all genuine **weight mismatch** on held buckets: `Financial Services 31% vs 10%`,
+  `Technology 20% vs 45%`, etc. The only ≤1%-held equity fire is **munger's `Broad Market`**
+  (0.13–0.71% vs a 25% target) — i.e. the same "absent asset class" phenomenon, appearing *because* 4c
+  enables Broad Market for archetypes that target it.
+- Soros fires are on exactly three buckets — Broad Market (0.13–0.71%), Fixed Income (0–1.19%),
+  International (0%) — all asset classes an equity-only strategy would never hold. **No non-sector leak
+  (shadow holds; 0 surfaced).**
+- Cron `drift-shadow-pass` armed (Mon–Fri 14:35 UTC, isolated, delivery none) to accumulate cycles;
+  one-shot report reminder set for Thu 2026-09-24 14:45 UTC. **Nothing flipped live.**
