@@ -190,6 +190,14 @@ export function findNewTriggers(
 
 // ── Rules: portfolio drift vs style targets ──
 
+/**
+ * (4c) Styles whose BUCKET-level (asset-class) drift is shadowed: computed and
+ * logged on every pass, but deliberately NOT surfaced as cards until a 1–2 pass
+ * shadow review confirms the signal isn't noise. Remove a style from this set to
+ * make its bucket drift live.
+ */
+const DRIFT_BUCKET_SHADOW_STYLES = new Set(['soros']);
+
 export function findDriftTriggers(
   input: NoticedRuleInput,
   existingKeys: Set<string>,
@@ -199,8 +207,16 @@ export function findDriftTriggers(
   const triggers: NoticedTrigger[] = [];
   if (!investorStyle) return triggers;
 
-  const targets = STYLE_SECTOR_TARGETS[investorStyle];
-  if (!targets) return triggers;
+  // (4a) hardening: normalise the style key and WARN on an unknown one. The DB
+  // stores the archetype KEY ('soros'), but a future surface passing a display
+  // label or a capitalised value would otherwise make drift vanish with no signal
+  // at all (the old code returned [] silently).
+  const styleKey = String(investorStyle).trim().toLowerCase();
+  const targets = STYLE_SECTOR_TARGETS[styleKey];
+  if (!targets) {
+    console.warn(`[noticed] drift rule skipped — unknown investor_style key: "${investorStyle}"`);
+    return triggers;
+  }
 
   const sectorValues = new Map<string, number>();
   for (const pos of input.positions) {
@@ -229,8 +245,18 @@ export function findDriftTriggers(
   const investedValue = input.positions.reduce((sum, p) => sum + (p.marketValue || 0), 0);
   const totalValue = investedValue + input.account.cash;
 
+  // (4c) Style-aware bucket policy. A globally non-sector bucket is skipped only
+  // when this style does not TARGET it. Macro archetypes (e.g. `soros`) have
+  // almost no GICS granularity by design — 4 of its 5 targets are non-sector
+  // buckets — so a sector-only comparison was inert for it (only Materials
+  // survived). When a style DOES target such a bucket, drift is compared at
+  // ASSET-CLASS level instead. 'Cash' stays skipped for every style: idle cash is
+  // the idle-cash rule's territory, not drift's.
+  const styleTargets = new Set(Object.keys(targets));
+
   for (const [sector, targetPct] of Object.entries(targets)) {
-    if (NON_SECTOR_BUCKETS.has(sector)) continue;
+    if (sector === 'Cash') continue;
+    if (NON_SECTOR_BUCKETS.has(sector) && !styleTargets.has(sector)) continue;
 
     const currentValue = sectorValues.get(sector) || 0;
     const currentPct = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
@@ -243,6 +269,16 @@ export function findDriftTriggers(
     if (existingKeys.has(key)) continue;
 
     const direction = deviation > 0 ? 'overweight' : 'underweight';
+
+    // SHADOW (see DRIFT_BUCKET_SHADOW_STYLES): a macro style's bucket-level drift
+    // is logged, not surfaced, until the shadow review clears it.
+    if (DRIFT_BUCKET_SHADOW_STYLES.has(styleKey) && NON_SECTOR_BUCKETS.has(sector)) {
+      console.log(
+        `[noticed][drift-shadow] would fire: ${sector} ${direction} — ${Math.round(currentPct)}% vs ${targetPct}% target (${deviation > 0 ? '+' : ''}${Math.round(deviation)}pp)`,
+      );
+      continue;
+    }
+
     triggers.push({
       trigger_type: 'portfolio_drift',
       trigger_key: key,
@@ -710,31 +746,22 @@ export async function runNoticedPipeline(
   const eventImpactTriggers = await findEventImpactTriggers(input, noSkipKeys);
   allTriggers = allTriggers.concat(eventImpactTriggers);
 
-  // ── Bounce-back: quality-position discount nudge ──
-  // Captures review-tier event-impact symbols from THIS pass (filter d), queries
-  // already-fired bounce-back symbols (one-nudge-per-symbol cap), and emits the
-  // single most-discounted qualifying candidate. `existingKeys` (the REAL active
-  // set) is passed deliberately — bounce-back needs to know which fired cards
-  // are still active so their keys remain in the firing set and are not
-  // stale-resolved a day later (the trulyNew filter still skips them).
+  // ── Bounce-back: quality-position discount nudge (v1) ──
+  // Captures review-tier event-impact symbols from THIS pass (filter d) and emits
+  // every qualifying candidate the account has room for under its concurrent-
+  // active cap (MAX_CONCURRENT_ACTIVE, per account). `existingKeys` (the REAL
+  // active set) is passed deliberately — bounce-back needs to know which cards
+  // are already active so their keys stay in the firing set (not stale-resolved a
+  // day later) AND so the cap counts live cards rather than fresh fires.
+  // v1 dropped the one-per-week single-fire selector and the permanent
+  // previouslyFiredSymbols exclusion (no DB read needed here any more).
   const reviewEventSymbols = new Set(
     eventImpactTriggers
       .filter((t) => t.meta?.severity === 'review')
       .map((t) => String(t.meta?.symbol).toUpperCase()),
   );
-  const { data: prevBounce } = await supabase
-    .from('noticed_items')
-    .select('trigger_key')
-    .eq('user_id', userId)
-    .eq('account_id', accountId)
-    .eq('trigger_type', 'bounce_back');
-  const previouslyFiredSymbols = new Set(
-    ((prevBounce as any[]) || []).map((r) =>
-      String(r.trigger_key).replace(/^BOUNCE_/, '').toUpperCase(),
-    ),
-  );
   allTriggers = allTriggers.concat(
-    await findBounceBackTriggers(input, existingKeys, reviewEventSymbols, previouslyFiredSymbols),
+    await findBounceBackTriggers(input, existingKeys, reviewEventSymbols),
   );
 
   // Identify truly new (not re-firing resolved items) — the full firing set's
