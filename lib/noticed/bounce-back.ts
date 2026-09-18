@@ -17,6 +17,13 @@
  *       AND whether the market singled the name out around the report date
  *       (ticker vs its benchmark). A small miss in line with its own norm, or a
  *       miss the market took in stride with the sector, stays eligible.
+ *
+ *       ⚠️ MEASUREMENT LIMIT (verified live 2026-09-18): the report-date part of
+ *       this test can only be measured for names that reported inside Finnhub's
+ *       ~6-week earnings-calendar retention window. Older reports ⇒ reaction
+ *       UNKNOWN ⇒ filter (a) collapses to miss-magnitude-vs-own-history for that
+ *       name (never a guess, never a disqualification). Per Em: do NOT
+ *       approximate the announcement date from the fiscal period.
  *   (b) Broad market/sector decline, not company-specific — the ticker is down
  *       at least MIN_DECLINE_PCT over the window, the benchmark (sector ETF, or
  *       SPY fallback) is ALSO down, and the ticker is not underperforming the
@@ -525,13 +532,21 @@ async function getHistoricalValuation(symbol: string): Promise<HistoricalValuati
 /**
  * Most recent PAST earnings report date (YYYY-MM-DD) for a symbol, or null.
  *
- * Uses the Finnhub earnings CALENDAR: `getEarningsSurprises` only exposes the
- * fiscal `period` (quarter end), which is not the announcement date and so
- * cannot anchor a market-reaction window.
+ * ⚠️ VERIFIED LIVE 2026-09-18: Finnhub's `/calendar/earnings` retains only a
+ * ~6-WEEK history window. Probed no-symbol windows: 2026-08-05→08-15 → 0 rows,
+ * 2026-08-09→08-19 → 72 rows, i.e. the endpoint starts serving data around
+ * 2026-08-10 (≈40 days back). So this resolves ONLY names that reported within
+ * roughly the last 40 days; anything older returns null and we say UNKNOWN
+ * rather than guessing (the resulting materiality read is magnitude-only).
+ *
+ * We use the CALENDAR, not `/stock/earnings`: the latter exposes only the fiscal
+ * `period` (quarter end), which is not the announcement date and cannot anchor a
+ * market-reaction window.
  */
 async function getLastReportDate(symbol: string): Promise<string | null> {
   const today = new Date().toISOString().slice(0, 10);
-  const from = new Date(Date.now() - 200 * 86400000).toISOString().slice(0, 10);
+  // 45d matches the endpoint's retention horizon; a longer span adds no rows.
+  const from = new Date(Date.now() - 45 * 86400000).toISOString().slice(0, 10);
   const rows = await getEarningsCalendar(symbol, from, today);
   const past = rows
     .filter((r) => r.date && r.date <= today)
@@ -679,6 +694,17 @@ export async function findBounceBackTriggers(
         });
 
         if (!decision) return;
+
+        // Telemetry: a material miss we could NOT corroborate with a market
+        // reaction (usually because the report predates the ~6-week calendar
+        // retention window) is kept — magnitude-only. Log it so the degradation
+        // is visible in prod rather than silent.
+        if (decision.materiality.missIsMaterial && decision.materiality.reactionExcessPp == null) {
+          console.log(
+            `[noticed] bounce-back: ${symbol} kept on a magnitude-only miss read ` +
+              `(report date outside the earnings-calendar window — reaction unmeasurable)`,
+          );
+        }
 
         // (e) historical-reversion evidence — computed only for names that
         // already qualify (each lookup costs a 5y daily candle fetch).
