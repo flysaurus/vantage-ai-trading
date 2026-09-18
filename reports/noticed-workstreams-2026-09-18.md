@@ -272,32 +272,53 @@ and is now logged. `getLastReportDate` window narrowed 200d → 45d to match rea
 
 ---
 
-## 🔑 PROD CONFIG FINDING — `FINNHUB_IO_API_KEY` is EMPTY in production (2026-09-18)
-Confirmed from a **live `vercel env pull --environment=production`** (not from behaviour, not from the
-stale workspace artifacts). Control test proves the pull decrypts real values: pulled
-`SUPABASE_SERVICE_ROLE_KEY` (219 ch) and `SNAPTRADE_CLIENT_ID` (21 ch) both hash-identical to the
-local copies.
+## 🔑 PROD CONFIG (CORRECTED) — `FINNHUB_IO_API_KEY` is SET and working in production (2026-09-18)
 
-| source | FINNHUB key |
-|---|---|
-| **live prod (Vercel production)** | **EMPTY (len 0)** |
-| repo `.env.local` (local dev) | valid, distinct key |
-| key Em pasted 2026-09-18 | valid — identical to the *stale* workspace artifacts `.env.vercel` / `.env.production` |
-| `FINNHUB_API_KEY` | **absent from prod entirely** |
+> ⚠️ **RETRACTION (same day, 21:11 UTC).** The first version of this section claimed prod's
+> `FINNHUB_IO_API_KEY` was **EMPTY** and that bounce-back / the screener / the stock analyst were therefore
+> **dead in prod**. **That was wrong.** It was a measurement artifact of Vercel sensitive vars — never
+> observed in behaviour, never lived. The false claim is retracted below, with the correct finding.
 
-**Blast radius** — `lib/finnhub.ts:7` `getToken()` throws `FINNHUB_IO_API_KEY not configured`, and it is
-called **outside** the try in `getFinancialMetrics`, `getEarningsSurprises` and the new
-`getEarningsCalendar` ⇒ in prod those throw, so:
-- `lib/noticed/bounce-back.ts` per-symbol catch swallows it ⇒ **bounce_back can never fire in prod**
-  (every symbol logs `Bounce-back check failed for X: FINNHUB_IO_API_KEY not configured`).
-- `lib/equity-screener.ts` (`Promise.allSettled` → all rejected) and `lib/stock-analyst.ts` likewise.
-- `getCompanyProfile` is the graceful one (returns null).
-- `engine.ts:461` + `event-impact.ts:263` read `FINNHUB_API_KEY || FINNHUB_IO_API_KEY` — neither exists
-  in prod, so their direct-key paths are undefined too.
+**Why the "empty" read was wrong.** Vercel env vars of `type=sensitive` are **never returned** by the CLI
+or the API: `vercel env pull` writes them blank and
+`GET /v9/projects/{projectId}/env?decrypt=false` reports `value_len=0` **regardless of the stored value**.
+The original check used `SUPABASE_SERVICE_ROLE_KEY` as a "control" — but that var is `type=encrypted`, so
+of course it decrypted; it proved **nothing** about a sensitive var. Generalising from that bad control
+produced the false conclusion.
 
-**Not done (Em's standing instruction: report before acting):** no rotation, no consolidation, no revoke.
-Proposed next step: set prod `FINNHUB_IO_API_KEY` to a single valid key, verify one prod Finnhub call,
-then revoke the other.
+Var types, verified via the Vercel API with `decrypt=false`:
+
+| key | target | type | readable by `env pull` |
+|---|---|---|---|
+| `FINNHUB_IO_API_KEY` | production | `sensitive` | **no** (always blank) |
+| `FINNHUB_IO_API_KEY` | preview | `sensitive` | **no** |
+| `FINNHUB_IO_API_KEY` | development | `encrypted` | yes |
+| `SUPABASE_SERVICE_ROLE_KEY` | all | `encrypted` | yes |
+
+**Corrected finding — prod's key is live and working.** Env changes do **not** apply to an existing
+deployment, so probing the running prod build exercises the ORIGINAL env:
+`GET /api/symbols/search?q=AVGO` (public, Finnhub-backed) → **real rows with live prices**
+(`BROADCOM INC`, price populated). ⇒ the prod Finnhub key works.
+
+**Retracted claims (never demonstrated — inferred from the bad control, must not be relied on):**
+"bounce_back can never fire in prod" · "`equity-screener.ts` allSettled → all rejected" ·
+"`stock-analyst.ts` Finnhub paths dead" · "`engine.ts:461` + `event-impact.ts:263` see both keys
+undefined in prod". The `lib/finnhub.ts` code observation itself (getToken throws outside the try) is
+still accurate **as code**, but it was never triggered in prod, so no prod impact was shown.
+
+**Key inventory + Em's decision (2026-09-18 23:15 GMT+2):** KEEP `cmlaql9r…np80` (sha `1af6b63b51` — the
+key live in prod + dev) and **revoke the local/stale `.env.local` key (sha `bdc1e7df3d`) on the Finnhub
+dashboard**. Note: prod's var was re-added as `sensitive` (Vercel's Production/Preview default) carrying
+the `…np80` value; the previous prod value is unrecoverable (sensitive ⇒ unreadable, then overwritten),
+but the stale workspace artifacts held `1af6b63b51`, so prod almost certainly ran the same key ⇒ no
+functional change.
+
+**Prod Finnhub health probe (useful):** `GET /api/symbols/search?q=<SYM>` → `{results:[]}` for a
+missing/invalid token, real rows for a valid one. (`/api/stock/details` is auth-gated → middleware 307.)
+
+**Lesson (durable):** never call a prod env var "empty" from `vercel env pull` — a blank read is
+**UNKNOWN**, not `""`. Control against a var of the **same `type`**, and prefer a runtime check against
+the live deployment.
 
 ## 🧪 (4c) DRIFT-SHADOW EVIDENCE — harness armed, baseline captured
 New read-only harness `scripts/drift-shadow-pass.ts` → `state/drift-shadow.jsonl` (per bucket per pass:
