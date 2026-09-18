@@ -1,6 +1,9 @@
 /**
  * Noticed Engine — shared rules engine & Haiku generation for AI Noticed feed.
  *
+ * Canonical trigger reference: docs/rufus-notices.md — update it when triggers,
+ * thresholds, or bands change.
+ *
  * Used by both:
  * - POST /api/ai/noticed (client-triggered, per-user)
  * - POST /api/cron/portfolio-agent (QStash-scheduled, multi-user batched)
