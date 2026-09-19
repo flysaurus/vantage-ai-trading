@@ -11,8 +11,19 @@
  * trade instruction.
  *
  * Four filters (CONJUNCTION — all must pass; no score, no ranking tiers):
- *   (a) Fundamentals intact — TTM revenue not declining AND no latest-earnings
- *       miss (a miss = fundamentals deteriorated, disqualified).
+ *   (a) Fundamentals intact — TTM revenue not declining AND no *material,
+ *       company-specific* earnings miss. v0 disqualified ANY miss; v1 asks how
+ *       big the miss was relative to the ticker's OWN trailing surprise history
+ *       AND whether the market singled the name out around the report date
+ *       (ticker vs its benchmark). A small miss in line with its own norm, or a
+ *       miss the market took in stride with the sector, stays eligible.
+ *
+ *       ⚠️ MEASUREMENT LIMIT (verified live 2026-09-18): the report-date part of
+ *       this test can only be measured for names that reported inside Finnhub's
+ *       ~6-week earnings-calendar retention window. Older reports ⇒ reaction
+ *       UNKNOWN ⇒ filter (a) collapses to miss-magnitude-vs-own-history for that
+ *       name (never a guess, never a disqualification). Per Em: do NOT
+ *       approximate the announcement date from the fiscal period.
  *   (b) Broad market/sector decline, not company-specific — the ticker is down
  *       at least MIN_DECLINE_PCT over the window, the benchmark (sector ETF, or
  *       SPY fallback) is ALSO down, and the ticker is not underperforming the
@@ -23,12 +34,18 @@
  *   (d) No open review-tier event-impact trigger on the same symbol — if we're
  *       already flagging a genuine company event, don't ALSO claim "the dip is
  *       just the market."
+ *   (e) EVIDENCE ONLY (v1, not a gate) — same-stock historical reversion: how did
+ *       this ticker behave after past drawdowns of a comparable depth? Recorded
+ *       on the card's meta and mentioned in the copy when the sample is large
+ *       enough. Deliberately NOT a firing gate yet so incomplete history can't
+ *       silently suppress cards.
  *
- * Frequency: at most ONE bounce-back notice per user per week (system-wide).
- * Among qualifying tickers we surface only the single most-discounted one and
- * queue the rest for later weeks by permanently excluding already-fired symbols
- * (`previouslyFiredSymbols`). No style-gating — fires the same regardless of
- * investor_style.
+ * Frequency (v1): re-evaluated on EVERY pass (daily + intraday), per
+ * user-broker-account, surfacing MULTIPLE names per pass. What keeps the deck
+ * readable is MAX_CONCURRENT_ACTIVE (4) concurrent active bounce-back cards per
+ * account — NOT a weekly selector. v0's one-per-week system-wide cap and its
+ * permanent `previouslyFiredSymbols` exclusion are both gone, so a name can
+ * re-fire after its card resolves. No style-gating.
  *
  * Deterministic firing path (keyword/data thresholds only — no LLM in the
  * firing decision). The LLM only rewords the copy, which is already
@@ -38,7 +55,7 @@
  */
 
 import type { NoticedRuleInput, NoticedTrigger } from './engine';
-import { getFinancialMetrics, getEarningsSurprises } from '@/lib/finnhub';
+import { getFinancialMetrics, getEarningsSurprises, getEarningsCalendar } from '@/lib/finnhub';
 import { getCandles } from '@/lib/market-data';
 
 // ── Config ──
@@ -48,6 +65,31 @@ const MAX_UNDERPERFORM_PP = 10;   // ticker may trail benchmark by at most this 
 const DISCOUNT_THRESHOLD = 0.2;   // ≥20% below own historical average (filter c)
 const MIN_YEARS = 2;              // need ≥2 annual valuation points for a norm
 const MAX_SYMBOLS = 10;           // top holdings by market value (same fan-out as event-impact)
+
+// ── v1: concurrency cap + materiality + historical-reversion evidence ──
+/**
+ * Concurrent-active cap, per user-broker-account. v0 allowed ONE new bounce-back
+ * per user per WEEK (system-wide); v1 re-evaluates every pass and can surface
+ * several names at once, so THIS cap — not a weekly selector — is what keeps the
+ * deck readable. 4 ≈ one live card plus a short queue, and it sits well under the
+ * MAX_SYMBOLS scan fan-out so a single pass can't saturate itself.
+ */
+export const MAX_CONCURRENT_ACTIVE = 4;
+
+/** A reported miss is only "material" if it is at least this far below zero … */
+const MATERIAL_MISS_PCT = 2;
+/** … AND at least this many pp worse than the ticker's own trailing median surprise. */
+const MATERIAL_MISS_PP = 3;
+/** The reaction is "company-specific" when the ticker trails its benchmark by ≥ this (pp). */
+const REACTION_EXCESS_PP = 3;
+/** Days either side of the report date used to measure the reaction. */
+const REACTION_HALF_WINDOW_DAYS = 1;
+/** Look-back (days) when searching for a comparable past drawdown episode. */
+const REVERSION_EPISODE_DAYS = 90;
+/** Forward window (days) used to measure what followed a past drawdown. */
+const REVERSION_FORWARD_DAYS = 60;
+/** Minimum historical episodes before the reversion evidence is surfaced. */
+const REVERSION_MIN_SAMPLE = 3;
 
 // ── Sector → benchmark ETF map (SPY fallback for anything unknown) ──
 export const SECTOR_ETF: Record<string, string> = {
@@ -76,6 +118,25 @@ const NON_EQUITY_SECTORS = new Set([
 ]);
 
 // ── Types ──
+/** Filter (a) materiality assessment — how bad was the miss, really? */
+export interface MaterialityAssessment {
+  latestSurprisePct: number | null;
+  medianSurprisePct: number | null;    // the ticker's own trailing norm (excluding the latest)
+  missIsMaterial: boolean;             // magnitude vs its OWN history
+  reactionExcessPp: number | null;     // ticker − benchmark around the report date (null = unmeasurable)
+  reactionCompanySpecific: boolean;    // market singled the name out
+  disqualified: boolean;               // material AND company-specific ⇒ fundamentals not intact
+  reason: string | null;
+}
+
+/** Same-stock historical reversion evidence (v1: evidence only, never a gate). */
+export interface HistoricalReversion {
+  sample: number;                 // comparable past drawdown episodes found
+  medianForwardPct: number | null;
+  positiveRate: number | null;    // share that were higher REVERSION_FORWARD_DAYS later
+  sufficient: boolean;            // sample >= REVERSION_MIN_SAMPLE
+}
+
 export interface BounceCandidate {
   symbol: string;
   discountType: 'pe' | 'pb';
@@ -88,12 +149,17 @@ export interface BounceCandidate {
   benchmarkRet: number;
   benchmarkSymbol: string;
   years: number;
+  materiality: MaterialityAssessment | null;
+  historical: HistoricalReversion | null;
 }
 
 /** Pre-fetched inputs to the pure decision function (testable without network). */
 export interface BounceBackData {
   revenueGrowthTTM: number | null;
-  latestSurprisePct: number | null; // null = no surprise data (lenient)
+  /** Own trailing surprises, newest-first (e.g. last 4 quarters). */
+  surpriseHistoryPct: number[];
+  /** Ticker minus benchmark return over the report-date window (null = unknown). */
+  earningsReactionExcessPp: number | null;
   tickerRet: number | null;
   benchmarkRet: number | null;
   peCurrent: number | null;
@@ -103,15 +169,85 @@ export interface BounceBackData {
   years: number;
 }
 
+// ── Pure materiality assessment for filter (a) (no I/O) ──
+/** Median of a numeric array (null when empty). */
+function median(xs: number[]): number | null {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+/**
+ * v1 replacement for the blunt "any miss disqualifies" test.
+ *
+ * A miss counts as MATERIAL only when it is both (i) at least MATERIAL_MISS_PCT
+ * below zero and (ii) at least MATERIAL_MISS_PP worse than the ticker's OWN
+ * trailing median surprise — i.e. bad *for this company*, not merely negative.
+ * It counts as COMPANY-SPECIFIC only when we can actually measure the report-date
+ * reaction and the ticker trailed its benchmark by REACTION_EXCESS_PP or more.
+ *
+ * Disqualification requires BOTH. If the reaction cannot be measured (no report
+ * date, or the report is older than the candle window) we do NOT disqualify —
+ * absent evidence, we don't invent it.
+ */
+export function assessMateriality(
+  surpriseHistoryPct: number[],
+  reactionExcessPp: number | null,
+): MaterialityAssessment {
+  const history = (surpriseHistoryPct || []).filter((v) => v != null && Number.isFinite(v));
+  const latest = history.length ? history[0] : null;
+  const medianSurprisePct = history.length > 1 ? median(history.slice(1)) : null;
+
+  const base: MaterialityAssessment = {
+    latestSurprisePct: latest,
+    medianSurprisePct,
+    missIsMaterial: false,
+    reactionExcessPp,
+    reactionCompanySpecific: false,
+    disqualified: false,
+    reason: null,
+  };
+
+  // No miss (or no data) ⇒ nothing to assess.
+  if (latest == null || latest >= 0) return base;
+
+  const missIsMaterial =
+    latest <= -MATERIAL_MISS_PCT &&
+    (medianSurprisePct == null || latest <= medianSurprisePct - MATERIAL_MISS_PP);
+
+  const reactionCompanySpecific =
+    reactionExcessPp != null && reactionExcessPp <= -REACTION_EXCESS_PP;
+
+  const disqualified = missIsMaterial && reactionCompanySpecific;
+
+  return {
+    ...base,
+    missIsMaterial,
+    reactionCompanySpecific,
+    disqualified,
+    reason: disqualified
+      ? `latest quarter missed by ${latest.toFixed(1)}% and the stock trailed its benchmark by ` +
+        `${Math.abs(reactionExcessPp as number).toFixed(1)}pp around the report`
+      : missIsMaterial && reactionExcessPp == null
+        ? 'quarter missed, but the report-date reaction could not be measured'
+        : null,
+  };
+}
+
 // ── Pure decision: the 4-filter conjunction (no I/O) ──
 export function evaluateBounceBack(d: BounceBackData): {
   discountType: 'pe' | 'pb';
   discountPct: number;
+  materiality: MaterialityAssessment;
 } | null {
-  // (a) Fundamentals intact — revenue must be present and not declining;
-  //     a latest-earnings miss (negative surprise) disqualifies.
+  // (a) Fundamentals intact — revenue must be present and not declining; a
+  //     MATERIAL + COMPANY-SPECIFIC earnings miss disqualifies (v0 disqualified
+  //     any miss at all; v1 only when the miss is bad for THIS company AND the
+  //     market singled it out).
   if (d.revenueGrowthTTM == null || d.revenueGrowthTTM < 0) return null;
-  if (d.latestSurprisePct != null && d.latestSurprisePct < 0) return null;
+  const materiality = assessMateriality(d.surpriseHistoryPct || [], d.earningsReactionExcessPp ?? null);
+  if (materiality.disqualified) return null;
 
   // (b) Broad decline — ticker down ≥10%, benchmark also down, and the ticker
   //     isn't underperforming the benchmark by more than MAX_UNDERPERFORM_PP.
@@ -127,40 +263,91 @@ export function evaluateBounceBack(d: BounceBackData): {
   if (d.peCurrent != null && d.peCurrent > 0 && d.peAvg != null && d.peAvg > 0) {
     const discountPct = (1 - d.peCurrent / d.peAvg) * 100;
     if (discountPct >= DISCOUNT_THRESHOLD * 100 - 1e-9) {
-      return { discountType: 'pe', discountPct: Math.round(discountPct * 100) / 100 };
+      return { discountType: 'pe', discountPct: Math.round(discountPct * 100) / 100, materiality };
     }
   }
   if (d.pbCurrent != null && d.pbCurrent > 0 && d.pbAvg != null && d.pbAvg > 0) {
     const discountPct = (1 - d.pbCurrent / d.pbAvg) * 100;
     if (discountPct >= DISCOUNT_THRESHOLD * 100 - 1e-9) {
-      return { discountType: 'pb', discountPct: Math.round(discountPct * 100) / 100 };
+      return { discountType: 'pb', discountPct: Math.round(discountPct * 100) / 100, materiality };
     }
   }
 
   return null;
 }
 
-// ── Pure selection: one-new-per-week cap + keep-alive persistence ──
-export function selectWeeklyBounceBack(
+// ── Pure historical-reversion evidence (no I/O) ──
+/**
+ * Same-stock historical reversion: find past episodes where THIS ticker drew
+ * down at least as deeply as it has now (within a trailing window), then measure
+ * what happened over the following REVERSION_FORWARD_DAYS.
+ *
+ * Episodes are armed/disarmed so one long drawdown counts once: an episode is
+ * recorded when the trailing drawdown first reaches the threshold, and a new one
+ * can only be recorded after the drawdown recovers past half the threshold.
+ *
+ * EVIDENCE ONLY in v1 — never gates firing.
+ */
+export function computeHistoricalReversion(
+  bars: { t: number; c: number }[],
+  currentDropPct: number,
+): HistoricalReversion | null {
+  const closes = (bars || [])
+    .filter((b) => b && Number.isFinite(b.t) && Number.isFinite(b.c) && b.c > 0)
+    .sort((a, b) => a.t - b.t);
+  if (closes.length < REVERSION_EPISODE_DAYS + 10) return null;
+  if (!Number.isFinite(currentDropPct) || currentDropPct >= 0) return null;
+
+  const fwd: number[] = [];
+  let armed = true;
+  for (let i = 0; i < closes.length; i++) {
+    let peak = -Infinity;
+    for (let j = Math.max(0, i - REVERSION_EPISODE_DAYS + 1); j <= i; j++) {
+      if (closes[j].c > peak) peak = closes[j].c;
+    }
+    const dd = peak > 0 ? ((closes[i].c - peak) / peak) * 100 : 0;
+    if (armed && dd <= currentDropPct) {
+      const endIdx = Math.min(closes.length - 1, i + REVERSION_FORWARD_DAYS);
+      if (endIdx > i) fwd.push(((closes[endIdx].c - closes[i].c) / closes[i].c) * 100);
+      armed = false;
+    } else if (!armed && dd > currentDropPct / 2) {
+      armed = true;
+    }
+  }
+
+  return {
+    sample: fwd.length,
+    medianForwardPct: median(fwd),
+    positiveRate: fwd.length ? fwd.filter((x) => x > 0).length / fwd.length : null,
+    sufficient: fwd.length >= REVERSION_MIN_SAMPLE,
+  };
+}
+
+// ── Pure selection: concurrent-active cap + keep-alive persistence (v1) ──
+/**
+ * v1 selection — replaces the weekly single-fire selector.
+ *
+ * - `keepAlive`: still-qualifying candidates whose card is ALREADY active. Their
+ *   keys stay in the firing set so the pipeline's stale-resolve step doesn't
+ *   dissolve them a day later (the trulyNew filter still skips them, so no
+ *   duplicate card).
+ * - `fire`: qualifying candidates without an active card, most-discounted first,
+ *   limited to the remaining room under `cap`.
+ *
+ * Note the cap counts ACTIVE cards, not fresh fires, so a pass can never push the
+ * account above `cap`. There is no permanent fired-symbol exclusion any more.
+ */
+export function selectBounceBackCandidates(
   candidates: BounceCandidate[],
-  previouslyFiredSymbols: Set<string>,
   activeKeys: Set<string>,
-): { fire: BounceCandidate | null; keepAlive: BounceCandidate[] } {
-  // New candidates = qualifying tickers we haven't nudged yet. Surface only the
-  // single most-discounted one; the rest are reconsidered in later weeks.
-  const fresh = candidates.filter((c) => !previouslyFiredSymbols.has(c.symbol));
+  cap: number = MAX_CONCURRENT_ACTIVE,
+): { fire: BounceCandidate[]; keepAlive: BounceCandidate[] } {
+  const isActive = (c: BounceCandidate) => activeKeys.has(`BOUNCE_${c.symbol}`);
+  const keepAlive = candidates.filter(isActive);
+  const fresh = candidates.filter((c) => !isActive(c));
   fresh.sort((a, b) => b.discountPct - a.discountPct);
-  const fire = fresh[0] ?? null;
-
-  // Keep-alive = already-fired symbols that STILL qualify and whose card is
-  // currently active. Returning their key keeps the card in the firing set so
-  // the pipeline's stale-resolve step doesn't dissolve it a day later; the
-  // pipeline's trulyNew filter skips them (already active), so no re-fire.
-  const keepAlive = candidates.filter(
-    (c) => previouslyFiredSymbols.has(c.symbol) && activeKeys.has(`BOUNCE_${c.symbol}`),
-  );
-
-  return { fire, keepAlive };
+  const room = Math.max(0, cap - keepAlive.length);
+  return { fire: fresh.slice(0, room), keepAlive };
 }
 
 // ── Pure trigger builder (tone-compliant deterministic copy) ──
@@ -169,6 +356,32 @@ export function buildBounceBackTrigger(c: BounceCandidate): NoticedTrigger {
     c.discountType === 'pe'
       ? `P/E of ${c.peCurrent!.toFixed(1)} vs its own ${c.years}-year average of ${c.peAvg!.toFixed(1)}`
       : `P/B of ${c.pbCurrent!.toFixed(2)} vs its own ${c.years}-year average of ${c.pbAvg!.toFixed(2)}`;
+
+  // v1: describe the earnings picture HONESTLY — a small miss that stayed in
+  // line with its own history is no longer asserted away as "didn't miss".
+  const m = c.materiality;
+  let earningsLine: string;
+  if (!m || m.latestSurprisePct == null) {
+    earningsLine = 'Earnings history is intact';
+  } else if (m.latestSurprisePct >= 0) {
+    earningsLine = `The latest quarter beat estimates by ${m.latestSurprisePct.toFixed(1)}%`;
+  } else if (m.missIsMaterial) {
+    earningsLine =
+      `The latest quarter came in ${Math.abs(m.latestSurprisePct).toFixed(1)}% light, though the ` +
+      `market's reaction tracked the broader move rather than this name alone`;
+  } else {
+    earningsLine =
+      `The latest quarter landed ${Math.abs(m.latestSurprisePct).toFixed(1)}% under expectations, ` +
+      `in line with its own recent reporting`;
+  }
+
+  // Same-stock historical reversion — evidence only, mentioned when credible.
+  const rev = c.historical;
+  const reversionLine =
+    rev && rev.sufficient && rev.positiveRate != null
+      ? ` Over the last 5 years, ${rev.sample} comparable drawdowns in ${c.symbol} were followed by a ` +
+        `higher price ${Math.round(rev.positiveRate * 100)}% of the time within ${REVERSION_FORWARD_DAYS} days.`
+      : '';
 
   return {
     trigger_type: 'bounce_back',
@@ -188,14 +401,24 @@ export function buildBounceBackTrigger(c: BounceCandidate): NoticedTrigger {
       tickerRet: c.tickerRet,
       benchmarkRet: c.benchmarkRet,
       benchmarkSymbol: c.benchmarkSymbol,
+      // v1 materiality — measurable parts only (never a fabricated score).
+      latestSurprisePct: m?.latestSurprisePct ?? null,
+      medianSurprisePct: m?.medianSurprisePct ?? null,
+      missIsMaterial: m?.missIsMaterial ?? false,
+      reactionExcessPp: m?.reactionExcessPp ?? null,
+      reactionCompanySpecific: m?.reactionCompanySpecific ?? false,
+      // v1 historical-reversion evidence (evidence only — does not gate).
+      reversionSample: rev?.sample ?? null,
+      reversionPositiveRate: rev?.positiveRate ?? null,
+      reversionMedianForwardPct: rev?.medianForwardPct ?? null,
     },
     follow_up: `Want to review ${c.symbol}?`,
     context:
       `${c.symbol} is a quality position trading at a temporary discount. ` +
-      `Fundamentals are intact — revenue is still growing and the latest quarter didn't miss estimates. ` +
+      `Fundamentals are intact — revenue is still growing. ${earningsLine}. ` +
       `The recent ~${DECLINE_WINDOW_DAYS}-day pullback (${c.tickerRet.toFixed(1)}%) tracked the broader ` +
       `${c.benchmarkSymbol} move (${c.benchmarkRet.toFixed(1)}%) rather than a company-specific problem. ` +
-      `It now trades at a ${valuation} (about ${Math.round(c.discountPct)}% below). ` +
+      `It now trades at a ${valuation} (about ${Math.round(c.discountPct)}% below).${reversionLine} ` +
       `Worth reviewing the position yourself.`,
   };
 }
@@ -304,12 +527,104 @@ async function getHistoricalValuation(symbol: string): Promise<HistoricalValuati
   return { avgPE, avgPB, years: Math.max(peList.length, pbList.length) };
 }
 
+// ── Materiality helpers (v1) ──
+
+/**
+ * Most recent PAST earnings report date (YYYY-MM-DD) for a symbol, or null.
+ *
+ * ⚠️ VERIFIED LIVE 2026-09-18: Finnhub's `/calendar/earnings` retains only a
+ * ~6-WEEK history window. Probed no-symbol windows: 2026-08-05→08-15 → 0 rows,
+ * 2026-08-09→08-19 → 72 rows, i.e. the endpoint starts serving data around
+ * 2026-08-10 (≈40 days back). So this resolves ONLY names that reported within
+ * roughly the last 40 days; anything older returns null and we say UNKNOWN
+ * rather than guessing (the resulting materiality read is magnitude-only).
+ *
+ * We use the CALENDAR, not `/stock/earnings`: the latter exposes only the fiscal
+ * `period` (quarter end), which is not the announcement date and cannot anchor a
+ * market-reaction window.
+ */
+async function getLastReportDate(symbol: string): Promise<string | null> {
+  const today = new Date().toISOString().slice(0, 10);
+  // 45d matches the endpoint's retention horizon; a longer span adds no rows.
+  const from = new Date(Date.now() - 45 * 86400000).toISOString().slice(0, 10);
+  const rows = await getEarningsCalendar(symbol, from, today);
+  const past = rows
+    .filter((r) => r.date && r.date <= today)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  return past.length ? past[past.length - 1].date : null;
+}
+
+/**
+ * Report-date reaction: the ticker's return minus its benchmark's return across
+ * [report − REACTION_HALF_WINDOW_DAYS, report + REACTION_HALF_WINDOW_DAYS].
+ *
+ * Returns null when the report sits outside the fetched candle window or data is
+ * missing — an unmeasurable reaction is reported as UNKNOWN, never guessed.
+ */
+async function getReportDateReactionExcess(
+  symbol: string,
+  benchmarkSymbol: string,
+): Promise<number | null> {
+  const reportDate = await getLastReportDate(symbol);
+  if (!reportDate) return null;
+  const target = Date.parse(`${reportDate}T00:00:00Z`);
+  if (!Number.isFinite(target)) return null;
+
+  const now = Date.now();
+  const from = Math.floor((now - (DECLINE_WINDOW_DAYS + 10) * 86400000) / 1000);
+  const to = Math.floor(now / 1000);
+
+  const [tCandles, bCandles] = await Promise.all([
+    getCandles(symbol, 'D', from, to),
+    getCandles(benchmarkSymbol, 'D', from, to),
+  ]);
+
+  const reaction = (candles: { timestamp: number; close: number }[] | null): number | null => {
+    if (!candles || candles.length < 3) return null;
+    const arr = [...candles].sort((a, b) => a.timestamp - b.timestamp);
+    let idx = -1;
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i].timestamp <= target) idx = i;
+    }
+    if (idx < 1) return null; // report predates the fetched window
+    const s = Math.max(0, idx - REACTION_HALF_WINDOW_DAYS);
+    const e = Math.min(arr.length - 1, idx + REACTION_HALF_WINDOW_DAYS);
+    if (e <= s) return null;
+    const a = arr[s].close;
+    const b = arr[e].close;
+    if (!a || a <= 0 || !b) return null;
+    return ((b - a) / a) * 100;
+  };
+
+  const t = reaction(tCandles as any);
+  const b = reaction(bCandles as any);
+  if (t == null || b == null) return null;
+  return t - b;
+}
+
+/** Fetch 5y daily closes and derive the same-stock reversion evidence. */
+async function getHistoricalReversion(
+  symbol: string,
+  currentDropPct: number,
+): Promise<HistoricalReversion | null> {
+  try {
+    const bars = await getCandles(symbol, 'D5y');
+    if (!bars || !bars.length) return null;
+    return computeHistoricalReversion(
+      bars.map((b) => ({ t: b.timestamp, c: b.close })),
+      currentDropPct,
+    );
+  } catch (err: any) {
+    console.warn(`[noticed] Historical-reversion lookup failed for ${symbol}:`, err?.message || err);
+    return null;
+  }
+}
+
 // ── Main finder ──
 export async function findBounceBackTriggers(
   input: NoticedRuleInput,
   existingKeys: Set<string>,
   reviewEventSymbols: Set<string>,
-  previouslyFiredSymbols: Set<string>,
 ): Promise<NoticedTrigger[]> {
   const triggers: NoticedTrigger[] = [];
 
@@ -344,11 +659,12 @@ export async function findBounceBackTriggers(
         const metrics = await getFinancialMetrics(symbol);
         if (!metrics) return;
 
-        // (a) latest-earnings miss check (Finnhub surprises are newest-first).
+        // (a) own trailing surprise history, newest-first (Finnhub returns newest-first).
         const surprises = await getEarningsSurprises(symbol);
-        const latest = surprises[0];
-        const latestSurprisePct =
-          latest && latest.surprisePercent != null ? latest.surprisePercent : null;
+        const surpriseHistoryPct = surprises
+          .map((s) => s.surprisePercent)
+          .filter((v): v is number => v != null && Number.isFinite(v));
+        const latestSurprisePct = surpriseHistoryPct.length ? surpriseHistoryPct[0] : null;
 
         const [tickerRet, benchmarkRet] = await Promise.all([
           getWindowReturn(symbol, DECLINE_WINDOW_DAYS),
@@ -357,9 +673,17 @@ export async function findBounceBackTriggers(
 
         const hist = await getHistoricalValuation(symbol);
 
+        // The reaction window costs a Finnhub calendar call + 2 market-data calls,
+        // so only measure it when a miss actually needs explaining.
+        let earningsReactionExcessPp: number | null = null;
+        if (latestSurprisePct != null && latestSurprisePct < 0) {
+          earningsReactionExcessPp = await getReportDateReactionExcess(symbol, benchmarkSymbol);
+        }
+
         const decision = evaluateBounceBack({
           revenueGrowthTTM: metrics.revenueGrowthTTM,
-          latestSurprisePct,
+          surpriseHistoryPct,
+          earningsReactionExcessPp,
           tickerRet,
           benchmarkRet,
           peCurrent: metrics.pe,
@@ -370,6 +694,21 @@ export async function findBounceBackTriggers(
         });
 
         if (!decision) return;
+
+        // Telemetry: a material miss we could NOT corroborate with a market
+        // reaction (usually because the report predates the ~6-week calendar
+        // retention window) is kept — magnitude-only. Log it so the degradation
+        // is visible in prod rather than silent.
+        if (decision.materiality.missIsMaterial && decision.materiality.reactionExcessPp == null) {
+          console.log(
+            `[noticed] bounce-back: ${symbol} kept on a magnitude-only miss read ` +
+              `(report date outside the earnings-calendar window — reaction unmeasurable)`,
+          );
+        }
+
+        // (e) historical-reversion evidence — computed only for names that
+        // already qualify (each lookup costs a 5y daily candle fetch).
+        const historical = await getHistoricalReversion(symbol, tickerRet as number);
 
         candidates.push({
           symbol,
@@ -383,6 +722,8 @@ export async function findBounceBackTriggers(
           benchmarkRet: benchmarkRet as number,
           benchmarkSymbol,
           years: hist.years,
+          materiality: decision.materiality,
+          historical,
         });
       } catch (err: any) {
         console.warn(`[noticed] Bounce-back check failed for ${symbol}:`, err?.message || err);
@@ -390,20 +731,23 @@ export async function findBounceBackTriggers(
     }),
   );
 
-  const { fire, keepAlive } = selectWeeklyBounceBack(
-    candidates,
-    previouslyFiredSymbols,
-    existingKeys,
-  );
+  // v1: concurrent-active cap (4) instead of the weekly single-fire selector.
+  const { fire, keepAlive } = selectBounceBackCandidates(candidates, existingKeys);
 
-  if (fire) {
-    triggers.push(buildBounceBackTrigger(fire));
+  for (const c of fire) {
+    triggers.push(buildBounceBackTrigger(c));
     console.log(
-      `[noticed] Bounce-back: ${fire.symbol} — ${Math.round(fire.discountPct)}% below ${fire.discountType === 'pe' ? 'P/E' : 'P/B'} norm`,
+      `[noticed] Bounce-back: ${c.symbol} — ${Math.round(c.discountPct)}% below ${c.discountType === 'pe' ? 'P/E' : 'P/B'} norm` +
+        (c.historical?.sufficient ? ` (historical reversion n=${c.historical.sample})` : ''),
     );
   }
-  for (const k of keepAlive) {
-    triggers.push(buildBounceBackTrigger(k));
+  for (const c of keepAlive) {
+    triggers.push(buildBounceBackTrigger(c));
+  }
+  if (fire.length > 0 || keepAlive.length > 0) {
+    console.log(
+      `[noticed] Bounce-back pass: ${fire.length} new (cap ${MAX_CONCURRENT_ACTIVE}), ${keepAlive.length} kept alive`,
+    );
   }
 
   return triggers;

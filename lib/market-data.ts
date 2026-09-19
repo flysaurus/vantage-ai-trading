@@ -1422,8 +1422,11 @@ export async function getStockNews(symbol: string, count = 3): Promise<NewsItem[
  * Get historical candles/bars.
  * Chain: Alpaca → Yahoo → Finnhub
  *
- * @param resolution - For Finnhub: '1','5','15','30','60','D','W','M'
+ * @param resolution - For Finnhub: '1','5','15','30','60','D','W','M','D5y'
  *                     For Alpaca/Yahoo: converted to timeframe
+ *
+ * 'D5y' is long-range DAILY history (5 years, ~1250 bars) and is Yahoo-only
+ * by design — Alpaca's 1Day path is capped by `limit`, so it cannot cover 5y.
  */
 export async function getCandles(
   symbol: string,
@@ -1446,15 +1449,23 @@ export async function getCandles(
     D: { yahooRange: '3mo', yahooInterval: '1d', alpacaTf: '1Day' },
     W: { yahooRange: '1y', yahooInterval: '1wk', alpacaTf: '1Week' },
     M: { yahooRange: '2y', yahooInterval: '1mo', alpacaTf: '1Month' },
+    // Long-range DAILY history. Needed by the noticed "same-stock historical
+    // reversion" signal, which looks for similarly-sized past drawdowns across
+    // years and measures what followed. Yahoo-only on purpose: Alpaca's 1Day
+    // path is capped by `limit` (default 100) and cannot cover 5 years.
+    D5y: { yahooRange: '5y', yahooInterval: '1d', alpacaTf: '1Day' },
   };
 
   const mapping = tfMap[resolution] || tfMap.D;
+  const yahooOnly = resolution === 'D5y';
 
-  // 1. Alpaca
-  const startISO = new Date(fromTs * 1000).toISOString();
-  const endISO = new Date(toTs * 1000).toISOString();
-  const ap = await alpacaCandles(symbol, mapping.alpacaTf, startISO, endISO, limit);
-  if (ap && ap.length > 0) return ap;
+  // 1. Alpaca (skipped for long-range daily — see tfMap note)
+  if (!yahooOnly) {
+    const startISO = new Date(fromTs * 1000).toISOString();
+    const endISO = new Date(toTs * 1000).toISOString();
+    const ap = await alpacaCandles(symbol, mapping.alpacaTf, startISO, endISO, limit);
+    if (ap && ap.length > 0) return ap;
+  }
 
   // 2. Yahoo
   const yh = await yahooCandles(symbol, mapping.yahooRange, mapping.yahooInterval);

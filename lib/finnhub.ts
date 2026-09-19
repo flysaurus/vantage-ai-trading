@@ -284,3 +284,60 @@ export async function getPriceTarget(symbol: string): Promise<FinnhubPriceTarget
     return null;
   }
 }
+
+// ─── Finnhub Earnings Calendar (report DATES) ─────────────────
+
+export interface FinnhubEarningsCalendarEntry {
+  symbol: string;
+  /** Report DATE (YYYY-MM-DD) — the announcement, NOT the fiscal period end. */
+  date: string;
+  /** 'bmo' (before open) | 'amc' (after close) | '' when unknown. */
+  hour: string;
+  quarter: number | null;
+  year: number | null;
+  epsEstimate: number | null;
+  epsActual: number | null;
+  revenueEstimate: number | null;
+  revenueActual: number | null;
+}
+
+/**
+ * Fetch the earnings calendar for a symbol over [from, to] (inclusive, YYYY-MM-DD).
+ *
+ * `getEarningsSurprises` only exposes the fiscal `period` (the quarter end),
+ * which is NOT the announcement date — so it cannot anchor a market-reaction
+ * window. This endpoint returns the real report `date` (plus `hour`: bmo/amc),
+ * which is exactly what the bounce-back materiality test needs.
+ *
+ * Best-effort: returns [] on any failure.
+ */
+export async function getEarningsCalendar(
+  symbol: string,
+  from: string,
+  to: string,
+): Promise<FinnhubEarningsCalendarEntry[]> {
+  const token = getToken();
+  try {
+    const res = await fetch(
+      `${FINNHUB_BASE}/calendar/earnings?from=${from}&to=${to}&symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const rows = data?.earningsCalendar;
+    if (!Array.isArray(rows)) return [];
+    return rows.map((e: any) => ({
+      symbol: e.symbol || symbol.toUpperCase(),
+      date: e.date || '',
+      hour: e.hour || '',
+      quarter: e.quarter ?? null,
+      year: e.year ?? null,
+      epsEstimate: e.epsEstimate ?? null,
+      epsActual: e.epsActual ?? null,
+      revenueEstimate: e.revenueEstimate ?? null,
+      revenueActual: e.revenueActual ?? null,
+    }));
+  } catch {
+    return [];
+  }
+}
