@@ -31,7 +31,7 @@ import { notifyBasketEvent, type BasketOrderEvent } from '@/lib/order-emails';
 import { notifyBasketNotification } from '@/lib/order-notifications';
 import { formatBrokerName } from '@/lib/broker-name';
 import { resolveCompanyName, resolveCompanyNames } from '@/lib/market-data';
-import { availableCash } from '@/lib/available-cash';
+import { availableCashOrNull } from '@/lib/available-cash';
 
 export interface ExecResult {
   ok: boolean;
@@ -390,8 +390,10 @@ export async function placeBasketTrade(args: PlaceBasketArgs): Promise<ExecResul
     if (requestedTotal > 0) {
       try {
         const acct = await broker.getAccount();
-        const available = availableCash({ cash: acct.cashBalance, buyingPower: acct.buyingPower }, 0);
-        if (requestedTotal > available) {
+        // Unknown cash ⇒ SKIP the guard rather than reject against a fabricated
+        // $0 (the broker rejects a true shortfall at execution time).
+        const available = availableCashOrNull({ cash: acct.cashBalance, buyingPower: acct.buyingPower }, 0);
+        if (available != null && requestedTotal > available) {
           return {
             ok: false,
             message: `Insufficient funds. Order total $${requestedTotal.toFixed(2)} exceeds available cash $${available.toFixed(2)}.`,

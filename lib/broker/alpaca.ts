@@ -23,6 +23,13 @@ import type {
 } from '@/types/broker';
 import { apiGet } from '@/lib/api-client';
 
+/** Parse a broker field honestly: a missing/NaN value is UNKNOWN (null), not $0. */
+function numOrNull(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : parseFloat(String(v));
+  return Number.isFinite(n) ? n : null;
+}
+
 interface SessionPayload {
   configured: boolean;
   connected: boolean;
@@ -116,9 +123,11 @@ export class AlpacaAdapter implements BrokerAdapter {
 
     return {
       id: (raw.id || raw.account_number || '') as string,
+      // equity stays numeric (broad downstream cascade); cash/buyingPower are
+      // nullable carriers — `|| 0` turned an unreported field into a "$0" claim.
       equity: parseFloat(String(raw.equity)) || 0,
-      cash: parseFloat(String(raw.cash)) || 0,
-      buyingPower: parseFloat(String(raw.buying_power)) || 0,
+      cash: numOrNull(raw.cash),
+      buyingPower: numOrNull(raw.buying_power),
       dayTradeCount: (raw.daytrade_count as number) || 0,
       dayPnl:
         parseFloat(String(raw.equity)) -

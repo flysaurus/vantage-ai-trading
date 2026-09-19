@@ -30,7 +30,7 @@ import { notifyBasketEvent, type BasketOrderEvent } from '@/lib/order-emails';
 import { notifyBasketNotification } from '@/lib/order-notifications';
 import { formatBrokerName } from '@/lib/broker-name';
 import { resolveCompanyNames } from '@/lib/market-data';
-import { availableCash } from '@/lib/available-cash';
+import { availableCashOrNull } from '@/lib/available-cash';
 
 // System basket name date suffix: MMDDYYYY in America/New_York (matches the
 // user's ET trading day, not UTC — a basket placed 19:00 ET is still "today").
@@ -142,11 +142,13 @@ export async function POST(req: NextRequest) {
     if (requestedTotal > 0) {
       try {
         const acct = await broker.getAccount();
-        const available = availableCash(
+        // Unknown cash/buying power ⇒ SKIP the guard rather than reject against a
+        // fabricated $0 (the broker rejects a true shortfall at execution time).
+        const available = availableCashOrNull(
           { cash: acct.cashBalance, buyingPower: acct.buyingPower },
           0,
         );
-        if (requestedTotal > available) {
+        if (available != null && requestedTotal > available) {
           return NextResponse.json(
             {
               success: false,
