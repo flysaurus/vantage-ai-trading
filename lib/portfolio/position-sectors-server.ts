@@ -139,10 +139,13 @@ export async function resolvePositionSectors(
   ]);
 
   // ── Pass 2: stocks → industry → static map → live Finnhub ──
+  // The Finnhub read goes through the gateway when a client is available, so a
+  // `shadow`/`on` rollout warms the shared cache without changing answers.
   if (stockInputs.length > 0) {
     const resolved = await resolveSectorsForSymbols(
       stockInputs.map((p) => ({ symbol: p.symbol, industry: p.industry })),
       opts?.concurrency ?? 5,
+      { supabase: opts?.supabase as any },
     );
     for (const [key, sector] of resolved) {
       if (sector) out.set(key, sector);

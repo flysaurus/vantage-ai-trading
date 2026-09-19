@@ -17,6 +17,7 @@
 //   - `normalizeSectorBucket()` in lib/etf-sectors.ts reconciles these downstream.
 
 import { finnhubIndustryToSector, getCompanyProfile } from '@/lib/finnhub';
+import { cachedCompanyProfile, type CacheClient } from '@/lib/finnhub/gateway';
 import { industryToSector } from '@/lib/sectors';
 
 // ─── Static symbol → sector fallback ──────────────────────────
@@ -189,10 +190,16 @@ const lookupMemo = new Map<string, { sector: string; ts: number }>();
  * Full sector resolution with a live Finnhub fallback (server-side).
  * Chain: static (industry + symbol map) → memo → Finnhub profile2 → null.
  * Never throws — returns null when the symbol can't be resolved.
+ *
+ * When a Supabase client is supplied the profile read goes through the Finnhub
+ * GATEWAY (lib/finnhub/gateway.ts) instead of calling Finnhub directly. In the
+ * default `off` mode that is a straight passthrough (identical behaviour); in
+ * `shadow` it additionally warms the shared `finnhub_cache` so the 60 req/min
+ * budget can later be respected without changing today's answers.
  */
 export async function resolveSector(
   symbol: string | null | undefined,
-  opts?: { industry?: string | null },
+  opts?: { industry?: string | null; supabase?: CacheClient | null },
 ): Promise<string | null> {
   const staticResult = resolveSectorStatic(symbol, opts?.industry);
   if (staticResult) return staticResult;
@@ -203,7 +210,9 @@ export async function resolveSector(
   if (memo && Date.now() - memo.ts < LOOKUP_MEMO_TTL_MS) return memo.sector;
 
   try {
-    const profile = await getCompanyProfile(symbol);
+    const profile = opts?.supabase
+      ? await cachedCompanyProfile(opts.supabase, symbol, 'interactive')
+      : await getCompanyProfile(symbol);
     if (!profile) return null;
     const sector = industryStringToSector(profile.finnhubIndustry);
     if (sector) lookupMemo.set(key, { sector, ts: Date.now() });
@@ -222,6 +231,7 @@ export async function resolveSector(
 export async function resolveSectorsForSymbols(
   symbols: Array<{ symbol: string; industry?: string | null }>,
   concurrency = 5,
+  opts?: { supabase?: CacheClient | null },
 ): Promise<Map<string, string | null>> {
   const out = new Map<string, string | null>();
   const queue = [...symbols];
@@ -232,7 +242,7 @@ export async function resolveSectorsForSymbols(
       if (!item) return;
       const key = canonicalizeSymbol(item.symbol);
       if (out.has(key)) continue;
-      const sector = await resolveSector(item.symbol, { industry: item.industry });
+      const sector = await resolveSector(item.symbol, { industry: item.industry, supabase: opts?.supabase });
       out.set(key, sector);
     }
   }
