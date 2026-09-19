@@ -8,6 +8,7 @@ import {
   computeThresholdCrossings,
   crossingFor,
   formatThresholdBadge,
+  formatCrossingSummary,
   thresholdCrossings,
 } from '@/lib/insights/threshold-badge';
 
@@ -257,5 +258,38 @@ describe('computeThresholdCrossings — rollup count (every crossing, uncapped)'
       { symbol: 'YYY', totalPnlPercent: NaN },
     ]);
     expect(Object.keys(map)).toEqual([]);
+  });
+});
+
+describe('formatCrossingSummary — one-line Noticed-header rollup (milestone option a)', () => {
+  it('returns null when nothing has crossed', () => {
+    expect(formatCrossingSummary([{ symbol: 'AAPL', totalPnl: 100 }], {})).toBeNull();
+    expect(formatCrossingSummary([], null)).toBeNull();
+    expect(formatCrossingSummary(null, undefined)).toBeNull();
+  });
+
+  it('counts crossings and sums only the dollar P&L of gain-tone ones', () => {
+    const positions = [
+      { symbol: 'AAPL', totalPnlPercent: 60, totalPnl: 4200 },
+      { symbol: 'AMD', totalPnlPercent: 260, totalPnl: 9000 },
+      { symbol: 'PEP', totalPnlPercent: -25, totalPnl: -800 },
+      { symbol: 'ZZZ', totalPnlPercent: 5, totalPnl: 10 },
+    ];
+    const map = computeThresholdCrossings(positions);
+    const line = formatCrossingSummary(positions, map);
+    expect(line).toBe('3 positions crossed a target · +$13.2K · -$800');
+  });
+
+  it('singular copy for exactly one crossing', () => {
+    const positions = [{ symbol: 'AAPL', totalPnlPercent: 60, totalPnl: 500 }];
+    expect(formatCrossingSummary(positions, computeThresholdCrossings(positions))).toBe(
+      '1 position crossed a target · +$500',
+    );
+  });
+
+  it('counts a crossing with no known dollar P&L but adds no dollar figure', () => {
+    const positions = [{ symbol: 'AAPL', totalPnlPercent: 60, totalPnl: null }];
+    const line = formatCrossingSummary(positions, computeThresholdCrossings(positions));
+    expect(line).toBe('1 position crossed a target');
   });
 });

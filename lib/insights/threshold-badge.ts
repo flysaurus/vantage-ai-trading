@@ -130,6 +130,61 @@ export function computeThresholdCrossings(
   return out;
 }
 
+/** "$12.4K" / "$430" — compact, one decimal at/above $1K. Signed. */
+export function formatUsdCompact(n: number): string {
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}$${abs.toFixed(0)}`;
+}
+
+/**
+ * ONE-LINE rollup for the Noticed feed header (milestone option (a)).
+ *
+ * A crossing only ever renders as a pill on the position it belongs to
+ * (threshold-badge.ts), so the *aggregate* — "how many positions crossed, and
+ * is it net a gain?" — has no home on the feed today. This is that line.
+ *
+ * Count comes from the same live map the Holdings badges use (never the noticed
+ * event log), so the two can't disagree about membership. Dollars come from each
+ * crossing position's `totalPnl`; a position with no finite dollar P&L just
+ * doesn't contribute (the count still counts it — it DID cross). Returns null
+ * when nothing has crossed, so the caller renders nothing.
+ */
+export function formatCrossingSummary(
+  positions:
+    | Array<{ symbol?: string | null; totalPnl?: number | null }>
+    | null
+    | undefined,
+  bySymbol: Record<string, ThresholdCrossing> | null | undefined,
+): string | null {
+  const symbols = Object.keys(bySymbol || {});
+  const count = symbols.length;
+  if (count === 0) return null;
+
+  const dollars = new Map<string, number>();
+  for (const p of positions || []) {
+    const s = String(p?.symbol || '').trim().toUpperCase();
+    const v = Number(p?.totalPnl);
+    if (s && Number.isFinite(v)) dollars.set(s, v);
+  }
+
+  let gains = 0;
+  let losses = 0;
+  for (const s of symbols) {
+    const v = dollars.get(s);
+    if (v == null) continue;
+    if (bySymbol![s].tone === 'gain') gains += v;
+    else losses += v;
+  }
+
+  const bits = [`${count} position${count === 1 ? '' : 's'} crossed a target`];
+  if (gains > 0) bits.push(`+${formatUsdCompact(gains)}`);
+  if (losses < 0) bits.push(formatUsdCompact(losses));
+  return bits.join(' · ');
+}
+
 /** O(1) lookup helper that tolerates an undefined map. */
 export function crossingFor(
   map: Record<string, ThresholdCrossing> | null | undefined,
