@@ -366,7 +366,8 @@ export async function findEarningsTriggers(
   if (unique.length === 0) return triggers;
 
   try {
-    const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
+    // Issue #95: the var is FINNHUB_IO_API_KEY — FINNHUB_API_KEY exists in no environment.
+    const FINNHUB_KEY = process.env.FINNHUB_IO_API_KEY || process.env.FINNHUB_API_KEY;
     if (!FINNHUB_KEY) return triggers;
 
     const now = new Date();

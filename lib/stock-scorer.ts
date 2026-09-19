@@ -322,7 +322,8 @@ export async function scoreStock(
       cached?.analyst_expires_at &&
       new Date(cached.analyst_expires_at) > new Date();
 
-    const finnhubKey = process.env.FINNHUB_API_KEY;
+    // Issue #95: the var is FINNHUB_IO_API_KEY — FINNHUB_API_KEY exists in no environment.
+    const finnhubKey = process.env.FINNHUB_IO_API_KEY || process.env.FINNHUB_API_KEY;
 
     // Parallel fetch only what needs refreshing
     const [quote, metrics, candleData, newsData, analystData] =

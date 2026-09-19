@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
-const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
+const FINNHUB_KEY = process.env.FINNHUB_IO_API_KEY || process.env.FINNHUB_API_KEY || '';
 
 export async function POST(req: NextRequest) {
   const { authUser, authError } = await requireAuth();

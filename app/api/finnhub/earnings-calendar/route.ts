@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const res = await fetch(
-      `https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${to}&token=${process.env.FINNHUB_API_KEY}`,
+      `https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${to}&token=${process.env.FINNHUB_IO_API_KEY || process.env.FINNHUB_API_KEY}`,
       { signal: AbortSignal.timeout(8000) }
     );
 
