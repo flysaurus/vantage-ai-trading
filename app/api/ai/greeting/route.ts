@@ -198,8 +198,8 @@ export async function POST(req: NextRequest) {
       investorStyle = 'Lynch',
       riskTolerance = 'Moderate',
       totalPnLPct = 0,
-      cashBalance = 0,
-      cashPct = 0,
+      cashBalance = null,
+      cashPct = null,
       positions = [],
       upcomingEarnings = [],
       includeStyleAck = false,
@@ -207,6 +207,13 @@ export async function POST(req: NextRequest) {
       lastCategories = [], // array of last 2-3 categories used
       lastHooks = [], // array of last 1-2 hook texts to avoid repeating
     } = body;
+
+    // Unknown cash must read as "unavailable", never "$0" — this prompt is where
+    // the model learns the balance, so a fabricated 0 becomes a fabricated claim.
+    const cashKnown = typeof cashBalance === 'number' && Number.isFinite(cashBalance);
+    const cashPctKnown = typeof cashPct === 'number' && Number.isFinite(cashPct);
+    const cashAmt = cashKnown ? `$${(cashBalance as number).toLocaleString()}` : 'unavailable';
+    const cashPctText = cashPctKnown ? `${(cashPct as number).toFixed(1)}%` : 'unavailable';
 
     // Backward-compat: if frontend sends lastCategory (string), wrap in array
     const recentCategories: string[] = (lastCategories && lastCategories.length > 0)
@@ -271,8 +278,8 @@ Largest position: ${largestPosition?.symbol || 'N/A'} ($${((largestPosition?.mar
       case 'cash':
         categoryContext = `
 CASH FOCUS:
-Idle cash: $${cashBalance.toLocaleString()}
-Cash as % of portfolio: ${cashPct.toFixed(1)}%
+Idle cash: ${cashAmt}
+Cash as % of portfolio: ${cashPctText}
 Total invested: $${positions.reduce((sum: number, p: any) => sum + (p.marketValue || 0), 0).toLocaleString()}
 `;
         break;
@@ -289,7 +296,7 @@ ${upcomingEarnings.length > 0
 PORTFOLIO STRUCTURE:
 Position count: ${positions.length}
 Total market value: $${positions.reduce((sum: number, p: any) => sum + (p.marketValue || 0), 0).toLocaleString()}
-Cash % vs invested %: ${cashPct.toFixed(1)}% / ${(100 - cashPct).toFixed(1)}%
+Cash % vs invested %: ${cashPctKnown ? `${(cashPct as number).toFixed(1)}% / ${(100 - (cashPct as number)).toFixed(1)}%` : 'unavailable'}
 Top 3 by value: ${positions.slice(0, 3).map((p: any) => `${p.symbol} ($${((p.marketValue || 0)).toLocaleString()})`).join(', ')}
 `;
         break;
@@ -306,7 +313,7 @@ ${positions.length <= 3 ? '⚠️ Very concentrated — fewer than 4 positions' 
 MARKET CONTEXT:
 Holdings: ${positions.map((p: any) => p.symbol).join(', ') || 'None'}
 Portfolio total return: ${totalPnLPct >= 0 ? '+' : ''}${totalPnLPct.toFixed(1)}%
-Cash on sidelines: ${cashPct.toFixed(1)}%
+Cash on sidelines: ${cashPctText}
 `;
         break;
       case 'macro': {
@@ -342,8 +349,8 @@ Risk tolerance: ${riskTolerance}
 
 PORTFOLIO (durable data — use for total returns only):
 Total P&L: ${totalPnLPct >= 0 ? '+' : ''}${totalPnLPct.toFixed(1)}%
-Cash balance: $${cashBalance.toLocaleString()}
-Cash % of portfolio: ${cashPct.toFixed(1)}%
+Cash balance: ${cashAmt}
+Cash % of portfolio: ${cashPctText}
 Position count: ${positions.length}
 
 POSITIONS (total return since purchase):

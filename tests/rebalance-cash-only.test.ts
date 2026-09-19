@@ -42,7 +42,7 @@ describe('computeRebalancePlan cash-only', () => {
     // Non-cash targets sum to 95% of available cash; 5% stays as cash buffer.
     const totalBuy = plan.lines.reduce((s, l) => s + l.delta, 0);
     expect(totalBuy).toBeCloseTo(4032 * 0.95, 1);
-    expect(plan.cash - totalBuy).toBeCloseTo(4032 * 0.05, 1);
+    expect(plan.cash! - totalBuy).toBeCloseTo(4032 * 0.05, 1);
   });
 
   it('produces only BUY legs (no SELL legs)', () => {

@@ -336,7 +336,9 @@ export async function GET(req: NextRequest) {
       `Symbols: ${symbols.join(', ')}`,
       `Style: ${investorStyle} | Risk: ${riskTolerance}`,
       `Total positions: ${positions.length}`,
-      `Cash Balance: $${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      typeof cashBalance === 'number' && Number.isFinite(cashBalance)
+        ? `Cash Balance: $${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+        : `Cash Balance: unavailable (broker did not report settled cash)`,
       '',
       'PORTFOLIO:',
       ...positionLines,

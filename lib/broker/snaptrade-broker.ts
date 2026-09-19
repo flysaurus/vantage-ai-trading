@@ -316,8 +316,11 @@ export class SnapTradeBroker implements BrokerEngine {
     const accounts = await this._fetchAccounts();
 
     let totalValue = 0;
-    let cashBalance = 0;
-    let buyingPower = 0;
+    // Honest accumulators: unknown stays unknown. Seeding these at 0 (and the
+    // `Math.max(0, …)` below) fabricated a confident "$0 cash" whenever the
+    // balances endpoint failed — the very bug class we are removing.
+    let cashBalance: number | null = null;
+    let buyingPower: number | null = null;
 
     // `total_value` is authoritative from the accounts-list endpoint, but
     // settled `cash` + `buying_power` are authoritative from the per-account
@@ -342,8 +345,9 @@ export class SnapTradeBroker implements BrokerEngine {
           // Balances endpoint unavailable — fall back to accounts-list fields.
           return {
             balances: null,
-            fallbackCash: a.cash ?? 0,
-            fallbackBuyingPower: a.buying_power ?? 0,
+            fallbackCash: typeof a.cash === 'number' && Number.isFinite(a.cash) ? a.cash : null,
+            fallbackBuyingPower:
+              typeof a.buying_power === 'number' && Number.isFinite(a.buying_power) ? a.buying_power : null,
             hasBalances: false,
           };
         }
@@ -355,20 +359,26 @@ export class SnapTradeBroker implements BrokerEngine {
       const { balances, fallbackCash, fallbackBuyingPower, hasBalances } = r.value;
       if (hasBalances) {
         for (const b of balances!) {
-          cashBalance += b.cash ?? 0;
-          buyingPower += b.buying_power ?? 0;
+          // Only a real, finite number counts as reported cash. A missing field
+          // on ONE account must not silently add 0 to a known total.
+          if (typeof b?.cash === 'number' && Number.isFinite(b.cash)) cashBalance = (cashBalance ?? 0) + b.cash;
+          if (typeof b?.buying_power === 'number' && Number.isFinite(b.buying_power)) {
+            buyingPower = (buyingPower ?? 0) + b.buying_power;
+          }
         }
       } else {
-        cashBalance += Number(fallbackCash || 0);
-        buyingPower += Number(fallbackBuyingPower || 0);
+        if (fallbackCash != null && Number.isFinite(fallbackCash)) cashBalance = (cashBalance ?? 0) + fallbackCash;
+        if (fallbackBuyingPower != null && Number.isFinite(fallbackBuyingPower)) {
+          buyingPower = (buyingPower ?? 0) + fallbackBuyingPower;
+        }
       }
     }
 
     const summary: BrokerAccountSummary = {
       totalValue,
-      cashBalance: Math.max(0, cashBalance),
-      buyingPower: Math.max(0, buyingPower),
-      totalInvested: totalValue - cashBalance,
+      cashBalance: cashBalance == null ? null : Math.max(0, cashBalance),
+      buyingPower: buyingPower == null ? null : Math.max(0, buyingPower),
+      totalInvested: cashBalance == null ? null : totalValue - cashBalance,
       totalPnL: 0,      // SnapTrade positions endpoint has open_pnl per position
       totalPnLPct: 0,
       todayPnL: 0,

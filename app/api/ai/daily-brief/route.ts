@@ -289,15 +289,18 @@ export async function GET(req: NextRequest) {
       timeZone: req.nextUrl.searchParams.get('tz') || 'America/New_York',
     });
 
-    const cashPct = cashBalance > 0
+    const cashKnown = typeof cashBalance === 'number' && Number.isFinite(cashBalance);
+    const cashPct = cashKnown && cashBalance > 0
       ? (cashBalance / (cashBalance + positionsWithQuotes.reduce((s, p) => s + (p.marketValue || 0), 0))) * 100
-      : 0;
+      : null;
 
     const dataLines: string[] = [
       `DAILY BRIEF DATA — ${dateStr}`,
       `Investor Style: ${investorStyle} | Portfolio Mode: ${portfolioMode}`,
       `Total Positions: ${positions.length}`,
-      `Cash Balance: $${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${cashPct.toFixed(1)}% of portfolio)`,
+      cashKnown
+        ? `Cash Balance: $${(cashBalance as number).toLocaleString('en-US', { minimumFractionDigits: 2 })} (${(cashPct as number).toFixed(1)}% of portfolio)`
+        : `Cash Balance: unavailable (broker did not report settled cash)`,
       '',
       'MARKET INDICES:',
       ...indices.map(

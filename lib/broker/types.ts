@@ -149,10 +149,14 @@ export interface BrokerPosition {
 
 export interface BrokerAccountSummary {
   totalValue: number;
-  cashBalance: number;
+  /** Settled cash. **null = UNKNOWN** (the broker did not report it) — render
+   *  "—", never "$0.00", and never derive a total from it. */
+  cashBalance: number | null;
   /** null = non-margin account — never render "$0.00" */
   buyingPower: number | null;
-  totalInvested: number;
+  /** Cost basis of the open book. null = UNKNOWN — it is derived as
+   *  totalValue − cash, so unknown cash makes it unknown too. */
+  totalInvested: number | null;
   totalPnL: number;
   totalPnLPct: number;
   /** null = day change unavailable (no usable quote) — render "—", not $0.00. */

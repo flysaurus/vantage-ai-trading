@@ -7,7 +7,8 @@ import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
 interface PortfolioState {
   positions: any[];
-  cashBalance: number;
+  /** null = the saved row had no usable cash value. Never coerce to 0. */
+  cashBalance: number | null;
   orderHistory: any[];
   basketOrders?: any[];
 }
@@ -98,7 +99,8 @@ export async function loadPortfolioFromSupabase(
         qty: p.qty ?? p.shares ?? 0, // normalize BrokerPosition (shares) → DemoOrder (qty)
         avgCost: p.avgCost ?? p.price ?? p.avgCost,
       })),
-      cashBalance: (row.cash_balance as number) ?? 0,
+      cashBalance:
+        typeof row.cash_balance === 'number' && Number.isFinite(row.cash_balance) ? row.cash_balance : null,
       orderHistory: (row.order_history as any[]) || [],
       basketOrders: (row.basket_orders as any[]) || [],
       savedAt: new Date(row.updated_at as string).getTime(),

@@ -463,6 +463,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const trySupabaseLoad = async () => {
       const supabaseState = await loadPortfolioFromSupabase(user.id as string);
       if (!supabaseState || !supabaseState.positions?.length) return;
+      // Cash-honesty: `DemoState.cashBalance` is the *paper* account's own cash
+      // and is non-null by design. A saved row with no usable cash value must
+      // not be adopted as $0 — skip the hydrate and keep local state instead.
+      if (typeof supabaseState.cashBalance !== 'number' || !Number.isFinite(supabaseState.cashBalance)) {
+        console.warn('[portfolio init] Supabase row has no usable cashBalance — keeping local state (not $0)');
+        return;
+      }
 
       const merged: DemoState = {
         positions: supabaseState.positions,
@@ -777,7 +784,25 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     // Keep raw BrokerOrder[] for Supabase sync (full metadata, no DemoOrder normalization)
     brokerOrdersRef.current = bOrders;
     brokerBasketOrdersRef.current = bBasketOrders || []; // BrokerBasketOrder[] for Supabase sync
-    const newState: DemoState = { positions: ctxPositions, cashBalance: bAccount.cashBalance, orders: ctxOrders, savedAt: Date.now() };
+    // Cash-honesty: a broker read that fails to report settled cash says nothing
+    // about the paper account's own cash — do not overwrite it with null/$0.
+    // The live-broker carrier (AccountSummary.cash) is null-safe separately.
+    const cashFromBroker = bAccount.cashBalance;
+    if (typeof cashFromBroker !== 'number' || !Number.isFinite(cashFromBroker)) {
+      console.warn('[portfolio sync] broker cash unknown — leaving paper cashBalance unchanged');
+    }
+    const newState: DemoState = {
+      positions: ctxPositions,
+      // Unknown broker cash ⇒ reuse the paper account's last known cash; if there
+      // is no prior state either, seed 0 (conservative: never overstates buying
+      // power). This is the paper mirror only — the live carrier is null-safe.
+      cashBalance:
+        typeof cashFromBroker === 'number' && Number.isFinite(cashFromBroker)
+          ? cashFromBroker
+          : demoState?.cashBalance ?? 0,
+      orders: ctxOrders,
+      savedAt: Date.now(),
+    };
     setDemoState(newState);
     setDemoOrders(ctxOrders);
     persistDemoState(newState);
@@ -1004,7 +1029,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 portfolio: {
-                  cash: acct?.cashBalance ?? 0,
+                  // Unknown cash stays null — the noticed payload must not claim $0.
+                  cash: acct?.cashBalance ?? null,
                   equity: acct?.totalValue ?? 0,
                   totalPnL: acct?.totalPnL ?? 0,
                   totalPnLPct: acct?.totalPnLPct ?? 0,

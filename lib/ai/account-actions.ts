@@ -17,7 +17,9 @@ export type RiskLevel = 'Aggressive' | 'Conservative' | 'Moderate';
 
 export interface PortfolioSnapshot {
   equity: number;
-  cash: number;
+  /** Settled cash. **null = UNKNOWN** — the broker did not report it. Render
+   *  "unavailable"; never treat it as $0 and never derive a plan/total from it. */
+  cash: number | null;
   positions: Array<{
     symbol: string;
     name?: string;
@@ -262,7 +264,8 @@ export interface RebalancePlan {
   styleName: string;
   description: string;
   equity: number;
-  cash: number;
+  /** Settled cash at plan time. null = UNKNOWN — never render as $0. */
+  cash: number | null;
   lines: RebalanceLine[];
   totalBuy: number;
   totalSell: number;
@@ -272,6 +275,9 @@ export interface RebalancePlan {
   customAmount?: number;
   /** Asset class the plan targets: ETFs, individual stocks, or a 50/50 mix. */
   assetClass?: AssetClass;
+  /** Set when the plan could not be computed honestly (e.g. unknown cash).
+   *  When present, show THIS to the user instead of the normal plan copy. */
+  warning?: string;
 }
 
 /** Compute proposed rebalance trades (dollar deltas) from holdings → style targets. */
@@ -283,13 +289,36 @@ export function computeRebalancePlan(
   const { styleName, description } = getInvestorStyleTargets(style);
   const targets = resolveRebalanceTargets(style, opts?.assetClass);
   const equity = portfolio?.equity ?? 0;
-  const cash = portfolio?.cash ?? 0;
+  // Honest cash: null (unknown) stays null — never collapse it to $0.
+  const cash: number | null =
+    typeof portfolio?.cash === 'number' && Number.isFinite(portfolio.cash) ? portfolio.cash : null;
   const positions = portfolio?.positions ?? [];
+
+  // A "cash-only" rebalance means "deploy my available cash". If we cannot see
+  // that cash, we must NOT invent a $0 budget — a $0 budget either does nothing
+  // or reads to the user as "you have no money". Say so instead.
+  const wantsCashOnly = opts?.cashOnly === true && opts?.customAmount == null;
+  if (wantsCashOnly && cash == null) {
+    return {
+      styleName,
+      description,
+      equity,
+      cash: null,
+      lines: [],
+      totalBuy: 0,
+      totalSell: 0,
+      cashOnly: true,
+      assetClass: opts?.assetClass,
+      warning:
+        `I can't see your settled cash right now, so I won't guess an amount to deploy. ` +
+        `Tell me how much to put to work — e.g. "rebalance using $2,000" — or refresh your account and try again.`,
+    };
+  }
 
   // Buy-only budget mode (cash-only OR custom amount): deploy a fixed budget
   // across the target ETFs by their style weight. No sells, existing positions
   // untouched. The style's CASH bucket is the portion that stays in cash.
-  const budget = opts?.customAmount != null ? opts.customAmount : opts?.cashOnly ? cash : null;
+  const budget = opts?.customAmount != null ? opts.customAmount : wantsCashOnly ? cash : null;
   if (budget != null) {
     const lines: RebalanceLine[] = targets
       .filter((t) => t.symbol.toUpperCase() !== 'CASH')
@@ -323,21 +352,26 @@ export function computeRebalancePlan(
     };
   }
 
-  const lines: RebalanceLine[] = targets.map((t) => {
-    const targetValue = equity * t.targetPercent / 100;
-    let currentValue = 0;
-    let qty = 0;
-    if (t.symbol === 'CASH') {
-      currentValue = cash;
-    } else {
-      const held = positions.filter((p) => (p.symbol || '').toUpperCase() === t.symbol.toUpperCase());
-      currentValue = held.reduce((s, p) => s + (p.marketValue || (p.price || 0) * (p.qty || 0) || 0), 0);
-      qty = held.reduce((s, p) => s + (p.qty || 0), 0);
-    }
-    const delta = targetValue - currentValue;
-    const action: 'buy' | 'sell' | 'hold' = Math.abs(delta) < 1 ? 'hold' : delta > 0 ? 'buy' : 'sell';
-    return { symbol: t.symbol, name: t.name, targetPercent: t.targetPercent, currentValue, targetValue, delta, qty, action };
-  });
+  const lines: RebalanceLine[] = targets
+    .map((t): RebalanceLine | null => {
+      const targetValue = equity * t.targetPercent / 100;
+      let currentValue = 0;
+      let qty = 0;
+      if (t.symbol === 'CASH') {
+        // Unknown cash ⇒ omit the CASH bucket entirely rather than model it as 0
+        // (a modelled $0 would emit a bogus "buy CASH" trade).
+        if (cash == null) return null;
+        currentValue = cash;
+      } else {
+        const held = positions.filter((p) => (p.symbol || '').toUpperCase() === t.symbol.toUpperCase());
+        currentValue = held.reduce((s, p) => s + (p.marketValue || (p.price || 0) * (p.qty || 0) || 0), 0);
+        qty = held.reduce((s, p) => s + (p.qty || 0), 0);
+      }
+      const delta = targetValue - currentValue;
+      const action: 'buy' | 'sell' | 'hold' = Math.abs(delta) < 1 ? 'hold' : delta > 0 ? 'buy' : 'sell';
+      return { symbol: t.symbol, name: t.name, targetPercent: t.targetPercent, currentValue, targetValue, delta, qty, action };
+    })
+    .filter((l): l is RebalanceLine => l != null);
 
   // Individual positions not in any target bucket → sell to cash.
   const targetSymbols = new Set(targets.map((t) => t.symbol.toUpperCase()));
@@ -361,7 +395,21 @@ export function computeRebalancePlan(
   const totalBuy = all.filter((l) => l.action === 'buy').reduce((s, l) => s + l.delta, 0);
   const totalSell = all.filter((l) => l.action === 'sell').reduce((s, l) => s + Math.abs(l.delta), 0);
 
-  return { styleName, description, equity, cash, lines: all, totalBuy, totalSell, assetClass: opts?.assetClass };
+  return {
+    styleName,
+    description,
+    equity,
+    cash,
+    lines: all,
+    totalBuy,
+    totalSell,
+    assetClass: opts?.assetClass,
+    // Unknown cash ⇒ the CASH bucket was omitted above; say so rather than imply $0.
+    warning:
+      cash == null
+        ? `I can't see your settled cash right now, so this plan ignores your cash balance — refresh your account for a cash-aware plan.`
+        : undefined,
+  };
 }
 
 const usd = (n: number) => '$' + Math.round(Math.abs(n)).toLocaleString('en-US');
@@ -538,13 +586,17 @@ export function formatRebalanceBudgetPrompt(
   style: string,
 ): string {
   const { styleName } = getInvestorStyleTargets(style);
-  const cash = portfolio?.cash ?? 0;
+  const cash = portfolio?.cash;
   const equity = portfolio?.equity ?? 0;
+  const cashKnown = typeof cash === 'number' && Number.isFinite(cash);
   return [
     `Let's rebalance to **${styleName}**. How much do you want to put to work?`,
     '',
-    `• Available cash: ${usd(cash)}`,
+    `• Available cash: ${cashKnown ? usd(cash as number) : 'unavailable'}`,
     `• Full portfolio value: ${usd(equity)}`,
+    ...(cashKnown
+      ? []
+      : ['', `_I can't see your settled cash right now — tell me an amount to deploy instead._`]),
     '',
     `Choose one below 👇`,
   ].join('\n');
@@ -696,14 +748,16 @@ export function formatRiskChangeAnswer(risk: RiskLevel): string {
 }
 
 /** Read-only, deterministic account-state answer (cash / equity / positions). */
-export function buildAccountStateAnswer(snapshot: PortfolioSnapshot, risk: string): string {  const usd = (n: number) =>
+export function buildAccountStateAnswer(snapshot: PortfolioSnapshot, risk: string): string {
+  const usd = (n: number) =>
     n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const cashKnown = typeof snapshot.cash === 'number' && Number.isFinite(snapshot.cash);
   const sorted = [...snapshot.positions].sort((a, b) => b.marketValue - a.marketValue);
   const lines = [
     `Here's your account as it stands now:`,
     '',
     `- **Equity:** ${usd(snapshot.equity)}`,
-    `- **Cash:** ${usd(snapshot.cash)}`,
+    `- **Cash:** ${cashKnown ? usd(snapshot.cash as number) : 'unavailable — your broker did not report it'}`,
     `- **Positions:** ${sorted.length} held`,
   ];
   if (sorted.length > 0) {
@@ -1188,6 +1242,9 @@ export function formatRebalancePlanAnswer(
     ? `⚠️ Execution isn't available on your read-only connection — this is a proposal you can review and download.`
     : `⚠️ I haven't executed anything — this is a proposal. Say "execute the rebalance" to place these trades.`;
   if (plan.lines.length === 0) {
+    if (plan.warning) {
+      return plan.warning;
+    }
     if (plan.customAmount != null) {
       return `That amount is too small to split into the **${plan.styleName}** targets (each buy would be under $1). Try a larger amount, or say "rebalance my portfolio" for the full plan.`;
     }
@@ -1197,15 +1254,16 @@ export function formatRebalancePlanAnswer(
   }
   const { table, totalBuy, totalSell, count } = buildRebalanceTable(plan, true);
   if (plan.cashOnly) {
-    const remaining = Math.max(0, plan.cash - totalBuy);
+    const planCash = plan.cash;
+    const remaining = planCash == null ? null : Math.max(0, planCash - totalBuy);
     return [
       `Here's the **cash-only** rebalance plan to **${plan.styleName}** — deploy your available cash across the target ${plan.assetClass === 'stock' ? 'stocks' : plan.assetClass === 'mix' ? 'ETFs and stocks' : 'ETFs'} (no sells, existing positions untouched):`,
       '',
-      `Available cash: ${usd(plan.cash)}`,
+      `Available cash: ${planCash == null ? 'unavailable' : usd(planCash)}`,
       '',
       table,
       '',
-      `**Summary:** ${count} buy${count === 1 ? '' : 's'} — ${usd(totalBuy)} to deploy · ${usd(remaining)} stays in cash.`,
+      `**Summary:** ${count} buy${count === 1 ? '' : 's'} — ${usd(totalBuy)} to deploy · ${remaining == null ? 'remaining cash unknown' : `${usd(remaining)} stays in cash`}.`,
       '',
       buyHint,
     ].join('\n');
@@ -1227,9 +1285,10 @@ export function formatRebalancePlanAnswer(
   const parts: string[] = [
     `Here's the rebalance plan to **${plan.styleName}** — ${plan.description}`,
     '',
-    `Portfolio value: ${usd(plan.equity)} · Cash: ${usd(plan.cash)}`,
+    `Portfolio value: ${usd(plan.equity)} · Cash: ${plan.cash == null ? 'unavailable' : usd(plan.cash)}`,
     '',
     table,
+    ...(plan.warning ? ['', `⚠️ ${plan.warning}`] : []),
   ];
   if (cashLine && Math.abs(cashLine.delta) >= 1) {
     const to = usd(cashLine.currentValue + cashLine.delta);
@@ -1283,8 +1342,10 @@ export function detectPortfolioTotalMismatch(text: string, actualEquity: number)
 /** Detect a fabricated cash/buying-power claim, e.g. "your cash is $50,000" or
  *  "$40,000 in cash". Returns a correction note when the claimed figure deviates
  *  >5% from actual cash (or any non-trivial claim when actual cash is $0). */
-export function detectCashMismatch(text: string, actualCash: number): string | null {
-  if (!text || !Number.isFinite(actualCash)) return null;
+export function detectCashMismatch(text: string, actualCash: number | null): string | null {
+  // Unknown cash ⇒ nothing to ground a claim against; never "correct" the model
+  // toward a fabricated $0.
+  if (!text || typeof actualCash !== 'number' || !Number.isFinite(actualCash)) return null;
   const patterns = [
     /(?:your\s+)?cash(?:\s+balance)?\s+(?:is|of|=|:)\s*\$?([\d,]+(?:\.\d+)?)/i,
     /\$?([\d,]+(?:\.\d+)?)\s+in\s+cash\b/i,

@@ -17,7 +17,9 @@ import { resolveBrokerAccountReadFilter } from '@/lib/broker/account-id';
 
 export interface AccountPositions {
   positions: any[];
-  cashBalance: number;
+  /** Settled cash. **null = not available to this surface** (never $0) — the
+   *  brief/snapshot prompts render "unavailable" rather than a false balance. */
+  cashBalance: number | null;
   holdingsUnavailable: boolean;
   isBrokerConnected: boolean;
   accountId: string;
@@ -56,7 +58,7 @@ async function resolveBrokerPositions(
     );
     return {
       positions: [],
-      cashBalance: 0,
+      cashBalance: null,
       holdingsUnavailable: true,
       isBrokerConnected: true,
       accountId: connectionId ? `snaptrade:${connectionId}` : 'broker',
@@ -88,7 +90,7 @@ async function resolveBrokerPositions(
   // positions table here is surfaced downstream as 'no_positions'.
   return {
     positions: brokerPositions || [],
-    cashBalance: 0, // broker cash is intentionally not folded into the brief
+    cashBalance: null, // broker cash is not folded into the brief — UNKNOWN, not $0
     holdingsUnavailable: false,
     isBrokerConnected: true,
     accountId: connectionId

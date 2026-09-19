@@ -1331,11 +1331,11 @@ export async function POST(req: Request) {
       });
       const legs = rebalancePlanToLegs(plan);
       if (legs.length === 0) {
-        return textSSEResponse(scope.cashOnly
+        return textSSEResponse(plan.warning ?? (scope.cashOnly
           ? 'You have no available cash to deploy right now. Once your pending orders fill or you add cash, say "rebalance using cash only" again.'
           : scope.customAmount != null
             ? 'That amount is too small to split into buys — try a larger amount.'
-            : `Your portfolio is already aligned with the **${plan.styleName}** targets — no rebalancing trades needed.`);
+            : `Your portfolio is already aligned with the **${plan.styleName}** targets — no rebalancing trades needed.`));
       }
       const action = await createPendingAction(supabase, userId, {
         actionType: 'rebalance_execute',

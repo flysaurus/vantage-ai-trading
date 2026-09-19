@@ -33,6 +33,8 @@ import TradeRecTicket from '@/components/ai/TradeRecTicket';
 import type { TradeRec } from '@/lib/ai/trade-recs';
 import { detectTradeRecommendations } from '@/lib/ai/trade-recs';
 import { humanizeNoticedItem } from '@/lib/insights/noticed-copy';
+import { useThresholdCrossings } from '@/lib/insights/use-threshold-crossings';
+import { formatCrossingSummary } from '@/lib/insights/threshold-badge';
 import { useTabStore } from '@/store';
 import { HoldingsCallout } from '@/components/ai/HoldingsCallout';
 import { ProgressIndicator, type ChecklistItem } from '@/components/ai/ProgressIndicator';
@@ -230,6 +232,11 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
   const router = useRouter();
   const { setTab, openPositionDetail } = useTabStore();
   const { account: liveAccount, executeTrade, brokerMeta } = useLivePortfolio();
+  // Milestone (option a) — aggregate the SAME live crossings the Holdings badges
+  // use (never the noticed event log) into a one-line header summary. Empty →
+  // formatCrossingSummary returns null and nothing renders.
+  const crossingRollup = useThresholdCrossings(liveAccount?.positions || []);
+  const milestoneSummary = formatCrossingSummary(liveAccount?.positions, crossingRollup.bySymbol);
   const { isConnected } = useBroker();
   // Canonical account source of truth. brokerMeta is derived (and goes null/stale
   // when demo is active), so we must NOT infer isDemo from it — that was feeding
@@ -731,7 +738,8 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
     try {
       const res = await apiPost('/api/ai/noticed', {
         portfolio: {
-          cash: liveAccount.cash ?? 0,
+          // null = unknown. Never send 0 — the server renders "unavailable".
+          cash: liveAccount.cash ?? null,
           equity: liveAccount.equity ?? 0,
           totalPnl: liveAccount.totalPnl ?? 0,
           totalPnlPercent: liveAccount.totalPnlPercent ?? 0,
@@ -1231,10 +1239,12 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
         const risk = (user?.riskTolerance || 'Moderate') as string;
         const positions = liveAccount?.positions || [];
         const equity = liveAccount?.equity ?? 0;
-        const cash = liveAccount?.cash ?? 0;
+        const cash: number | null =
+          typeof liveAccount?.cash === 'number' && Number.isFinite(liveAccount.cash) ? liveAccount.cash : null;
         const totalInvested = positions.reduce((sum: number, p: any) => sum + (p.costBasis || 0) * (p.qty || 0), 0);
         const totalPnlPct = liveAccount?.totalPnlPercent ?? 0;
-        const cashPct = equity + cash > 0 ? (cash / (equity + cash)) * 100 : 0;
+        // Unknown cash ⇒ unknown share, never 0% (which reads as "all invested").
+        const cashPct = cash != null && equity + cash > 0 ? (cash / (equity + cash)) * 100 : null;
         const symbols = positions.map((p: any) => p.symbol);
 
         let upcomingEarnings: any[] = [];
@@ -1551,7 +1561,8 @@ export function AITab({ messages, setMessages, onClose }: AITabProps) {
         // grounding (corrects fabricated portfolio-total claims).
         portfolio: liveAccount ? {
           equity: liveAccount.equity ?? 0,
-          cash: liveAccount.cash ?? 0,
+          // null = unknown settled cash; the plan builder must not treat it as $0.
+          cash: liveAccount.cash ?? null,
           positions: (liveAccount.positions || []).map((p: any) => ({
             symbol: p.symbol,
             name: p.name || p.symbol,
@@ -3546,6 +3557,14 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'var(--v-chat-text-4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
                   Suggested for you
                 </div>
+                {milestoneSummary && (
+                  <div
+                    data-testid="noticed-milestone-summary"
+                    style={{ fontSize: '12px', color: 'var(--v-chat-text-3)', padding: '0 4px 10px', lineHeight: 1.4 }}
+                  >
+                    {milestoneSummary}
+                  </div>
+                )}
                 {noticedItems.map((item) => {
                   const borderColor = item.variant === 'warn' ? WARNING : item.variant === 'gain' ? GAIN : ACCENT;
                   // Never render the raw deterministic context. The engine now writes
