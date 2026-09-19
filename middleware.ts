@@ -67,10 +67,34 @@ const PUBLIC_ROUTES = [
   '/verify-mfa', // public — MFA verification (API calls enforce auth internally)
 ];
 
+// ── Passive /login trace (TEMPORARY — added Sep 19, 2026 for diagnostics) ──
+// Purpose: identify the client looping on /login (GET 200 + POST 405, source
+// edge-middleware, cache HIT, ~68% of all traffic in bursts, usage-tied).
+// Pure instrumentation: reads headers only, no behaviour change, no I/O.
+// `referer` self-pointing at /login ⇒ self-loop; `sec-fetch-mode` distinguishes
+// a browser navigation (navigate) / XHR (cors|no-cors) from a non-browser client.
+// REMOVE once the source is identified.
+function traceLogin(request: NextRequest, pathname: string, hostname: string) {
+  if (pathname !== '/login') return;
+  if (hostname.includes('localhost') || hostname === '127.0.0.1') return;
+  const h = request.headers;
+  const fwd = (h.get('x-forwarded-for') || '').split(',')[0].trim();
+  const hasSession = request.cookies
+    .getAll()
+    .some((c) => c.name.startsWith('sb-') && c.name.endsWith('-auth-token'));
+  console.log(
+    `[login-trace] method=${request.method} ray=${h.get('x-vercel-id') || ''} ` +
+      `ip=${fwd} session=${hasSession} fetchMode=${h.get('sec-fetch-mode') || ''} ` +
+      `referer=${h.get('referer') || ''} ua="${h.get('user-agent') || ''}"`,
+  );
+}
+
 export async function middleware(request: NextRequest) {
   const host = request.headers.get('host') || '';
   const hostname = host.split(':')[0]; // strip port for local dev
   const { pathname } = request.nextUrl;
+
+  traceLogin(request, pathname, hostname);
 
   // ═══════════════════════════════════════════════════════════════
   // 1. CANONICAL DOMAIN REDIRECT
